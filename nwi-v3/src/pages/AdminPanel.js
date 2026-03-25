@@ -1,8 +1,6 @@
 // src/pages/AdminPanel.js
 import { useState, useRef } from "react";
 import { useCollection, useDocument, firestore } from "../firebase/hooks";
-import { storage } from "../firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { seedDatabase } from "../firebase/seed";
 import AdminMedia from "./AdminMedia";
 
