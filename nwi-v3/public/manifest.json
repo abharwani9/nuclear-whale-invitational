@@ -1,0 +1,13 @@
+{
+  "short_name": "NWI",
+  "name": "Nuclear Whale Invitational",
+  "description": "Annual Golf Tournament App",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#07090e",
+  "background_color": "#07090e",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" }
+  ]
+}
