@@ -150,9 +150,9 @@ export default function PublicApp({ onGoAdmin }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        .tab-scroll{display:flex;overflow-x:auto;gap:4px;padding:0 16px;scrollbar-width:none;}
+        .tab-scroll{display:flex;overflow-x:auto;gap:4px;padding:0 16px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
         .tab-scroll::-webkit-scrollbar{display:none;}
-        .tab-btn{flex-shrink:0;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+        .tab-btn{flex-shrink:0;padding:7px 11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;transition:all 0.15s;white-space:nowrap;touch-action:manipulation;}
         .tab-btn.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;}
         .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;}
         .nuke-card{border-color:rgba(255,69,0,0.3)!important;box-shadow:0 0 20px rgba(255,69,0,0.12);}
@@ -196,12 +196,12 @@ export default function PublicApp({ onGoAdmin }) {
               <div style={{ fontSize:10, color:"rgba(0,150,255,0.5)", marginTop:2 }}>POINTS</div>
             </div>
           </div>
-          <div className="tab-scroll" style={{ paddingBottom:0, marginBottom:-1 }}>
-            {TABS.map(t=>(
-              <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)}>{t.icon} {t.label}</button>
-            ))}
-          </div>
         </div>
+      </div>
+      <div className="tab-scroll" style={{ padding:"8px 16px", background:"linear-gradient(180deg,#0d1520,#07090e)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+        {TABS.map(t=>(
+          <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)}>{t.icon} {t.label}</button>
+        ))}
       </div>
 
       <div style={{ maxWidth:680, margin:"0 auto", padding:"20px 16px 80px", animation:"slideIn 0.2s ease" }} key={tab}>
