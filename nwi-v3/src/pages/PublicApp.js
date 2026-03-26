@@ -152,7 +152,7 @@ export default function PublicApp({ onGoAdmin }) {
         *{box-sizing:border-box;margin:0;padding:0;}
         .tab-scroll{display:flex;overflow-x:auto;gap:4px;padding:0 16px;scrollbar-width:none;}
         .tab-scroll::-webkit-scrollbar{display:none;}
-        .tab-btn{flex-shrink:0;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:13px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+        .tab-btn{flex-shrink:0;padding:7px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
         .tab-btn.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;}
         .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;}
         .nuke-card{border-color:rgba(255,69,0,0.3)!important;box-shadow:0 0 20px rgba(255,69,0,0.12);}
