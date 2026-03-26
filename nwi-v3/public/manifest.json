@@ -1,13 +1,15 @@
 {
-  "short_name": "NWI",
+  "short_name": "NWI ☢️🐋",
   "name": "Nuclear Whale Invitational",
-  "description": "Annual Golf Tournament App",
+  "description": "Annual Golf Tournament — Nukes vs Whales",
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#07090e",
   "background_color": "#07090e",
   "orientation": "portrait",
   "icons": [
-    { "src": "favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" }
+    { "src": "favicon.ico", "sizes": "64x64 32x32 24x24 16x16", "type": "image/x-icon" },
+    { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "logo512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
   ]
 }
