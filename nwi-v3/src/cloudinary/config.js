@@ -23,8 +23,8 @@
 // 4. That's it! No API keys needed for unsigned uploads.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME";   // e.g. "dab12xyz"
-export const CLOUDINARY_UPLOAD_PRESET = "YOUR_UPLOAD_PRESET"; // e.g. "nwi_uploads"
+export const CLOUDINARY_CLOUD_NAME = "dorz6tb5b";   // e.g. "dab12xyz"
+export const CLOUDINARY_UPLOAD_PRESET = "nwi_uploads"; // e.g. "nwi_uploads"
 
 // Resource type mapping by file category
 export const RESOURCE_TYPES = {
