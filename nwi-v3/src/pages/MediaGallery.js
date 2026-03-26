@@ -226,7 +226,9 @@ export function PlayerUploadZone() {
       });
       setFile(null); setPreview(null); setName(""); setCaption(""); setProgress(null);
       alert("✅ Photo uploaded!");
-    } catch(e) { alert("Upload failed: "+e.message); setProgress(null); }
+    } catch(e) { 
+      const msg = e.message.includes("YOUR_CLOUD") ? "Cloudinary not configured — set your Cloud Name and Upload Preset in src/cloudinary/config.js" : "Upload failed: " + e.message;
+      alert(msg); setProgress(null); }
     setUploading(false);
   };
 
