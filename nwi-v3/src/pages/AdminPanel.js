@@ -107,7 +107,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
         {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
         {section==="media"        && <AdminMedia showToast={showToast}/>}
-        {section==="history"      && <HistorySection history={history} showToast={showToast}/>}
+        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
         {section==="settings"     && <SettingsSection meta={meta} showToast={showToast}/>}
       </div>
@@ -544,9 +544,9 @@ function CompetitionsSection({ competitions, showToast }) {
 }
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
-function HistorySection({ history, showToast }) {
+function HistorySection({ history, drafts, roster, showToast }) {
   const blank = { year:new Date().getFullYear()-1, winner:"THE NUKES", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
-  const [form, setForm]     = useState(blank);
+  const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
 
@@ -562,131 +562,263 @@ function HistorySection({ history, showToast }) {
   return (
     <div>
       <div style={s.sectionTitle}>📜 Tournament History</div>
+
+      {/* Add / Edit year form */}
       <div style={s.card}>
-        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Year":"➕ Add Year"}</div>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Year":"➕ Add Tournament Year"}</div>
         <div style={s.grid2}>
           <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
-          <div><div style={s.label}>Winner</div><select style={s.select} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))}><option value="THE NUKES">☢️ THE NUKES</option><option value="THE WHALES">🐋 THE WHALES</option></select></div>
+          <div><div style={s.label}>Winner</div>
+            <select style={s.select} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))}>
+              <option value="THE NUKES">☢️ THE NUKES</option>
+              <option value="THE WHALES">🐋 THE WHALES</option>
+            </select>
+          </div>
           <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
           <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
           <div><div style={s.label}>MVP</div><input style={s.input} value={form.mvp} onChange={e=>setForm(f=>({...f,mvp:e.target.value}))} placeholder="Player name"/></div>
         </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Notes</div><textarea rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}/></div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Notes / Recap</div><textarea rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Memorable moments..."/></div>
         <div style={{ ...s.row, marginTop:14 }}>
-          <button style={s.btnFire} onClick={save}>{editing?"Save":"Add Year"}</button>
+          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add Year"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
         </div>
       </div>
 
-      {[...history].sort((a,b)=>b.year-a.year).map(h=>(
-        <div key={h.id} style={s.card}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ fontSize:20, fontWeight:900, color:"rgba(255,255,255,0.15)", minWidth:46 }}>{h.year}</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:h.winner==="THE NUKES"?"#ff4500":"#00aaff" }}>{h.winner}</div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp} · {h.nukes_pts}–{h.whales_pts}</div>
+      {/* Year cards */}
+      {[...history].sort((a,b)=>b.year-a.year).map(h=>{
+        const isNuke = h.winner==="THE NUKES";
+        const isExpanded = expanded===h.id;
+        const matchCount = (h.matches||[]).length;
+        const supCount = (h.superlatives||[]).length;
+        // Get draft for this year to populate dropdowns
+        const yearDraft = drafts.find(d=>String(d.year)===String(h.year));
+        const yearAssign = yearDraft?.assignments || {};
+        const nukeNames = Object.entries(yearAssign).filter(([,t])=>t==="nukes").map(([n])=>n);
+        const whaleNames = Object.entries(yearAssign).filter(([,t])=>t==="whales").map(([n])=>n);
+        const allYearPlayers = [...nukeNames, ...whaleNames];
+
+        return (
+          <div key={h.id} style={{ marginBottom:12 }}>
+            {/* Year header */}
+            <div style={{ background:isNuke?"rgba(255,69,0,0.08)":"rgba(0,170,255,0.06)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":"rgba(0,170,255,0.2)"}`, borderRadius:isExpanded?"12px 12px 0 0":"12px", padding:"14px 16px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ fontSize:26, fontWeight:900, color:"rgba(255,255,255,0.12)", minWidth:50, lineHeight:1 }}>{h.year}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:15, fontWeight:800, color:isNuke?"#ff4500":"#00aaff" }}>{isNuke?"☢️":"🐋"} {h.winner}</div>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
+                    MVP: {h.mvp||"—"} · {h.nukes_pts}–{h.whales_pts}
+                    {matchCount>0&&<span style={{ marginLeft:8, color:"rgba(255,255,255,0.3)" }}>{matchCount} match{matchCount!==1?"es":""}</span>}
+                    {supCount>0&&<span style={{ marginLeft:8, color:"rgba(255,200,0,0.5)" }}>🏅 {supCount}</span>}
+                  </div>
+                </div>
+                <div style={s.row}>
+                  <button style={s.btnGhost} onClick={()=>setExpanded(isExpanded?null:h.id)}>{isExpanded?"▲ Hide":"▼ Edit"}</button>
+                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,mvp:h.mvp||"",notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||""});}}>✏️</button>
+                  <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete this year?"))await firestore.delete("history",h.id);}}>✕</button>
+                </div>
+              </div>
             </div>
-            <button style={s.btnGhost} onClick={()=>setExpanded(expanded===h.id?null:h.id)}>{expanded===h.id?"▲":"▼"}</button>
-            <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,mvp:h.mvp||"",notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||""});}}>Edit</button>
-            <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("history",h.id);}}>✕</button>
+
+            {/* Expanded subsections */}
+            {isExpanded&&(
+              <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":"rgba(0,170,255,0.15)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+
+                {/* Notes */}
+                {h.notes&&(
+                  <div style={{ padding:"10px 16px", background:"rgba(255,255,255,0.02)", borderBottom:"1px solid rgba(255,255,255,0.06)", fontSize:13, color:"rgba(255,255,255,0.4)", fontStyle:"italic" }}>
+                    {h.notes}
+                  </div>
+                )}
+
+                {/* Draft info notice */}
+                {allYearPlayers.length===0&&(
+                  <div style={{ padding:"10px 16px", background:"rgba(255,200,0,0.06)", borderBottom:"1px solid rgba(255,200,0,0.1)", fontSize:12, color:"rgba(255,200,0,0.7)" }}>
+                    ⚠️ No draft found for {h.year} — create one in Draft / Teams to get player dropdowns
+                  </div>
+                )}
+
+                {/* Matches subsection */}
+                <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                  <MatchesEditor year={h} nukeNames={nukeNames} whaleNames={whaleNames} showToast={showToast}/>
+                </div>
+
+                {/* Superlatives subsection */}
+                <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.15)" }}>
+                  <SuperlativesEditor year={h} allPlayers={allYearPlayers} showToast={showToast}/>
+                </div>
+              </div>
+            )}
           </div>
-          {expanded===h.id&&(
-            <div style={{ marginTop:14, paddingTop:14, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-              <MatchesEditor year={h} showToast={showToast}/>
-              <SuperlativesEditor year={h} showToast={showToast}/>
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function MatchesEditor({ year, showToast }) {
+function MatchesEditor({ year, nukeNames, whaleNames, showToast }) {
   const blankMatch = { nukes:["",""], whales:["",""], winner:null, roundName:"", pointsWorth:"" };
-  const [form, setForm] = useState(blankMatch);
+  const [form, setForm]   = useState(blankMatch);
+  const [adding, setAdding] = useState(false);
 
   const addMatch = async () => {
+    if (!form.winner) return showToast("Please select a winner", true);
     const matches = [...(year.matches||[]), { ...form, pointsWorth:Number(form.pointsWorth)||0 }];
     await firestore.update("history",year.id,{matches});
-    setForm(blankMatch); showToast("Match added!");
+    setForm(blankMatch); setAdding(false); showToast("Match added!");
   };
-  const remove = async (mi) => { await firestore.update("history",year.id,{matches:(year.matches||[]).filter((_,i)=>i!==mi)}); };
-  const updateWinner = async (mi, winner) => { await firestore.update("history",year.id,{matches:(year.matches||[]).map((m,i)=>i===mi?{...m,winner}:m)}); };
+  const remove = async (mi) => {
+    if (!window.confirm("Remove this match?")) return;
+    await firestore.update("history",year.id,{matches:(year.matches||[]).filter((_,i)=>i!==mi)});
+  };
+  const updateWinner = async (mi, winner) => {
+    await firestore.update("history",year.id,{matches:(year.matches||[]).map((m,i)=>i===mi?{...m,winner}:m)});
+  };
+
+  const allPlayers = [...nukeNames,...whaleNames];
 
   return (
-    <div style={{ marginBottom:16 }}>
-      <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Match Results</div>
-      <div style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:10, padding:12, marginBottom:8 }}>
-        <div style={{ fontSize:12, fontWeight:700, color:"#4ade80", marginBottom:10 }}>+ Add Match</div>
-        <div style={s.grid2}>
-          <div><div style={{ fontSize:10, color:"#ff4500", marginBottom:4 }}>☢️ NUKES (2 players)</div>
-            {[0,1].map(i=><input key={i} style={{ ...s.input, marginBottom:5 }} value={form.nukes[i]||""} onChange={e=>{const n=[...form.nukes];n[i]=e.target.value;setForm(f=>({...f,nukes:n}));}} placeholder={`Player ${i+1}`}/>)}
-          </div>
-          <div><div style={{ fontSize:10, color:"#00aaff", marginBottom:4 }}>🐋 WHALES (2 players)</div>
-            {[0,1].map(i=><input key={i} style={{ ...s.input, marginBottom:5 }} value={form.whales[i]||""} onChange={e=>{const w=[...form.whales];w[i]=e.target.value;setForm(f=>({...f,whales:w}));}} placeholder={`Player ${i+1}`}/>)}
-          </div>
-          <div><div style={s.label}>Round Name</div><input style={s.input} value={form.roundName} onChange={e=>setForm(f=>({...f,roundName:e.target.value}))}/></div>
-          <div><div style={s.label}>Points Worth</div><input style={s.input} type="number" value={form.pointsWorth} onChange={e=>setForm(f=>({...f,pointsWorth:e.target.value}))}/></div>
+    <div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
+          ⚔️ Match Results <span style={{ color:"rgba(255,255,255,0.25)", fontWeight:400 }}>({(year.matches||[]).length})</span>
         </div>
-        <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap", alignItems:"center" }}>
-          <div style={s.label}>Winner:</div>
-          {["nukes","tie","whales"].map(w=>(
-            <button key={w} onClick={()=>setForm(f=>({...f,winner:w}))}
-              style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${form.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.1)"}`, background:form.winner===w?"rgba(255,255,255,0.08)":"none", color:form.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, cursor:"pointer" }}>
-              {w==="nukes"?"☢️ Nukes":w==="whales"?"🐋 Whales":"🤝 Tie"}
-            </button>
-          ))}
-        </div>
-        <button style={{ ...s.btnFire, marginTop:10, fontSize:12 }} onClick={addMatch}>+ Add Match</button>
+        {!adding&&<button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>}
       </div>
-      {(year.matches||[]).map((m,mi)=>(
-        <div key={mi} style={{ background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8, padding:"9px 10px", marginBottom:6 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
-            <span style={{ color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.5)" }}>☢️ {(m.nukes||[]).join(" & ")}</span>
-            <span style={{ color:"rgba(255,255,255,0.2)" }}>vs</span>
-            <span style={{ color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.5)" }}>{(m.whales||[]).join(" & ")} 🐋</span>
-            {m.winner==="tie"&&<span style={{ color:"#ffd700" }}>TIE</span>}
-            <span style={{ color:"rgba(255,255,255,0.25)", fontSize:11, marginLeft:"auto" }}>{m.pointsWorth}pts</span>
-            <button style={s.btnDanger} onClick={()=>remove(mi)}>✕</button>
+
+      {/* Add match form */}
+      {adding&&(
+        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:14, marginBottom:12 }}>
+          <div style={s.grid2}>
+            <div>
+              <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, marginBottom:6 }}>☢️ NUKES</div>
+              {[0,1].map(i=>(
+                <select key={i} style={{ ...s.select, marginBottom:6 }} value={form.nukes[i]||""} onChange={e=>{const n=[...form.nukes];n[i]=e.target.value;setForm(f=>({...f,nukes:n}));}}>
+                  <option value="">— Player {i+1} —</option>
+                  {nukeNames.map(n=><option key={n}>{n}</option>)}
+                  {nukeNames.length===0&&allPlayers.map(n=><option key={n}>{n}</option>)}
+                </select>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#00aaff", fontWeight:700, marginBottom:6 }}>🐋 WHALES</div>
+              {[0,1].map(i=>(
+                <select key={i} style={{ ...s.select, marginBottom:6 }} value={form.whales[i]||""} onChange={e=>{const w=[...form.whales];w[i]=e.target.value;setForm(f=>({...f,whales:w}));}}>
+                  <option value="">— Player {i+1} —</option>
+                  {whaleNames.map(n=><option key={n}>{n}</option>)}
+                  {whaleNames.length===0&&allPlayers.map(n=><option key={n}>{n}</option>)}
+                </select>
+              ))}
+            </div>
+            <div>
+              <div style={s.label}>Competition / Round</div>
+              <input style={s.input} value={form.roundName} onChange={e=>setForm(f=>({...f,roundName:e.target.value}))} placeholder="e.g. Round 1, Closest to Pin"/>
+            </div>
+            <div>
+              <div style={s.label}>Points Worth</div>
+              <input style={s.input} type="number" value={form.pointsWorth} onChange={e=>setForm(f=>({...f,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
+            </div>
           </div>
-          <div style={{ display:"flex", gap:5, marginTop:6 }}>
+          <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em" }}>WINNER:</div>
             {["nukes","tie","whales"].map(w=>(
-              <button key={w} onClick={()=>updateWinner(mi,w)}
-                style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
-                {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
+              <button key={w} onClick={()=>setForm(f=>({...f,winner:w}))}
+                style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${form.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.12)"}`, background:form.winner===w?"rgba(255,255,255,0.1)":"none", color:form.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                {w==="nukes"?"☢️ Nukes Win":w==="whales"?"🐋 Whales Win":"🤝 Tie"}
               </button>
             ))}
           </div>
+          <div style={{ ...s.row, marginTop:12 }}>
+            <button style={s.btnFire} onClick={addMatch}>Save Match</button>
+            <button style={s.btnGhost} onClick={()=>{setAdding(false);setForm(blankMatch);}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing matches */}
+      {(year.matches||[]).length===0&&!adding&&(
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.2)", textAlign:"center", padding:"16px 0" }}>No matches yet — tap + Add Match</div>
+      )}
+      {(year.matches||[]).map((m,mi)=>(
+        <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+          {/* Match header */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
+            <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
+              {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+              {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4, letterSpacing:"0.06em" }}>✓ WIN</div>}
+            </div>
+            <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
+            <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
+              {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+              {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4, letterSpacing:"0.06em" }}>✓ WIN</div>}
+            </div>
+          </div>
+          {/* Match meta */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
+            {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth} pts</span>}
+            {m.winner==="tie"&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.1)", color:"#ffd700" }}>🤝 TIE</span>}
+            <div style={{ marginLeft:"auto", display:"flex", gap:5 }}>
+              {["nukes","tie","whales"].map(w=>(
+                <button key={w} onClick={()=>updateWinner(mi,w)}
+                  style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
+                  {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
+                </button>
+              ))}
+              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
+            </div>
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-function SuperlativesEditor({ year, showToast }) {
-  const [title, setTitle] = useState(""); const [player, setPlayer] = useState("");
+function SuperlativesEditor({ year, allPlayers, showToast }) {
+  const [title, setTitle]   = useState("");
+  const [player, setPlayer] = useState("");
+
   const add = async () => {
-    if (!title||!player) return;
+    if (!title||!player) return showToast("Award name and player required", true);
     await firestore.update("history",year.id,{superlatives:[...(year.superlatives||[]),{title,player}]});
-    setTitle(""); setPlayer(""); showToast("Added!");
+    setTitle(""); setPlayer(""); showToast("Award added!");
   };
-  const remove = async (si) => { await firestore.update("history",year.id,{superlatives:(year.superlatives||[]).filter((_,i)=>i!==si)}); };
+  const remove = async (si) => {
+    await firestore.update("history",year.id,{superlatives:(year.superlatives||[]).filter((_,i)=>i!==si)});
+  };
+
   return (
     <div>
-      <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Superlatives / Awards</div>
-      <div style={{ display:"flex", gap:6, marginBottom:8 }}>
-        <input style={{ flex:1, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:13, padding:"7px 10px", outline:"none" }} value={title} onChange={e=>setTitle(e.target.value)} placeholder="Award (e.g. MVP)"/>
-        <input style={{ flex:1, background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:13, padding:"7px 10px", outline:"none" }} value={player} onChange={e=>setPlayer(e.target.value)} placeholder="Player name"/>
-        <button style={s.btnFire} onClick={add}>+</button>
+      <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:12 }}>
+        🏅 Superlatives / Awards
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, marginBottom:10, alignItems:"end" }}>
+        <div>
+          <div style={s.label}>Award Name</div>
+          <input style={{ ...s.input, fontSize:13 }} value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. MVP, Most Improved"/>
+        </div>
+        <div>
+          <div style={s.label}>Player</div>
+          {allPlayers.length>0
+            ? <select style={{ ...s.select, fontSize:13 }} value={player} onChange={e=>setPlayer(e.target.value)}>
+                <option value="">— Select —</option>
+                {allPlayers.map(n=><option key={n}>{n}</option>)}
+              </select>
+            : <input style={{ ...s.input, fontSize:13 }} value={player} onChange={e=>setPlayer(e.target.value)} placeholder="Player name"/>
+          }
+        </div>
+        <button style={{ ...s.btnFire, padding:"9px 14px" }} onClick={add}>+ Add</button>
       </div>
       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
         {(year.superlatives||[]).map((sup,si)=>(
-          <div key={si} style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 8px 3px 10px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20 }}>
+          <div key={si} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px 4px 12px", background:"rgba(255,200,0,0.08)", border:"1px solid rgba(255,200,0,0.2)", borderRadius:20 }}>
             <span style={{ fontSize:12 }}>🏅 <strong>{sup.title}:</strong> {sup.player}</span>
-            <button onClick={()=>remove(si)} style={{ background:"none", border:"none", color:"rgba(255,80,80,0.6)", cursor:"pointer", fontSize:14, paddingLeft:4 }}>✕</button>
+            <button onClick={()=>remove(si)} style={{ background:"none", border:"none", color:"rgba(255,80,80,0.6)", cursor:"pointer", fontSize:14, paddingLeft:4, lineHeight:1 }}>✕</button>
           </div>
         ))}
+        {(year.superlatives||[]).length===0&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>No awards yet</div>}
       </div>
     </div>
   );
