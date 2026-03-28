@@ -31,6 +31,7 @@ export default function PublicApp({ onGoAdmin }) {
   const [pwInput, setPwInput]       = useState("");
   const [pwError, setPwError]       = useState(false);
   const [lbTab, setLbTab]           = useState("team");
+  const [expandedHistory, setExpandedHistory] = useState(null);
 
   const { data: roster }       = useCollection("roster");       // master player profiles
   const { data: rounds }       = useCollection("rounds");
@@ -286,20 +287,22 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="individual" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Points win % = points won ÷ points competed for</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Ranked by pts win % · Pts% = pts won ÷ pts competed · Match% = wins ÷ matches played</div>
                 <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                   <table>
-                    <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th></tr></thead>
+                    <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Match%</th></tr></thead>
                     <tbody>
                       {individualLb.map((p,i)=>{
                         const tc=TEAMS[p.team]||TEAMS.nukes;
+                        const totalM = p.matchWins+p.matchTies+p.matchLosses;
                         return (
                           <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
                             <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
                             <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc.color }}>{tc.emoji} {p.team}</div></td>
                             <td style={{ fontWeight:700, color:tc.color }}>{p.ptsWon}</td>
                             <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                            <td style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
+                            <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
+                            <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
                           </tr>
                         );
                       })}
@@ -311,12 +314,12 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="alltime" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments — ranked by points win %</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments — ranked by pts win % · includes current tournament</div>
                 {allTimeLb.length===0
-                  ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet</div>
+                  ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
                   : <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                       <table>
-                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Matches</th><th>Match%</th></tr></thead>
+                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Wins</th><th>Match%</th></tr></thead>
                         <tbody>
                           {allTimeLb.map((p,i)=>{
                             const rp = roster.find(r=>r.name===p.name);
@@ -326,8 +329,11 @@ export default function PublicApp({ onGoAdmin }) {
                                 <td style={{ fontWeight:700 }}>{p.name}</td>
                                 <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                 <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                <td style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{p.matchWins}W {p.matchTies}T {p.matchLosses}L</td>
-                                <td style={{ fontWeight:700, color:"#00aaff" }}>{p.matchWinPct}%</td>
+                                <td>
+                                  <div style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</div>
+                                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>{p.matchTies}T {p.matchLosses}L</div>
+                                </td>
+                                <td style={{ fontWeight:700, color:"#00aaff" }}>{p.totalMatches>0?p.matchWinPct+"%":"—"}</td>
                               </tr>
                             );
                           })}
@@ -532,53 +538,94 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── HISTORY ── */}
         {tab==="history" && (
           <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Tournament History</div>
+            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament History</div>
+            {/* Series record */}
+            <div className="card" style={{ padding:"12px 16px", marginBottom:20, display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:12, alignItems:"center", textAlign:"center" }}>
+              <div><div style={{ fontSize:26, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>☢️ TITLES</div></div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", fontWeight:700 }}>ALL TIME</div>
+              <div><div style={{ fontSize:26, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>🐋 TITLES</div></div>
+            </div>
+
             {[...history].sort((a,b)=>b.year-a.year).map(h=>{
               const isNuke=h.winner==="THE NUKES";
+              const isExp=expandedHistory===h.id;
+              const matchCount=(h.matches||[]).length;
+              const nukePts=h.nukes_pts??0, whalePts=h.whales_pts??0;
               return (
-                <div key={h.id} style={{ marginBottom:14 }}>
-                  <div className={`card ${isNuke?"nuke-card":"whale-card"}`} style={{ padding:"16px 18px" }}>
-                    <div style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
-                      <div style={{ fontSize:30, fontWeight:900, color:"rgba(255,255,255,0.1)", minWidth:52, lineHeight:1 }}>{h.year}</div>
+                <div key={h.id} style={{ marginBottom:10 }}>
+                  {/* Year header - always visible */}
+                  <div style={{ background:isNuke?"rgba(255,69,0,0.08)":"rgba(0,170,255,0.06)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":"rgba(0,170,255,0.2)"}`, borderRadius:isExp?"12px 12px 0 0":"12px", padding:"14px 16px", cursor:"pointer" }} onClick={()=>setExpandedHistory(isExp?null:h.id)}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ fontSize:28, fontWeight:900, color:"rgba(255,255,255,0.1)", minWidth:52, lineHeight:1 }}>{h.year}</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:17, fontWeight:800, color:isNuke?"#ff4500":"#00aaff", marginBottom:2 }}>{isNuke?"☢️":"🐋"} {h.winner}</div>
-                        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>MVP: {h.mvp} · {h.nukes_pts??0}–{h.whales_pts??0}</div>
-                        {h.notes&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginBottom:8 }}>{h.notes}</div>}
-                        {(h.superlatives||[]).length>0&&(
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                        <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":"#00aaff" }}>{isNuke?"☢️":"🐋"} {h.winner}</div>
+                        <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
+                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp||"—"}</span>
+                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>·</span>
+                          <span style={{ fontSize:12, color:"rgba(255,69,0,0.7)" }}>{nukePts}</span>
+                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>–</span>
+                          <span style={{ fontSize:12, color:"rgba(0,170,255,0.7)" }}>{whalePts}</span>
+                          {matchCount>0&&<span style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>· {matchCount} matches</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)" }}>{isExp?"▲":"▼"}</div>
+                    </div>
+                  </div>
+
+                  {/* Expanded content */}
+                  {isExp&&(
+                    <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":"rgba(0,170,255,0.15)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+
+                      {/* Notes */}
+                      {h.notes&&<div style={{ padding:"10px 16px", background:"rgba(255,255,255,0.02)", borderBottom:"1px solid rgba(255,255,255,0.06)", fontSize:13, color:"rgba(255,255,255,0.4)", fontStyle:"italic" }}>{h.notes}</div>}
+
+                      {/* Superlatives */}
+                      {(h.superlatives||[]).length>0&&(
+                        <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                          <div style={{ fontSize:11, color:"rgba(255,200,0,0.6)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>🏅 Awards</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                             {h.superlatives.map((sup,si)=>(
-                              <div key={si} style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)" }}>🏅 {sup.title}: {sup.player}</div>
+                              <div key={si} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,200,0,0.1)", border:"1px solid rgba(255,200,0,0.2)", color:"rgba(255,220,0,0.8)" }}>🏅 {sup.title}: <strong>{sup.player}</strong></div>
                             ))}
                           </div>
-                        )}
-                      </div>
-                      <div style={{ fontSize:24 }}>🏆</div>
+                        </div>
+                      )}
+
+                      {/* Matches */}
+                      {matchCount>0&&(
+                        <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)" }}>
+                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>⚔️ Match Results</div>
+                          {h.matches.map((m,mi)=>(
+                            <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+                              {/* Competition / round badge */}
+                              {m.roundName&&<div style={{ fontSize:11, color:"rgba(255,200,0,0.6)", marginBottom:8 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
+                              {/* Players grid */}
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
+                                <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                  <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
+                                  {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                  {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5, letterSpacing:"0.06em" }}>✓ WIN</div>}
+                                  {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                </div>
+                                <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
+                                <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                  <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
+                                  {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                  {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5, letterSpacing:"0.06em" }}>✓ WIN</div>}
+                                  {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {matchCount===0&&<div style={{ padding:"20px", textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.2)" }}>No match data entered yet</div>}
                     </div>
-                    {(h.matches||[]).length>0&&(
-                      <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Matchup Results</div>
-                        {h.matches.map((m,mi)=>(
-                          <div key={mi} style={{ background:"rgba(255,255,255,0.03)", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
-                            <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:6, alignItems:"center", fontSize:12 }}>
-                              <div style={{ color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.45)", fontWeight:m.winner==="nukes"?700:400 }}>☢️ {(m.nukes||[]).join(" & ")}{m.winner==="nukes"&&" ✓"}</div>
-                              <div style={{ textAlign:"center", color:"rgba(255,255,255,0.2)", fontSize:10 }}>VS</div>
-                              <div style={{ color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.45)", fontWeight:m.winner==="whales"?700:400, textAlign:"right" }}>{m.winner==="whales"&&"✓ "}{(m.whales||[]).join(" & ")} 🐋</div>
-                            </div>
-                            <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:4, fontSize:10, color:"rgba(255,255,255,0.25)" }}>
-                              {m.roundName&&<span>{m.roundName}</span>}{m.pointsWorth&&<span>{m.pointsWorth}pts</span>}{m.winner==="tie"&&<span style={{ color:"#ffd700" }}>TIE</span>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}
-            <div className="card" style={{ padding:"14px 18px", marginTop:14, display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, textAlign:"center" }}>
-              <div><div style={{ fontSize:28, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>NUKE TITLES</div></div>
-              <div><div style={{ fontSize:28, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>WHALE TITLES</div></div>
-            </div>
           </div>
         )}
 
