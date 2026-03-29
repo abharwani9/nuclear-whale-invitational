@@ -473,16 +473,19 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   const handleRoundDrop = async (e, targetId) => {
     const srcId = e.dataTransfer.getData("roundId");
     if (!srcId||srcId===targetId) { setDragOverRound(null); return; }
-    // Swap by reordering: get sorted list and swap positions
-    const sorted = [...rounds];
+    const sorted = [...rounds].sort((a,b)=>(a.order??0)-(b.order??0));
+    // Init order values if missing
+    for (let i=0;i<sorted.length;i++) {
+      if (sorted[i].order===undefined||sorted[i].order===null) {
+        await firestore.update("rounds",sorted[i].id,{order:i});
+        sorted[i]={...sorted[i],order:i};
+      }
+    }
     const srcIdx = sorted.findIndex(r=>r.id===srcId);
     const tgtIdx = sorted.findIndex(r=>r.id===targetId);
-    if (srcIdx<0||tgtIdx<0) return;
-    // Update order field on both
-    const srcOrder = sorted[srcIdx].order ?? srcIdx;
-    const tgtOrder = sorted[tgtIdx].order ?? tgtIdx;
-    await firestore.update("rounds", srcId, { order: tgtOrder });
-    await firestore.update("rounds", targetId, { order: srcOrder });
+    if (srcIdx<0||tgtIdx<0) { setDragOverRound(null); return; }
+    await firestore.update("rounds", srcId, { order: sorted[tgtIdx].order??tgtIdx });
+    await firestore.update("rounds", targetId, { order: sorted[srcIdx].order??srcIdx });
     setDragOverRound(null);
   };
 
@@ -795,12 +798,25 @@ function CompetitionsSection({ competitions, showToast }) {
   const handleCompDrop = async (e, targetId) => {
     const srcId = e.dataTransfer.getData("compId");
     if (!srcId||srcId===targetId) { setDragOverComp(null); return; }
+    // Build sorted list with guaranteed order values
     const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
+    // Ensure all have unique order values first
+    const needsInit = sorted.some((c,i)=>c.order===undefined||c.order===null);
+    if (needsInit) {
+      for (let i=0;i<sorted.length;i++) {
+        if (sorted[i].order===undefined||sorted[i].order===null) {
+          await firestore.update("competitions",sorted[i].id,{order:i});
+          sorted[i] = {...sorted[i], order:i};
+        }
+      }
+    }
     const srcIdx = sorted.findIndex(c=>c.id===srcId);
     const tgtIdx = sorted.findIndex(c=>c.id===targetId);
-    if (srcIdx<0||tgtIdx<0) return;
-    await firestore.update("competitions", srcId, { order: sorted[tgtIdx].order ?? tgtIdx });
-    await firestore.update("competitions", targetId, { order: sorted[srcIdx].order ?? srcIdx });
+    if (srcIdx<0||tgtIdx<0) { setDragOverComp(null); return; }
+    const srcOrder = sorted[srcIdx].order??srcIdx;
+    const tgtOrder = sorted[tgtIdx].order??tgtIdx;
+    await firestore.update("competitions", srcId, { order: tgtOrder });
+    await firestore.update("competitions", targetId, { order: srcOrder });
     setDragOverComp(null);
   };
 
