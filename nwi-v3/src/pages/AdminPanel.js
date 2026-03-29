@@ -202,7 +202,7 @@ function RosterSection({ roster, showToast }) {
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>HCP {p.handicap}{p.hometown?` · ${p.hometown}`:""}</div>
             </div>
             <div style={s.row}>
-              <button style={s.btnGhost} onClick={()=>{setEditing(p.id);setForm({name:p.name,handicap:p.handicap||"",hometown:p.hometown||"",bio:p.bio||"",photoURL:p.photoURL||""});}}>Edit</button>
+              <button style={s.btnGhost} onClick={()=>{setEditing(p.id);setForm({name:p.name||"",handicap:p.handicap||"",hometown:p.hometown||"",nickname:p.nickname||"",bio:p.bio||"",photoURL:p.photoURL||"",favoriteClub:p.favoriteClub||"",strengths:p.strengths||"",weaknesses:p.weaknesses||"",golferComparison:p.golferComparison||"",bestPartOfGame:p.bestPartOfGame||""});}}>Edit</button>
               <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Remove from roster?"))await firestore.delete("roster",p.id);}}>✕</button>
             </div>
           </div>
