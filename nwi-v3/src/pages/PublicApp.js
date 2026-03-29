@@ -42,7 +42,7 @@ export default function PublicApp({ onGoAdmin }) {
   const teamAssign = currentDraft?.assignments || {};
 
   // Players active this tournament = those in the draft assignments
-  const activePlayers = roster.filter(p => teamAssign[p.name]);
+  const activePlayers = roster.filter(p => teamAssign[p.name]); // includes tbd
 
   const tournamentDate = new Date((meta?.date || "2026-08-13") + "T10:00:00");
 
@@ -99,7 +99,8 @@ export default function PublicApp({ onGoAdmin }) {
   const individualLb = activePlayers.map(p => {
     const st = playerStats[p.name] || {};
     const tot = st.matchWins + st.matchLosses + st.matchTies;
-    return { ...p, team: teamAssign[p.name], ...st,
+    const assignedTeam = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
+    return { ...p, team: assignedTeam, ...st,
       ptsWinPct:   st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0,
       matchWinPct: tot > 0 ? Math.round((st.matchWins / tot) * 100) : 0,
     };
@@ -297,13 +298,13 @@ export default function PublicApp({ onGoAdmin }) {
                     <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Match%</th></tr></thead>
                     <tbody>
                       {individualLb.map((p,i)=>{
-                        const tc=TEAMS[p.team]||TEAMS.nukes;
+                        const tc = (p.team && p.team!=="tbd") ? TEAMS[p.team] : null;
                         const totalM = p.matchWins+p.matchTies+p.matchLosses;
                         return (
                           <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
                             <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                            <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc.color }}>{tc.emoji} {p.team}</div></td>
-                            <td style={{ fontWeight:700, color:tc.color }}>{p.ptsWon}</td>
+                            <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div></td>
+                            <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
                             <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
                             <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
                             <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
@@ -674,7 +675,7 @@ export default function PublicApp({ onGoAdmin }) {
                 <div style={{ fontSize:22, fontWeight:900, lineHeight:1.1 }}>{selectedPlayer.name}</div>
                 {selectedPlayer.nickname&&<div style={{ fontSize:14, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginTop:2 }}>"{selectedPlayer.nickname}"</div>}
                 {selectedPlayer.nickname&&<div style={{ fontSize:14, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginTop:2 }}>"{selectedPlayer.nickname}"</div>}
-                {selectedPlayer.team&&TEAMS[selectedPlayer.team]&&(
+                {selectedPlayer.team&&selectedPlayer.team!=="tbd"&&TEAMS[selectedPlayer.team]&&(
                   <div style={{ fontSize:12, color:TEAMS[selectedPlayer.team].color, marginTop:4 }}>{TEAMS[selectedPlayer.team].emoji} {TEAMS[selectedPlayer.team].name} · {currentYear}</div>
                 )}
                 <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
