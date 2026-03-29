@@ -933,11 +933,16 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
 
       {/* Year cards */}
       {[...history].sort((a,b)=>b.year-a.year).map(h=>{
+        const isTBD = !h.winner || h.winner==="TBD";
         const isNuke = h.winner==="THE NUKES";
+        const isWhale = h.winner==="THE WHALES";
+        const headerBg = isNuke?"rgba(255,69,0,0.08)":isWhale?"rgba(0,170,255,0.06)":"rgba(255,255,255,0.04)";
+        const headerBorder = isNuke?"rgba(255,69,0,0.25)":isWhale?"rgba(0,170,255,0.2)":"rgba(255,255,255,0.1)";
+        const winnerColor = isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)";
+        const winnerEmoji = isNuke?"☢️ ":isWhale?"🐋 ":"⏳ ";
         const isExpanded = expanded===h.id;
         const matchCount = (h.matches||[]).length;
         const supCount = (h.superlatives||[]).length;
-        // Get draft for this year to populate dropdowns
         const yearDraft = drafts.find(d=>String(d.year)===String(h.year));
         const yearAssign = yearDraft?.assignments || {};
         const nukeNames = Object.entries(yearAssign).filter(([,t])=>t==="nukes").map(([n])=>n);
@@ -947,13 +952,13 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
         return (
           <div key={h.id} style={{ marginBottom:12 }}>
             {/* Year header */}
-            <div style={{ background:isNuke?"rgba(255,69,0,0.08)":"rgba(0,170,255,0.06)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":"rgba(0,170,255,0.2)"}`, borderRadius:isExpanded?"12px 12px 0 0":"12px", padding:"14px 16px" }}>
+            <div style={{ background:headerBg, border:`1px solid ${headerBorder}`, borderRadius:isExpanded?"12px 12px 0 0":"12px", padding:"14px 16px" }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <div style={{ fontSize:26, fontWeight:900, color:"rgba(255,255,255,0.12)", minWidth:50, lineHeight:1 }}>{h.year}</div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:15, fontWeight:800, color:isNuke?"#ff4500":"#00aaff" }}>{isNuke?"☢️":"🐋"} {h.winner}</div>
+                  <div style={{ fontSize:15, fontWeight:800, color:winnerColor }}>{winnerEmoji}{isTBD?"TBD":h.winner}</div>
                   <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
-                    MVP: {h.mvp||"—"} · {h.nukes_pts}–{h.whales_pts}
+                    MVP: {h.mvp||"—"} · {h.nukes_pts||0}–{h.whales_pts||0}
                     {matchCount>0&&<span style={{ marginLeft:8, color:"rgba(255,255,255,0.3)" }}>{matchCount} match{matchCount!==1?"es":""}</span>}
                     {supCount>0&&<span style={{ marginLeft:8, color:"rgba(255,200,0,0.5)" }}>🏅 {supCount}</span>}
                   </div>
@@ -968,7 +973,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
 
             {/* Expanded subsections */}
             {isExpanded&&(
-              <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":"rgba(0,170,255,0.15)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+              <div style={{ border:`1px solid ${headerBorder}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
 
                 {/* Notes */}
                 {h.notes&&(
@@ -984,12 +989,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                   </div>
                 )}
 
-                {/* Import from current tournament */}
-                {String(h.year)===String(meta?.year||2026)&&(
-                  <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
-                )}
-
-                {/* Import from current tournament */}
+                {/* Import from current tournament - show only once */}
                 {String(h.year)===String(meta?.year||2026)&&(
                   <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
                 )}
