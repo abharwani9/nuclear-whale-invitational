@@ -11,7 +11,6 @@ const TEAMS = {
 const TABS = [
   { id: "leaderboard",  label: "Leaderboard",  icon: "🏆" },
   { id: "matchups",     label: "Matchups",      icon: "⚔️"  },
-  { id: "projections",  label: "Projections",   icon: "📊" },
   { id: "countdown",    label: "Countdown",     icon: "⏳" },
   { id: "schedule",     label: "Schedule",      icon: "📅" },
   { id: "competitions", label: "Competitions",  icon: "🎯" },
@@ -75,7 +74,9 @@ export default function PublicApp({ onGoAdmin }) {
 
   rounds.forEach(round => {
     (round.matchups || []).forEach(m => {
-      const pts = round.pointsPerWin || 0, tiePts = round.pointsPerTie || 0;
+      // Per-matchup points if set, otherwise fall back to round default
+      const pts = (m.pointsWorth > 0 ? m.pointsWorth : round.pointsPerWin) || 0;
+      const tiePts = pts / 2;
       const nk = m.nukes || [], wh = m.whales || [];
       teamPtsAvail.nukes += pts; teamPtsAvail.whales += pts;
       nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
@@ -565,7 +566,7 @@ export default function PublicApp({ onGoAdmin }) {
                           {h.matches.map((m,mi)=>(
                             <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
                               {/* Competition / round badge */}
-                              {m.roundName&&<div style={{ fontSize:11, color:"rgba(255,200,0,0.6)", marginBottom:8 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
+                              {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
                               {/* Players grid */}
                               <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
                                 <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
