@@ -323,7 +323,7 @@ export default function PublicApp({ onGoAdmin }) {
                   ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
                   : <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                       <table>
-                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Wins</th><th>Match%</th></tr></thead>
+                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Record</th><th>Match%</th></tr></thead>
                         <tbody>
                           {allTimeLb.map((p,i)=>{
                             const rp = roster.find(r=>r.name===p.name);
