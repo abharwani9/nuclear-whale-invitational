@@ -353,7 +353,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   };
 
   const addMatchup = async (round) => {
-    await firestore.update("rounds",round.id,{matchups:[...(round.matchups||[]),{nukes:["",""],whales:["",""],winner:null}]});
+    await firestore.update("rounds",round.id,{matchups:[...(round.matchups||[]),{nukes:["",""],whales:["",""],winner:null,competitionName:"",pointsWorth:""}]});
   };
 
   const updateMatchupPlayer = async (round, mi, side, idx, value) => {
@@ -372,6 +372,11 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   const delMatchup = async (round, mi) => {
     await firestore.update("rounds",round.id,{matchups:(round.matchups||[]).filter((_,i)=>i!==mi)});
+  };
+
+  const updateMatchupField = async (round, mi, field, value) => {
+    const updated = (round.matchups||[]).map((m,i)=>i===mi?{...m,[field]:value}:m);
+    await firestore.update("rounds",round.id,{matchups:updated});
   };
 
   return (
@@ -433,8 +438,21 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                     </select>
                   ))}
                 </div>
+                <div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>🏅 COMPETITION</div>
+                  <select style={s.select} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
+                    <option value="">— None —</option>
+                    {compNames.map(n=><option key={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>💰 POINTS WORTH</div>
+                  <input style={s.input} type="number" step="0.5" placeholder={`Default: ${round.pointsPerWin}`}
+                    value={m.pointsWorth||""} onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>Leave blank to use round default ({round.pointsPerWin}pts)</div>
+                </div>
               </div>
-              <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap", alignItems:"center" }}>
+              <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>Result:</div>
                 {["nukes","tie","whales",null].map(w=>(
                   <button key={String(w)} onClick={()=>updateWinner(round,mi,w)}
@@ -442,7 +460,10 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                     {w==="nukes"?"☢️ Win":w==="whales"?"🐋 Win":w==="tie"?"🤝 Tie":"Pending"}
                   </button>
                 ))}
-                <button style={{ ...s.btnDanger, marginLeft:"auto", padding:"4px 10px" }} onClick={()=>delMatchup(round,mi)}>✕</button>
+                <div style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,200,0,0.6)", fontWeight:700 }}>
+                  {(m.pointsWorth||round.pointsPerWin)}pts
+                </div>
+                <button style={{ ...s.btnDanger, padding:"4px 10px" }} onClick={()=>delMatchup(round,mi)}>✕</button>
               </div>
             </div>
           ))}
@@ -709,24 +730,93 @@ function HistorySection({ history, drafts, roster, competitions, showToast }) {
 
 function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast }) {
   const blankMatch = { nukes:["",""], whales:["",""], winner:null, roundName:"", pointsWorth:"" };
-  const [form, setForm]   = useState(blankMatch);
-  const [adding, setAdding] = useState(false);
+  const [form, setForm]       = useState(blankMatch);
+  const [adding, setAdding]   = useState(false);
+  const [editingMi, setEditingMi] = useState(null); // index of match being edited
+  const [editForm, setEditForm]   = useState(null);
+
+  const allPlayers = [...nukeNames,...whaleNames];
+  const compOptions = ["Round 1","Round 2","Round 3",...(competitions||[]).map(c=>c.name)];
+
+  const saveAll = async (newMatches) => {
+    await firestore.update("history", year.id, { matches: newMatches });
+  };
 
   const addMatch = async () => {
     if (!form.winner) return showToast("Please select a winner", true);
-    const matches = [...(year.matches||[]), { ...form, pointsWorth:Number(form.pointsWorth)||0 }];
-    await firestore.update("history",year.id,{matches});
+    await saveAll([...(year.matches||[]), { ...form, pointsWorth:Number(form.pointsWorth)||0 }]);
     setForm(blankMatch); setAdding(false); showToast("Match added!");
   };
-  const remove = async (mi) => {
-    if (!window.confirm("Remove this match?")) return;
-    await firestore.update("history",year.id,{matches:(year.matches||[]).filter((_,i)=>i!==mi)});
-  };
-  const updateWinner = async (mi, winner) => {
-    await firestore.update("history",year.id,{matches:(year.matches||[]).map((m,i)=>i===mi?{...m,winner}:m)});
+
+  const startEdit = (mi) => {
+    const m = year.matches[mi];
+    setEditForm({ nukes:[...(m.nukes||["",""])], whales:[...(m.whales||["",""])], winner:m.winner||null, roundName:m.roundName||"", pointsWorth:m.pointsWorth||"" });
+    setEditingMi(mi);
   };
 
-  const allPlayers = [...nukeNames,...whaleNames];
+  const saveEdit = async () => {
+    const updated = (year.matches||[]).map((m,i)=>i===editingMi?{...editForm,pointsWorth:Number(editForm.pointsWorth)||0}:m);
+    await saveAll(updated);
+    setEditingMi(null); setEditForm(null); showToast("Match updated!");
+  };
+
+  const remove = async (mi) => {
+    if (!window.confirm("Remove this match?")) return;
+    await saveAll((year.matches||[]).filter((_,i)=>i!==mi));
+  };
+
+  const updateWinnerOnly = async (mi, winner) => {
+    await saveAll((year.matches||[]).map((m,i)=>i===mi?{...m,winner}:m));
+  };
+
+  const MatchForm = ({ vals, setVals, onSave, onCancel, saveLabel }) => (
+    <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:14, marginBottom:12 }}>
+      <div style={s.grid2}>
+        <div>
+          <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, marginBottom:6 }}>☢️ NUKES</div>
+          {[0,1].map(i=>(
+            <select key={i} style={{ ...s.select, marginBottom:6 }} value={vals.nukes[i]||""} onChange={e=>{const n=[...vals.nukes];n[i]=e.target.value;setVals(v=>({...v,nukes:n}));}}>
+              <option value="">— Player {i+1} —</option>
+              {(nukeNames.length>0?nukeNames:allPlayers).map(n=><option key={n}>{n}</option>)}
+            </select>
+          ))}
+        </div>
+        <div>
+          <div style={{ fontSize:11, color:"#00aaff", fontWeight:700, marginBottom:6 }}>🐋 WHALES</div>
+          {[0,1].map(i=>(
+            <select key={i} style={{ ...s.select, marginBottom:6 }} value={vals.whales[i]||""} onChange={e=>{const w=[...vals.whales];w[i]=e.target.value;setVals(v=>({...v,whales:w}));}}>
+              <option value="">— Player {i+1} —</option>
+              {(whaleNames.length>0?whaleNames:allPlayers).map(n=><option key={n}>{n}</option>)}
+            </select>
+          ))}
+        </div>
+        <div>
+          <div style={s.label}>Competition / Round</div>
+          <select style={s.select} value={vals.roundName} onChange={e=>setVals(v=>({...v,roundName:e.target.value}))}>
+            <option value="">— Select —</option>
+            {compOptions.map(name=><option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={s.label}>Points Worth</div>
+          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e=>setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em" }}>WINNER:</div>
+        {["nukes","tie","whales"].map(w=>(
+          <button key={w} onClick={()=>setVals(v=>({...v,winner:w}))}
+            style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${vals.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.12)"}`, background:vals.winner===w?"rgba(255,255,255,0.1)":"none", color:vals.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+            {w==="nukes"?"☢️ Nukes Win":w==="whales"?"🐋 Whales Win":"🤝 Tie"}
+          </button>
+        ))}
+      </div>
+      <div style={{ ...s.row, marginTop:12 }}>
+        <button style={s.btnFire} onClick={onSave}>{saveLabel}</button>
+        <button style={s.btnGhost} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -734,99 +824,52 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
         <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
           ⚔️ Match Results <span style={{ color:"rgba(255,255,255,0.25)", fontWeight:400 }}>({(year.matches||[]).length})</span>
         </div>
-        {!adding&&<button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>}
+        {!adding&&editingMi===null&&<button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>}
       </div>
 
-      {/* Add match form */}
-      {adding&&(
-        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:14, marginBottom:12 }}>
-          <div style={s.grid2}>
-            <div>
-              <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, marginBottom:6 }}>☢️ NUKES</div>
-              {[0,1].map(i=>(
-                <select key={i} style={{ ...s.select, marginBottom:6 }} value={form.nukes[i]||""} onChange={e=>{const n=[...form.nukes];n[i]=e.target.value;setForm(f=>({...f,nukes:n}));}}>
-                  <option value="">— Player {i+1} —</option>
-                  {nukeNames.map(n=><option key={n}>{n}</option>)}
-                  {nukeNames.length===0&&allPlayers.map(n=><option key={n}>{n}</option>)}
-                </select>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:"#00aaff", fontWeight:700, marginBottom:6 }}>🐋 WHALES</div>
-              {[0,1].map(i=>(
-                <select key={i} style={{ ...s.select, marginBottom:6 }} value={form.whales[i]||""} onChange={e=>{const w=[...form.whales];w[i]=e.target.value;setForm(f=>({...f,whales:w}));}}>
-                  <option value="">— Player {i+1} —</option>
-                  {whaleNames.map(n=><option key={n}>{n}</option>)}
-                  {whaleNames.length===0&&allPlayers.map(n=><option key={n}>{n}</option>)}
-                </select>
-              ))}
-            </div>
-            <div>
-              <div style={s.label}>Competition / Round</div>
-              <select style={s.select} value={form.roundName} onChange={e=>setForm(f=>({...f,roundName:e.target.value}))}>
-                <option value="">— Select —</option>
-                {(competitions||[]).map(c=><option key={c.id||c.name} value={c.name}>{c.icon||"🏅"} {c.name}</option>)}
-                <option value="Round 1">Round 1</option>
-                <option value="Round 2">Round 2</option>
-                <option value="Round 3">Round 3</option>
-              </select>
-            </div>
-            <div>
-              <div style={s.label}>Points Worth</div>
-              <input style={s.input} type="number" value={form.pointsWorth} onChange={e=>setForm(f=>({...f,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
-            </div>
-          </div>
-          <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em" }}>WINNER:</div>
-            {["nukes","tie","whales"].map(w=>(
-              <button key={w} onClick={()=>setForm(f=>({...f,winner:w}))}
-                style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${form.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.12)"}`, background:form.winner===w?"rgba(255,255,255,0.1)":"none", color:form.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                {w==="nukes"?"☢️ Nukes Win":w==="whales"?"🐋 Whales Win":"🤝 Tie"}
-              </button>
-            ))}
-          </div>
-          <div style={{ ...s.row, marginTop:12 }}>
-            <button style={s.btnFire} onClick={addMatch}>Save Match</button>
-            <button style={s.btnGhost} onClick={()=>{setAdding(false);setForm(blankMatch);}}>Cancel</button>
-          </div>
-        </div>
-      )}
+      {adding&&<MatchForm vals={form} setVals={setForm} onSave={addMatch} onCancel={()=>{setAdding(false);setForm(blankMatch);}} saveLabel="Save Match"/>}
 
-      {/* Existing matches */}
       {(year.matches||[]).length===0&&!adding&&(
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.2)", textAlign:"center", padding:"16px 0" }}>No matches yet — tap + Add Match</div>
       )}
+
       {(year.matches||[]).map((m,mi)=>(
-        <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
-          {/* Match header */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
-            <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
-              {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
-              {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4, letterSpacing:"0.06em" }}>✓ WIN</div>}
-            </div>
-            <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
-            <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-              <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
-              {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
-              {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4, letterSpacing:"0.06em" }}>✓ WIN</div>}
-            </div>
-          </div>
-          {/* Match meta */}
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
-            {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth} pts</span>}
-            {m.winner==="tie"&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.1)", color:"#ffd700" }}>🤝 TIE</span>}
-            <div style={{ marginLeft:"auto", display:"flex", gap:5 }}>
-              {["nukes","tie","whales"].map(w=>(
-                <button key={w} onClick={()=>updateWinner(mi,w)}
-                  style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
-                  {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
-                </button>
-              ))}
-              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
-            </div>
-          </div>
+        <div key={mi}>
+          {editingMi===mi&&editForm
+            ? <MatchForm vals={editForm} setVals={setEditForm} onSave={saveEdit} onCancel={()=>{setEditingMi(null);setEditForm(null);}} saveLabel="Save Changes"/>
+            : (
+              <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
+                  <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                    <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
+                    {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                    {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+                  </div>
+                  <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
+                  <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                    <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
+                    {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                    {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
+                  {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth}pts</span>}
+                  {m.winner==="tie"&&<span style={{ fontSize:11, color:"#ffd700" }}>🤝 TIE</span>}
+                  <div style={{ marginLeft:"auto", display:"flex", gap:5, alignItems:"center" }}>
+                    {["nukes","tie","whales"].map(w=>(
+                      <button key={w} onClick={()=>updateWinnerOnly(mi,w)}
+                        style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
+                        {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
+                      </button>
+                    ))}
+                    <button style={{ ...s.btnGhost, padding:"3px 10px", fontSize:11 }} onClick={()=>startEdit(mi)}>✏️ Edit</button>
+                    <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
+                  </div>
+                </div>
+              </div>
+            )
+          }
         </div>
       ))}
     </div>
