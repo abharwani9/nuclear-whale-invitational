@@ -107,7 +107,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
         {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
         {section==="media"        && <AdminMedia showToast={showToast}/>}
-        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} showToast={showToast}/>}
+        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
         {section==="settings"     && <SettingsSection meta={meta} showToast={showToast}/>}
       </div>
@@ -117,7 +117,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
 
 // ── MASTER ROSTER (no team assignment here) ────────────────────────────────
 function RosterSection({ roster, showToast }) {
-  const blank = { name:"", handicap:"", hometown:"", bio:"", photoURL:"" };
+  const blank = { name:"", handicap:"", hometown:"", bio:"", photoURL:"", favoriteClub:"", strengths:"", weaknesses:"", golferComparison:"" };
   const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -175,7 +175,13 @@ function RosterSection({ roster, showToast }) {
             {progress!==null&&<div style={{ height:4, background:"rgba(255,255,255,0.08)", borderRadius:2, marginTop:6, overflow:"hidden" }}><div style={{ height:"100%", width:`${progress}%`, background:"#ff4500", borderRadius:2, transition:"width 0.2s" }}/></div>}
           </div>
         </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Bio</div><textarea rows={2} value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Fun facts, past wins, nickname..."/></div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Bio / Fun Fact</div><textarea rows={2} value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Fun facts, past wins, nickname..."/></div>
+        <div style={s.grid2}>
+          <div style={{ marginTop:10 }}><div style={s.label}>Favorite Club</div><input style={s.input} value={form.favoriteClub} onChange={e=>setForm(f=>({...f,favoriteClub:e.target.value}))} placeholder="e.g. 7-iron"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Golfer Comparison</div><input style={s.input} value={form.golferComparison} onChange={e=>setForm(f=>({...f,golferComparison:e.target.value}))} placeholder="e.g. Budget Tiger Woods"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Strengths</div><input style={s.input} value={form.strengths} onChange={e=>setForm(f=>({...f,strengths:e.target.value}))} placeholder="e.g. Long drive, putting"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Weaknesses</div><input style={s.input} value={form.weaknesses} onChange={e=>setForm(f=>({...f,weaknesses:e.target.value}))} placeholder="e.g. Sand traps"/></div>
+        </div>
         <div style={{ ...s.row, marginTop:14 }}>
           <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add to Roster"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
@@ -589,7 +595,7 @@ function CompetitionsSection({ competitions, showToast }) {
 }
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
-function HistorySection({ history, drafts, roster, showToast }) {
+function HistorySection({ history, drafts, roster, competitions, showToast }) {
   const blank = { year:new Date().getFullYear()-1, winner:"THE NUKES", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
@@ -685,7 +691,7 @@ function HistorySection({ history, drafts, roster, showToast }) {
 
                 {/* Matches subsection */}
                 <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                  <MatchesEditor year={h} nukeNames={nukeNames} whaleNames={whaleNames} showToast={showToast}/>
+                  <MatchesEditor year={h} nukeNames={nukeNames} whaleNames={whaleNames} competitions={competitions} showToast={showToast}/>
                 </div>
 
                 {/* Superlatives subsection */}
@@ -701,7 +707,7 @@ function HistorySection({ history, drafts, roster, showToast }) {
   );
 }
 
-function MatchesEditor({ year, nukeNames, whaleNames, showToast }) {
+function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast }) {
   const blankMatch = { nukes:["",""], whales:["",""], winner:null, roundName:"", pointsWorth:"" };
   const [form, setForm]   = useState(blankMatch);
   const [adding, setAdding] = useState(false);
@@ -757,7 +763,13 @@ function MatchesEditor({ year, nukeNames, whaleNames, showToast }) {
             </div>
             <div>
               <div style={s.label}>Competition / Round</div>
-              <input style={s.input} value={form.roundName} onChange={e=>setForm(f=>({...f,roundName:e.target.value}))} placeholder="e.g. Round 1, Closest to Pin"/>
+              <select style={s.select} value={form.roundName} onChange={e=>setForm(f=>({...f,roundName:e.target.value}))}>
+                <option value="">— Select —</option>
+                {(competitions||[]).map(c=><option key={c.id||c.name} value={c.name}>{c.icon||"🏅"} {c.name}</option>)}
+                <option value="Round 1">Round 1</option>
+                <option value="Round 2">Round 2</option>
+                <option value="Round 3">Round 3</option>
+              </select>
             </div>
             <div>
               <div style={s.label}>Points Worth</div>
