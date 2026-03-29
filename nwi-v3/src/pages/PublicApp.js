@@ -436,25 +436,29 @@ export default function PublicApp({ onGoAdmin }) {
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament Schedule</div>
             {meta?.location&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>📍 {meta.location}</div>}
-            {["Day 1","Day 2","Day 3"].map(day=>{
-              const items=schedule.filter(s=>s.day===day);
-              if(!items.length) return null;
-              return (
-                <div key={day} style={{ marginBottom:20 }}>
-                  <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.14em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>{day}</div>
-                  {items.map((s,i)=>(
-                    <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-                      <div style={{ minWidth:68, fontSize:13, fontWeight:700, color:"#ff8c00" }}>{s.time}</div>
-                      <div style={{ width:1, height:24, background:"rgba(255,255,255,0.07)" }}/>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:14, fontWeight:600 }}>{s.icon&&<span style={{ marginRight:5 }}>{s.icon}</span>}{s.event}</div>
-                        {s.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>📍 {s.course}</div>}
+            {(() => {
+              const parseTime = t => { if(!t) return 0; const m=t.match(/(\d+):(\d+)\s*(AM|PM)?/i); if(!m) return 0; let h=parseInt(m[1]),min=parseInt(m[2]); const p=(m[3]||"").toUpperCase(); if(p==="PM"&&h!==12)h+=12; if(p==="AM"&&h===12)h=0; return h*60+min; };
+              const days = [...new Set(schedule.map(s=>s.day))];
+              return days.map(day=>{
+                const items = [...schedule.filter(s=>s.day===day)].sort((a,b)=>parseTime(a.time)-parseTime(b.time));
+                if(!items.length) return null;
+                return (
+                  <div key={day} style={{ marginBottom:20 }}>
+                    <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.14em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>{day}</div>
+                    {items.map((s,i)=>(
+                      <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
+                        <div style={{ minWidth:68, fontSize:13, fontWeight:700, color:"#ff8c00" }}>{s.time}</div>
+                        <div style={{ width:1, height:24, background:"rgba(255,255,255,0.07)" }}/>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:600 }}>{s.icon&&<span style={{ marginRight:5 }}>{s.icon}</span>}{s.event}</div>
+                          {s.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>📍 {s.course}</div>}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
+                    ))}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
 
@@ -485,7 +489,7 @@ export default function PublicApp({ onGoAdmin }) {
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:20 }}>Tap any player to see their full profile</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {[...roster].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
-                const team = teamAssign[p.name];
+                const team = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
                 const tc = team ? TEAMS[team] : null;
                 const at = allTimeStats[p.name];
                 return (
@@ -578,25 +582,35 @@ export default function PublicApp({ onGoAdmin }) {
                         <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)" }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>⚔️ Match Results</div>
                           {h.matches.map((m,mi)=>(
-                            <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
-                              {/* Competition / round badge */}
-                              {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
-                              {/* Players grid */}
-                              <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
-                                <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                  <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
-                                  {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                  {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5, letterSpacing:"0.06em" }}>✓ WIN</div>}
-                                  {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                            <div key={mi}>
+                              {/* Subheading */}
+                              {m.type==="heading"&&(
+                                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, marginBottom:8 }}>
+                                  <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.06em", textTransform:"uppercase" }}>{m.label}</div>
+                                  <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
                                 </div>
-                                <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
-                                <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                  <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
-                                  {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                  {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5, letterSpacing:"0.06em" }}>✓ WIN</div>}
-                                  {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                              )}
+                              {/* Match */}
+                              {m.type!=="heading"&&(
+                                <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+                                  {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
+                                    <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                      <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
+                                      {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                      {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5 }}>✓ WIN</div>}
+                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                    </div>
+                                    <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
+                                    <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                      <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
+                                      {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                      {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5 }}>✓ WIN</div>}
+                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -619,7 +633,19 @@ export default function PublicApp({ onGoAdmin }) {
             {rules.map((r,i)=>(
               <div key={r.id} className="card" style={{ padding:"14px 16px", marginBottom:8 }}>
                 <div style={{ fontSize:13, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", color:i%2===0?"#ff8c00":"#00aaff", marginBottom:6 }}>{r.title}</div>
-                <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.65, fontFamily:"'Barlow',sans-serif" }}>{r.body}</div>
+                <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.65, fontFamily:"'Barlow',sans-serif" }}>
+                  {(r.body||"").split("\n").map((line,li)=>{
+                    const isBullet = line.trimStart().startsWith("-") || line.trimStart().startsWith("•");
+                    const text = isBullet ? line.trimStart().replace(/^[-•]\s*/,"") : line;
+                    if (!text.trim()) return <div key={li} style={{ height:"0.5em" }}/>;
+                    return (
+                      <div key={li} style={{ display:"flex", gap:8, marginBottom:2 }}>
+                        {isBullet&&<span style={{ color:"rgba(255,255,255,0.3)", flexShrink:0, marginTop:2 }}>•</span>}
+                        <span>{text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
@@ -729,16 +755,33 @@ export default function PublicApp({ onGoAdmin }) {
               );
             })()}
 
-            {/* Tournament appearances */}
+            {/* Titles Won + Tournament appearances */}
             {(() => {
-              const years = history.filter(h => (h.matches||[]).some(m=>[...(m.nukes||[]),...(m.whales||[])].includes(selectedPlayer.name))).map(h=>h.year).sort((a,b)=>b-a);
-              if (!years.length) return null;
+              const appearances = history.filter(h => (h.matches||[]).some(m=>m.type!=="heading"&&[...(m.nukes||[]),...(m.whales||[])].includes(selectedPlayer.name))).sort((a,b)=>b.year-a.year);
+              const titles = history.filter(h => {
+                const draft = drafts.find(d=>String(d.year)===String(h.year));
+                const assign = draft?.assignments || {};
+                const playerTeam = assign[selectedPlayer.name];
+                return playerTeam && h.winner === (playerTeam==="nukes"?"THE NUKES":"THE WHALES");
+              });
               return (
                 <div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>TOURNAMENT APPEARANCES</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                    {years.map(y=><span key={y} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)" }}>{y}</span>)}
-                  </div>
+                  {titles.length>0&&(
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏆 TITLES WON ({titles.length})</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                        {titles.map(t=><span key={t.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,200,0,0.12)", border:"1px solid rgba(255,200,0,0.25)", color:"#ffd700", fontWeight:700 }}>🏆 {t.year}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {appearances.length>0&&(
+                    <div>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>TOURNAMENT APPEARANCES</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                        {appearances.map(h=><span key={h.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)" }}>{h.year}</span>)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
