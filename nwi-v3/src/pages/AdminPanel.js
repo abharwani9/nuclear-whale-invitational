@@ -578,7 +578,7 @@ function CompetitionsSection({ competitions, showToast }) {
                   </select>
                 </div>
               </div>
-              <div style={{ marginTop:8 }}><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4'2", -12, etc."/></div>
+              <div style={{ marginTop:8 }}><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4ft 2in, -12, etc."/></div>
               <button style={{ ...s.btnFire, marginTop:12 }} onClick={()=>saveResult(c.id)}>Save Result</button>
             </div>
           )}
