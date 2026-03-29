@@ -534,17 +534,19 @@ export default function PublicApp({ onGoAdmin }) {
 
             {[...history].sort((a,b)=>b.year-a.year).map(h=>{
               const isNuke=h.winner==="THE NUKES";
+              const isWhale=h.winner==="THE WHALES";
+              const isTBD=!h.winner||h.winner==="TBD";
               const isExp=expandedHistory===h.id;
               const matchCount=(h.matches||[]).length;
               const nukePts=h.nukes_pts??0, whalePts=h.whales_pts??0;
               return (
                 <div key={h.id} style={{ marginBottom:10 }}>
                   {/* Year header - always visible */}
-                  <div style={{ background:isNuke?"rgba(255,69,0,0.08)":"rgba(0,170,255,0.06)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":"rgba(0,170,255,0.2)"}`, borderRadius:isExp?"12px 12px 0 0":"12px", padding:"14px 16px", cursor:"pointer" }} onClick={()=>setExpandedHistory(isExp?null:h.id)}>
+                  <div style={{ background:isNuke?"rgba(255,69,0,0.08)":isWhale?"rgba(0,170,255,0.06)":"rgba(255,255,255,0.04)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":isWhale?"rgba(0,170,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:isExp?"12px 12px 0 0":"12px", padding:"14px 16px", cursor:"pointer" }} onClick={()=>setExpandedHistory(isExp?null:h.id)}>
                     <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                       <div style={{ fontSize:28, fontWeight:900, color:"rgba(255,255,255,0.1)", minWidth:52, lineHeight:1 }}>{h.year}</div>
                       <div style={{ flex:1 }}>
-                        <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":"#00aaff" }}>{isNuke?"☢️":"🐋"} {h.winner}</div>
+                        <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)" }}>{isNuke?"☢️ ":isWhale?"🐋 ":"⏳ "}{isTBD?"In Progress":h.winner}</div>
                         <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
                           <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp||"—"}</span>
                           <span style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>·</span>
@@ -560,7 +562,7 @@ export default function PublicApp({ onGoAdmin }) {
 
                   {/* Expanded content */}
                   {isExp&&(
-                    <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":"rgba(0,170,255,0.15)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+                    <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":isWhale?"rgba(0,170,255,0.15)":"rgba(255,255,255,0.08)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
 
                       {/* Notes */}
                       {h.notes&&<div style={{ padding:"10px 16px", background:"rgba(255,255,255,0.02)", borderBottom:"1px solid rgba(255,255,255,0.06)", fontSize:13, color:"rgba(255,255,255,0.4)", fontStyle:"italic" }}>{h.notes}</div>}
