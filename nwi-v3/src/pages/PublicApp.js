@@ -21,15 +21,10 @@ const TABS = [
   { id: "rules",        label: "Rules",         icon: "📋" },
 ];
 
-const APP_PASSWORD = "nwi2026";
-
 export default function PublicApp({ onGoAdmin }) {
   const [tab, setTab]               = useState("leaderboard");
   const [countdown, setCountdown]   = useState({});
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [unlocked, setUnlocked]     = useState(() => sessionStorage.getItem("nwi_unlocked") === "true");
-  const [pwInput, setPwInput]       = useState("");
-  const [pwError, setPwError]       = useState(false);
   const [lbTab, setLbTab]           = useState("team");
   const [expandedHistory, setExpandedHistory] = useState(null);
 
@@ -53,13 +48,6 @@ export default function PublicApp({ onGoAdmin }) {
   const tournamentDate = new Date((meta?.date || "2026-08-13") + "T10:00:00");
 
   // ── Password ────────────────────────────────────────────────────────────────
-  const tryUnlock = () => {
-    if (pwInput.trim() === APP_PASSWORD) {
-      sessionStorage.setItem("nwi_unlocked", "true");
-      setUnlocked(true); setPwError(false);
-    } else { setPwError(true); setPwInput(""); }
-  };
-
   // ── Countdown ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const tick = () => {
@@ -182,23 +170,6 @@ export default function PublicApp({ onGoAdmin }) {
   `;
 
   // ── Password screen ──────────────────────────────────────────────────────────
-  if (!unlocked) return (
-    <div style={{ minHeight:"100vh", background:"#07090e", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Barlow Condensed',sans-serif", padding:20 }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&display=swap');*{box-sizing:border-box;margin:0;padding:0;}`}</style>
-      <div style={{ width:"100%", maxWidth:360, textAlign:"center" }}>
-        <div style={{ fontSize:52, marginBottom:12 }}>☢️🐋</div>
-        <div style={{ fontSize:28, fontWeight:900, letterSpacing:"0.06em", background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", marginBottom:4 }}>NUCLEAR WHALE</div>
-        <div style={{ fontSize:14, color:"rgba(255,255,255,0.3)", marginBottom:32, letterSpacing:"0.1em" }}>INVITATIONAL</div>
-        <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:14, padding:24 }}>
-          <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", marginBottom:14 }}>ENTER ACCESS CODE</div>
-          <input type="password" value={pwInput} onChange={e=>{setPwInput(e.target.value);setPwError(false);}} onKeyDown={e=>e.key==="Enter"&&tryUnlock()}
-            style={{ background:"rgba(255,255,255,0.07)", border:`1px solid ${pwError?"rgba(255,80,80,0.5)":"rgba(255,255,255,0.12)"}`, borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:16, padding:"11px 14px", width:"100%", outline:"none", textAlign:"center", letterSpacing:"0.15em", marginBottom:10 }} />
-          {pwError && <div style={{ fontSize:12, color:"#ff5555", marginBottom:10 }}>Incorrect code — try again</div>}
-          <button onClick={tryUnlock} style={{ width:"100%", padding:"12px", background:"linear-gradient(135deg,#ff4500,#ff8c00)", border:"none", borderRadius:8, color:"#fff", fontFamily:"inherit", fontSize:14, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", cursor:"pointer" }}>Enter</button>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
