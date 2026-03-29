@@ -473,19 +473,16 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   const handleRoundDrop = async (e, targetId) => {
     const srcId = e.dataTransfer.getData("roundId");
     if (!srcId||srcId===targetId) { setDragOverRound(null); return; }
-    const sorted = [...rounds].sort((a,b)=>(a.order??0)-(b.order??0));
-    // Init order values if missing
-    for (let i=0;i<sorted.length;i++) {
-      if (sorted[i].order===undefined||sorted[i].order===null) {
-        await firestore.update("rounds",sorted[i].id,{order:i});
-        sorted[i]={...sorted[i],order:i};
-      }
+    const current = [...rounds].map((r,i)=>({...r, order: r.order??i}));
+    const reindexed = [...current].sort((a,b)=>a.order-b.order).map((r,i)=>({...r,order:i*10}));
+    const filtered = reindexed.filter(r=>r.id!==srcId);
+    const srcItem = reindexed.find(r=>r.id===srcId);
+    const tgtPos = filtered.findIndex(r=>r.id===targetId);
+    if (!srcItem||tgtPos<0) { setDragOverRound(null); return; }
+    filtered.splice(tgtPos,0,srcItem);
+    for (let i=0;i<filtered.length;i++) {
+      await firestore.update("rounds", filtered[i].id, { order: i*10 });
     }
-    const srcIdx = sorted.findIndex(r=>r.id===srcId);
-    const tgtIdx = sorted.findIndex(r=>r.id===targetId);
-    if (srcIdx<0||tgtIdx<0) { setDragOverRound(null); return; }
-    await firestore.update("rounds", srcId, { order: sorted[tgtIdx].order??tgtIdx });
-    await firestore.update("rounds", targetId, { order: sorted[srcIdx].order??srcIdx });
     setDragOverRound(null);
   };
 
@@ -798,25 +795,23 @@ function CompetitionsSection({ competitions, showToast }) {
   const handleCompDrop = async (e, targetId) => {
     const srcId = e.dataTransfer.getData("compId");
     if (!srcId||srcId===targetId) { setDragOverComp(null); return; }
-    // Build sorted list with guaranteed order values
-    const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
-    // Ensure all have unique order values first
-    const needsInit = sorted.some((c,i)=>c.order===undefined||c.order===null);
-    if (needsInit) {
-      for (let i=0;i<sorted.length;i++) {
-        if (sorted[i].order===undefined||sorted[i].order===null) {
-          await firestore.update("competitions",sorted[i].id,{order:i});
-          sorted[i] = {...sorted[i], order:i};
-        }
+    // Get current display order (assign index as order to all first)
+    const current = [...competitions].map((c,i)=>({...c, order: c.order??i}));
+    // Ensure all have unique values by re-indexing
+    const reindexed = [...current].sort((a,b)=>a.order-b.order).map((c,i)=>({...c,order:i*10}));
+    const srcItem = reindexed.find(c=>c.id===srcId);
+    const tgtItem = reindexed.find(c=>c.id===targetId);
+    if (!srcItem||!tgtItem) { setDragOverComp(null); return; }
+    // Move src to tgt position - update all items with new order
+    const filtered = reindexed.filter(c=>c.id!==srcId);
+    const tgtPos = filtered.findIndex(c=>c.id===targetId);
+    filtered.splice(tgtPos,0,srcItem);
+    // Save new order for all items
+    for (let i=0;i<filtered.length;i++) {
+      if (filtered[i].order !== i*10 || filtered[i].id===srcId) {
+        await firestore.update("competitions", filtered[i].id, { order: i*10 });
       }
     }
-    const srcIdx = sorted.findIndex(c=>c.id===srcId);
-    const tgtIdx = sorted.findIndex(c=>c.id===targetId);
-    if (srcIdx<0||tgtIdx<0) { setDragOverComp(null); return; }
-    const srcOrder = sorted[srcIdx].order??srcIdx;
-    const tgtOrder = sorted[tgtIdx].order??tgtIdx;
-    await firestore.update("competitions", srcId, { order: tgtOrder });
-    await firestore.update("competitions", targetId, { order: srcOrder });
     setDragOverComp(null);
   };
 
@@ -1105,11 +1100,14 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
 
   // Drag reorder matches
   const handleMatchDrop = async (e, targetMi) => {
+    e.preventDefault(); e.stopPropagation();
     const srcMi = parseInt(e.dataTransfer.getData("matchMi"));
     if (isNaN(srcMi)||srcMi===targetMi) { setDragOverMi(null); return; }
     const arr = [...(year.matches||[])];
     const [moved] = arr.splice(srcMi,1);
-    arr.splice(targetMi,0,moved);
+    // Adjust targetMi if src was before target
+    const adjustedTarget = srcMi < targetMi ? targetMi - 1 : targetMi;
+    arr.splice(adjustedTarget,0,moved);
     await saveAll(arr);
     setDragOverMi(null);
   };
