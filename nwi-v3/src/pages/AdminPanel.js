@@ -501,44 +501,89 @@ function ScheduleSection({ schedule, showToast }) {
 // ── COMPETITIONS ────────────────────────────────────────────────────────────
 function CompetitionsSection({ competitions, showToast }) {
   const blank = { name:"", icon:"🏅", desc:"", winner:"", winnerTeam:"nukes", detail:"" };
-  const [form, setForm]     = useState(blank);
+  const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
+  const [resultFor, setResultFor] = useState(null); // id of competition being updated with result
+
   const save = async () => {
-    if (!form.name) return showToast("Name required",true);
+    if (!form.name) return showToast("Name required", true);
     try {
       if (editing) { await firestore.update("competitions",editing,form); showToast("Updated!"); setEditing(null); }
-      else { await firestore.add("competitions",form); showToast("Added!"); }
+      else { await firestore.add("competitions",{name:form.name,icon:form.icon,desc:form.desc,winner:"",winnerTeam:"nukes",detail:""}); showToast("Competition added!"); }
       setForm(blank);
     } catch(e) { showToast(e.message,true); }
   };
+
+  const saveResult = async (id) => {
+    try { await firestore.update("competitions",id,{winner:form.winner,winnerTeam:form.winnerTeam,detail:form.detail}); showToast("Result saved!"); setResultFor(null); setForm(blank); }
+    catch(e) { showToast(e.message,true); }
+  };
+
   return (
     <div>
       <div style={s.sectionTitle}>🎯 Competitions</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16, fontFamily:"'Barlow',sans-serif" }}>
+        Master list of side competitions. These appear as a dropdown when setting up rounds, and show on the public app.
+      </div>
+
+      {/* Add / edit form */}
       <div style={s.card}>
-        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add"}</div>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Competition":"➕ Add Competition"}</div>
         <div style={s.grid2}>
-          <div><div style={s.label}>Name</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}/></div>
-          <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))}/></div>
+          <div><div style={s.label}>Name *</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Closest to the Pin"/></div>
+          <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="🎯"/></div>
         </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Description</div><input style={s.input} value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))}/></div>
-        <div style={s.grid2}>
-          <div style={{ marginTop:10 }}><div style={s.label}>Leader / Winner</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name"/></div>
-          <div style={{ marginTop:10 }}><div style={s.label}>Their Team</div><select style={s.select} value={form.winnerTeam} onChange={e=>setForm(f=>({...f,winnerTeam:e.target.value}))}><option value="nukes">☢️ Nukes</option><option value="whales">🐋 Whales</option></select></div>
-        </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Detail</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4'2&quot;"/></div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Description</div><input style={s.input} value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Rules, hole number, etc."/></div>
         <div style={{ ...s.row, marginTop:14 }}>
-          <button style={s.btnFire} onClick={save}>{editing?"Save":"Add"}</button>
+          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add Competition"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
         </div>
       </div>
+
+      {/* Competition list */}
       {competitions.map(c=>(
-        <div key={c.id} style={{ ...s.card, padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
-          <span style={{ fontSize:22 }}>{c.icon}</span>
-          <div style={{ flex:1 }}><div style={{ fontWeight:700 }}>{c.name}</div><div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{c.winner||"No result yet"}</div></div>
-          <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name,icon:c.icon,desc:c.desc,winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>Edit</button>
-          <button style={s.btnDanger} onClick={async()=>{await firestore.delete("competitions",c.id);}}>✕</button>
+        <div key={c.id} style={{ ...s.card }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:24 }}>{c.icon}</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>{c.name}</div>
+              {c.desc&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>}
+              {c.winner&&<div style={{ fontSize:12, color:c.winnerTeam==="nukes"?"#ff4500":"#00aaff", marginTop:2 }}>
+                {c.winnerTeam==="nukes"?"☢️":"🐋"} {c.winner}{c.detail?` — ${c.detail}`:""}
+              </div>}
+            </div>
+            <div style={s.row}>
+              <button style={{ ...s.btnGhost, fontSize:11 }} onClick={()=>{setResultFor(resultFor===c.id?null:c.id);setForm({winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>
+                {resultFor===c.id?"Cancel":"🏅 Result"}
+              </button>
+              <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setResultFor(null);setForm({name:c.name,icon:c.icon||"🏅",desc:c.desc||"",winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>Edit</button>
+              <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
+            </div>
+          </div>
+          {/* Result entry */}
+          {resultFor===c.id&&(
+            <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Enter Result</div>
+              <div style={s.grid2}>
+                <div><div style={s.label}>Winner (player name)</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name"/></div>
+                <div><div style={s.label}>Their Team</div>
+                  <select style={s.select} value={form.winnerTeam} onChange={e=>setForm(f=>({...f,winnerTeam:e.target.value}))}>
+                    <option value="nukes">☢️ Nukes</option><option value="whales">🐋 Whales</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop:8 }}><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4'2", -12, etc."/></div>
+              <button style={{ ...s.btnFire, marginTop:12 }} onClick={()=>saveResult(c.id)}>Save Result</button>
+            </div>
+          )}
         </div>
       ))}
+
+      {competitions.length===0&&(
+        <div style={{ textAlign:"center", padding:"30px 0", color:"rgba(255,255,255,0.2)", fontSize:14 }}>
+          No competitions yet — add some above. They'll appear as a dropdown when creating rounds.
+        </div>
+      )}
     </div>
   );
 }
