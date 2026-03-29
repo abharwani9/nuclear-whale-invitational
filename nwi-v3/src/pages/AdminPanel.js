@@ -468,6 +468,23 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"" };
   const [form, setForm]           = useState(blankRound);
   const [editingRound, setEditingRound] = useState(null);
+  const [dragOverRound, setDragOverRound] = useState(null);
+
+  const handleRoundDrop = async (e, targetId) => {
+    const srcId = e.dataTransfer.getData("roundId");
+    if (!srcId||srcId===targetId) { setDragOverRound(null); return; }
+    // Swap by reordering: get sorted list and swap positions
+    const sorted = [...rounds];
+    const srcIdx = sorted.findIndex(r=>r.id===srcId);
+    const tgtIdx = sorted.findIndex(r=>r.id===targetId);
+    if (srcIdx<0||tgtIdx<0) return;
+    // Update order field on both
+    const srcOrder = sorted[srcIdx].order ?? srcIdx;
+    const tgtOrder = sorted[tgtIdx].order ?? tgtIdx;
+    await firestore.update("rounds", srcId, { order: tgtOrder });
+    await firestore.update("rounds", targetId, { order: srcOrder });
+    setDragOverRound(null);
+  };
 
   const currentYear = meta?.year || new Date().getFullYear();
   const currentDraft = drafts.find(d => d.year === currentYear || d.year === String(currentYear));
@@ -541,9 +558,15 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
         </div>
       </div>
 
-      {rounds.map(round=>(
-        <div key={round.id} style={{ ...s.card, borderColor:"rgba(255,200,0,0.15)" }}>
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginBottom:8 }}>Drag ⠿ to reorder rounds</div>
+      {[...rounds].sort((a,b)=>(a.order??0)-(b.order??0)).map(round=>(
+        <div key={round.id} draggable
+          onDragStart={e=>e.dataTransfer.setData("roundId",round.id)}
+          onDragOver={e=>{e.preventDefault();setDragOverRound(round.id);}}
+          onDrop={e=>handleRoundDrop(e,round.id)} onDragLeave={()=>setDragOverRound(null)}
+          style={{ ...s.card, borderColor:dragOverRound===round.id?"rgba(255,255,255,0.3)":"rgba(255,200,0,0.15)", cursor:"grab" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
               <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}</div>
@@ -766,7 +789,20 @@ function CompetitionsSection({ competitions, showToast }) {
   const blank = { name:"", icon:"🏅", desc:"", winner:"", winnerTeam:"nukes", detail:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
-  const [resultFor, setResultFor] = useState(null); // id of competition being updated with result
+  const [resultFor, setResultFor] = useState(null);
+  const [dragOverComp, setDragOverComp] = useState(null);
+
+  const handleCompDrop = async (e, targetId) => {
+    const srcId = e.dataTransfer.getData("compId");
+    if (!srcId||srcId===targetId) { setDragOverComp(null); return; }
+    const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
+    const srcIdx = sorted.findIndex(c=>c.id===srcId);
+    const tgtIdx = sorted.findIndex(c=>c.id===targetId);
+    if (srcIdx<0||tgtIdx<0) return;
+    await firestore.update("competitions", srcId, { order: sorted[tgtIdx].order ?? tgtIdx });
+    await firestore.update("competitions", targetId, { order: sorted[srcIdx].order ?? srcIdx });
+    setDragOverComp(null);
+  };
 
   const save = async () => {
     if (!form.name) return showToast("Name required", true);
@@ -778,7 +814,7 @@ function CompetitionsSection({ competitions, showToast }) {
   };
 
   const saveResult = async (id) => {
-    try { await firestore.update("competitions",id,{winner:form.winner,winnerTeam:form.winnerTeam,detail:form.detail}); showToast("Result saved!"); setResultFor(null); setForm(blank); }
+    try { await firestore.update("competitions",id,{winner:form.winner,detail:form.detail}); showToast("Result saved!"); setResultFor(null); setForm(blank); }
     catch(e) { showToast(e.message,true); }
   };
 
@@ -804,15 +840,21 @@ function CompetitionsSection({ competitions, showToast }) {
       </div>
 
       {/* Competition list */}
-      {competitions.map(c=>(
-        <div key={c.id} style={{ ...s.card }}>
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginBottom:8 }}>Drag ⠿ to reorder</div>
+      {[...competitions].sort((a,b)=>(a.order??0)-(b.order??0)).map(c=>(
+        <div key={c.id} draggable
+          onDragStart={e=>e.dataTransfer.setData("compId",c.id)}
+          onDragOver={e=>{e.preventDefault();setDragOverComp(c.id);}}
+          onDrop={e=>handleCompDrop(e,c.id)} onDragLeave={()=>setDragOverComp(null)}
+          style={{ ...s.card, borderColor:dragOverComp===c.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", cursor:"grab" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
             <span style={{ fontSize:24 }}>{c.icon}</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700 }}>{c.name}</div>
               {c.desc&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>}
-              {c.winner&&<div style={{ fontSize:12, color:c.winnerTeam==="nukes"?"#ff4500":"#00aaff", marginTop:2 }}>
-                {c.winnerTeam==="nukes"?"☢️":"🐋"} {c.winner}{c.detail?` — ${c.detail}`:""}
+              {c.winner&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:2 }}>
+                🏅 {c.winner}{c.detail?` — ${c.detail}`:""}
               </div>}
             </div>
             <div style={s.row}>
@@ -828,14 +870,9 @@ function CompetitionsSection({ competitions, showToast }) {
             <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
               <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Enter Result</div>
               <div style={s.grid2}>
-                <div><div style={s.label}>Winner (player name)</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name"/></div>
-                <div><div style={s.label}>Their Team</div>
-                  <select style={s.select} value={form.winnerTeam} onChange={e=>setForm(f=>({...f,winnerTeam:e.target.value}))}>
-                    <option value="nukes">☢️ Nukes</option><option value="whales">🐋 Whales</option>
-                  </select>
-                </div>
+                <div><div style={s.label}>Winner / Leader</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name or team"/></div>
+                <div><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4ft 2in, -12"/></div>
               </div>
-              <div style={{ marginTop:8 }}><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4ft 2in, -12, etc."/></div>
               <button style={{ ...s.btnFire, marginTop:12 }} onClick={()=>saveResult(c.id)}>Save Result</button>
             </div>
           )}
@@ -853,7 +890,7 @@ function CompetitionsSection({ competitions, showToast }) {
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
 function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
-  const blank = { year:new Date().getFullYear()-1, winner:"THE NUKES", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
+  const blank = { year:new Date().getFullYear()-1, winner:"TBD", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -878,6 +915,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
           <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
           <div><div style={s.label}>Winner</div>
             <select style={s.select} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))}>
+              <option value="TBD">— TBD (auto from import) —</option>
               <option value="THE NUKES">☢️ THE NUKES</option>
               <option value="THE WHALES">🐋 THE WHALES</option>
             </select>
@@ -1173,8 +1211,8 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
       )}
 
       {(year.matches||[]).map((m,mi)=>(
-        <div key={mi} draggable={m.type!=="heading"}
-          onDragStart={e=>{if(m.type!=="heading")e.dataTransfer.setData("matchMi",String(mi));}}
+        <div key={mi} draggable={true}
+          onDragStart={e=>e.dataTransfer.setData("matchMi",String(mi))}
           onDragOver={e=>{e.preventDefault();setDragOverMi(mi);}}
           onDrop={e=>handleMatchDrop(e,mi)} onDragLeave={()=>setDragOverMi(null)}>
           {/* Subheading */}
