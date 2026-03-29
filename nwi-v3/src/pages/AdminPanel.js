@@ -117,7 +117,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
 
 // ── MASTER ROSTER (no team assignment here) ────────────────────────────────
 function RosterSection({ roster, showToast }) {
-  const blank = { name:"", handicap:"", hometown:"", bio:"", photoURL:"", favoriteClub:"", strengths:"", weaknesses:"", golferComparison:"" };
+  const blank = { name:"", handicap:"", hometown:"", nickname:"", bio:"", photoURL:"", favoriteClub:"", strengths:"", weaknesses:"", golferComparison:"", bestPartOfGame:"" };
   const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -157,6 +157,7 @@ function RosterSection({ roster, showToast }) {
         <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Player":"➕ Add Player"}</div>
         <div style={s.grid2}>
           <div><div style={s.label}>Name *</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Full name"/></div>
+          <div><div style={s.label}>Nickname (optional)</div><input style={s.input} value={form.nickname||""} onChange={e=>setForm(f=>({...f,nickname:e.target.value}))} placeholder={'e.g. "The Shark"' }/></div>
           <div><div style={s.label}>Handicap</div><input style={s.input} type="number" value={form.handicap} onChange={e=>setForm(f=>({...f,handicap:e.target.value}))} placeholder="e.g. 12"/></div>
           <div><div style={s.label}>Hometown</div><input style={s.input} value={form.hometown} onChange={e=>setForm(f=>({...f,hometown:e.target.value}))} placeholder="e.g. Rochester, NY"/></div>
           <div>
@@ -182,6 +183,7 @@ function RosterSection({ roster, showToast }) {
           <div style={{ marginTop:10 }}><div style={s.label}>Strengths</div><input style={s.input} value={form.strengths} onChange={e=>setForm(f=>({...f,strengths:e.target.value}))} placeholder="e.g. Long drive, putting"/></div>
           <div style={{ marginTop:10 }}><div style={s.label}>Weaknesses</div><input style={s.input} value={form.weaknesses} onChange={e=>setForm(f=>({...f,weaknesses:e.target.value}))} placeholder="e.g. Sand traps"/></div>
         </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Best Part of Golf Game</div><input style={s.input} value={form.bestPartOfGame||""} onChange={e=>setForm(f=>({...f,bestPartOfGame:e.target.value}))} placeholder="e.g. Short game, reading greens"/></div>
         <div style={{ ...s.row, marginTop:14 }}>
           <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add to Roster"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
