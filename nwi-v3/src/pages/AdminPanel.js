@@ -107,7 +107,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
         {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
         {section==="media"        && <AdminMedia showToast={showToast}/>}
-        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} showToast={showToast}/>}
+        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
         {section==="settings"     && <SettingsSection meta={meta} showToast={showToast}/>}
       </div>
@@ -373,7 +373,7 @@ function DraftSection({ roster, drafts, showToast }) {
     if (!form.year) return showToast("Year required", true);
     // Only save players who are actually on a team
     const active = {};
-    Object.entries(assignments).forEach(([n, t]) => { if (t !== "out") active[n] = t; });
+    Object.entries(assignments).forEach(([n, t]) => { if (t !== "out") active[n] = t; }); // tbd, nukes, whales all saved
     try {
       const data = { year: Number(form.year), notes: form.notes, assignments: active, updatedAt: new Date().toISOString() };
       if (editing && editing !== "new") { await firestore.update("drafts", editing, data); showToast("Draft saved!"); }
@@ -412,7 +412,7 @@ function DraftSection({ roster, drafts, showToast }) {
                   {p.photoURL ? <img src={p.photoURL} alt={p.name} style={{ width:30, height:30, borderRadius:"50%", objectFit:"cover" }}/> : <div style={{ width:30, height:30, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800 }}>{p.name?.[0]}</div>}
                   <div style={{ flex:1, fontSize:14, fontWeight:600 }}>{p.name}</div>
                   <div style={{ display:"flex", gap:4 }}>
-                    {[["nukes","☢️","#ff4500"],["whales","🐋","#00aaff"],["out","✗","rgba(255,255,255,0.3)"]].map(([val,emoji,color])=>(
+                    {[["nukes","☢️","#ff4500"],["whales","🐋","#00aaff"],["tbd","❓","#ffd700"],["out","✗","rgba(255,255,255,0.3)"]].map(([val,emoji,color])=>(
                       <button key={val} onClick={()=>setAssignments(a=>({...a,[p.name]:val}))}
                         style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${assignments[p.name]===val?color:"rgba(255,255,255,0.1)"}`, background:assignments[p.name]===val?"rgba(255,255,255,0.1)":"none", color:assignments[p.name]===val?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                         {emoji}
@@ -425,7 +425,7 @@ function DraftSection({ roster, drafts, showToast }) {
 
             {/* Summary */}
             <div style={{ marginTop:14, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
-              {[["☢️ Nukes",nukes.length,"#ff4500"],["🐋 Whales",whales.length,"#00aaff"],["Not Playing",out.length,"rgba(255,255,255,0.3)"]].map(([l,n,c])=>(
+              {[["☢️ Nukes",nukes.length,"#ff4500"],["🐋 Whales",whales.length,"#00aaff"],["❓ TBD",roster.filter(p=>assignments[p.name]==="tbd").length,"#ffd700"],["Not Playing",out.length,"rgba(255,255,255,0.3)"]].map(([l,n,c])=>(
                 <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"10px 6px" }}>
                   <div style={{ fontSize:20, fontWeight:900, color:c }}>{n}</div>
                   <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>{l}</div>
@@ -610,41 +610,143 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
 // ── SCHEDULE ────────────────────────────────────────────────────────────────
 function ScheduleSection({ schedule, showToast }) {
-  const blank = { day:"Day 1", time:"", event:"", icon:"⛳", course:"" };
-  const [form, setForm]     = useState(blank);
+  // Custom days management
+  const defaultDays = ["Day 1","Day 2","Day 3"];
+  const existingDays = [...new Set(schedule.map(i=>i.day))];
+  const allDays = [...new Set([...defaultDays, ...existingDays])];
+
+  const [customDay, setCustomDay] = useState("");
+  const [days, setDays] = useState(allDays);
+  const [editingDayName, setEditingDayName] = useState(null);
+  const [editingDayValue, setEditingDayValue] = useState("");
+  const [form, setForm] = useState({ day:days[0]||"Day 1", time:"", event:"", icon:"⛳", course:"" });
   const [editing, setEditing] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  // Keep days in sync with schedule data
+  const allCurrentDays = [...new Set([...days, ...schedule.map(i=>i.day)])];
+
   const save = async () => {
     if (!form.event||!form.time) return showToast("Time and event required",true);
     try {
       if (editing) { await firestore.update("schedule",editing,form); showToast("Updated!"); setEditing(null); }
       else { await firestore.add("schedule",form); showToast("Added!"); }
-      setForm(blank);
+      setForm(f=>({...f,time:"",event:"",icon:"⛳",course:""}));
     } catch(e) { showToast(e.message,true); }
   };
+
+  const addCustomDay = () => {
+    if (!customDay.trim()) return;
+    setDays(d=>[...d,customDay.trim()]);
+    setForm(f=>({...f,day:customDay.trim()}));
+    setCustomDay("");
+  };
+
+  const renameDay = async (oldName, newName) => {
+    if (!newName.trim()||newName===oldName) { setEditingDayName(null); return; }
+    // Update all schedule items with this day
+    const toUpdate = schedule.filter(i=>i.day===oldName);
+    for (const item of toUpdate) {
+      await firestore.update("schedule",item.id,{day:newName.trim()});
+    }
+    setDays(d=>d.map(d2=>d2===oldName?newName.trim():d2));
+    if (form.day===oldName) setForm(f=>({...f,day:newName.trim()}));
+    setEditingDayName(null);
+    showToast("Day renamed!");
+  };
+
+  // Sort items by time for each day
+  const parseTime = (t) => {
+    if (!t) return 0;
+    const m = t.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (!m) return 0;
+    let h=parseInt(m[1]),min=parseInt(m[2]);
+    const period=(m[3]||"").toUpperCase();
+    if (period==="PM"&&h!==12) h+=12;
+    if (period==="AM"&&h===12) h=0;
+    return h*60+min;
+  };
+
+  // Drag reorder for schedule items
+  const handleDragStart = (e, id) => { e.dataTransfer.setData("scheduleId", id); };
+  const handleDrop = async (e, targetId) => {
+    const srcId = e.dataTransfer.getData("scheduleId");
+    if (!srcId||srcId===targetId) { setDragOver(null); return; }
+    // Swap times
+    const src = schedule.find(i=>i.id===srcId);
+    const tgt = schedule.find(i=>i.id===targetId);
+    if (src&&tgt) {
+      await firestore.update("schedule",srcId,{time:tgt.time});
+      await firestore.update("schedule",targetId,{time:src.time});
+    }
+    setDragOver(null);
+  };
+
   return (
     <div>
       <div style={s.sectionTitle}>📅 Schedule</div>
+
+      {/* Day management */}
+      <div style={{ ...s.card, marginBottom:14 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Days</div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+          {allCurrentDays.map(day=>(
+            <div key={day} style={{ display:"flex", alignItems:"center", gap:4 }}>
+              {editingDayName===day
+                ? <input autoFocus style={{ ...s.input, width:120, fontSize:12, padding:"4px 8px" }} value={editingDayValue} onChange={e=>setEditingDayValue(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") renameDay(day,editingDayValue); if(e.key==="Escape") setEditingDayName(null); }}
+                    onBlur={()=>renameDay(day,editingDayValue)}/>
+                : <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:20 }}>
+                    <span style={{ fontSize:12, color:"rgba(255,255,255,0.7)" }}>{day}</span>
+                    <button onClick={()=>{setEditingDayName(day);setEditingDayValue(day);}} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:11, padding:"0 0 0 2px" }}>✏️</button>
+                  </div>
+              }
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input style={{ flex:1, ...s.input, fontSize:13 }} value={customDay} onChange={e=>setCustomDay(e.target.value)} placeholder="Add day (e.g. Friday, Saturday...)" onKeyDown={e=>e.key==="Enter"&&addCustomDay()}/>
+          <button style={s.btnFire} onClick={addCustomDay}>+ Add Day</button>
+        </div>
+      </div>
+
+      {/* Add/edit event form */}
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add Event"}</div>
         <div style={s.grid2}>
-          <div><div style={s.label}>Day</div><select style={s.select} value={form.day} onChange={e=>setForm(f=>({...f,day:e.target.value}))}><option>Day 1</option><option>Day 2</option><option>Day 3</option></select></div>
+          <div>
+            <div style={s.label}>Day</div>
+            <select style={s.select} value={form.day} onChange={e=>setForm(f=>({...f,day:e.target.value}))}>
+              {allCurrentDays.map(d=><option key={d}>{d}</option>)}
+            </select>
+          </div>
           <div><div style={s.label}>Time</div><input style={s.input} value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} placeholder="8:30 AM"/></div>
           <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="⛳"/></div>
-          <div><div style={s.label}>Course Name</div><input style={s.input} value={form.course} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="Pebble Beach"/></div>
+          <div><div style={s.label}>Course Name</div><input style={s.input} value={form.course} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Pebble Beach"/></div>
         </div>
         <div style={{ marginTop:10 }}><div style={s.label}>Event</div><input style={s.input} value={form.event} onChange={e=>setForm(f=>({...f,event:e.target.value}))} placeholder="Event description"/></div>
         <div style={{ ...s.row, marginTop:14 }}>
           <button style={s.btnFire} onClick={save}>{editing?"Save":"Add"}</button>
-          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(f=>({...f,time:"",event:"",icon:"⛳",course:""}));}}>Cancel</button>}
         </div>
       </div>
-      {["Day 1","Day 2","Day 3"].map(day=>{
-        const items=schedule.filter(i=>i.day===day); if(!items.length) return null;
+
+      {/* Events grouped by day, sorted by time, draggable */}
+      {allCurrentDays.map(day=>{
+        const items = schedule.filter(i=>i.day===day).sort((a,b)=>parseTime(a.time)-parseTime(b.time));
+        if(!items.length) return null;
         return (
-          <div key={day} style={{ marginBottom:14 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>{day}</div>
+          <div key={day} style={{ marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.1em", textTransform:"uppercase" }}>{day}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>{items.length} event{items.length!==1?"s":""}</div>
+            </div>
             {items.map(item=>(
-              <div key={item.id} style={{ ...s.card, padding:"10px 12px", display:"flex", alignItems:"center", gap:10 }}>
+              <div key={item.id} draggable onDragStart={e=>handleDragStart(e,item.id)}
+                onDragOver={e=>{e.preventDefault();setDragOver(item.id);}}
+                onDrop={e=>handleDrop(e,item.id)} onDragLeave={()=>setDragOver(null)}
+                style={{ ...s.card, padding:"10px 12px", display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", borderColor:dragOver===item.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", opacity:1 }}>
+                <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14, cursor:"grab" }}>⠿</span>
                 <span style={{ fontSize:16 }}>{item.icon}</span>
                 <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
                 <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
@@ -750,7 +852,7 @@ function CompetitionsSection({ competitions, showToast }) {
 }
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
-function HistorySection({ history, drafts, roster, competitions, showToast }) {
+function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
   const blank = { year:new Date().getFullYear()-1, winner:"THE NUKES", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
@@ -844,6 +946,16 @@ function HistorySection({ history, drafts, roster, competitions, showToast }) {
                   </div>
                 )}
 
+                {/* Import from current tournament */}
+                {String(h.year)===String(meta?.year||2026)&&(
+                  <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
+                )}
+
+                {/* Import from current tournament */}
+                {String(h.year)===String(meta?.year||2026)&&(
+                  <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
+                )}
+
                 {/* Matches subsection */}
                 <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
                   <MatchesEditor year={h} nukeNames={nukeNames} whaleNames={whaleNames} competitions={competitions} showToast={showToast}/>
@@ -862,18 +974,97 @@ function HistorySection({ history, drafts, roster, competitions, showToast }) {
   );
 }
 
+function ImportFromRounds({ year, rounds, showToast }) {
+  const [importing, setImporting] = useState(false);
+
+  const doImport = async () => {
+    const currentMatches = year.matches || [];
+    const newMatches = [];
+
+    rounds.forEach(round => {
+      (round.matchups || []).forEach(m => {
+        if (!m.nukes?.some(Boolean) && !m.whales?.some(Boolean)) return; // skip empty
+        // Check if this matchup already exists (by player names) to avoid double counting
+        const alreadyImported = currentMatches.some(em =>
+          JSON.stringify((em.nukes||[]).sort()) === JSON.stringify((m.nukes||[]).filter(Boolean).sort()) &&
+          JSON.stringify((em.whales||[]).sort()) === JSON.stringify((m.whales||[]).filter(Boolean).sort())
+        );
+        if (alreadyImported) return;
+        newMatches.push({
+          nukes: (m.nukes||[]).filter(Boolean),
+          whales: (m.whales||[]).filter(Boolean),
+          winner: m.winner || null,
+          roundName: m.competitionName || round.name || "",
+          pointsWorth: m.pointsWorth || round.pointsPerWin || 0,
+        });
+      });
+    });
+
+    if (newMatches.length === 0) {
+      showToast("No new matches to import — all already imported or rounds are empty", true);
+      return;
+    }
+
+    setImporting(true);
+    try {
+      await firestore.update("history", year.id, { matches: [...currentMatches, ...newMatches] });
+      showToast(`Imported ${newMatches.length} match${newMatches.length!==1?"es":""}!`);
+    } catch(e) { showToast("Error: " + e.message, true); }
+    setImporting(false);
+  };
+
+  return (
+    <div style={{ padding:"12px 16px", background:"rgba(74,222,128,0.06)", borderBottom:"1px solid rgba(74,222,128,0.15)" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>⬇ Import from Current Tournament</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
+            Pulls matchup results from Rounds into this year. Already-imported matches are skipped automatically.
+          </div>
+        </div>
+        <button style={{ padding:"8px 16px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+          onClick={doImport} disabled={importing}>
+          {importing ? "Importing..." : "Import Matches"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast }) {
   const blankMatch = { nukes:["",""], whales:["",""], winner:null, roundName:"", pointsWorth:"" };
   const [form, setForm]       = useState(blankMatch);
   const [adding, setAdding]   = useState(false);
-  const [editingMi, setEditingMi] = useState(null); // index of match being edited
+  const [editingMi, setEditingMi] = useState(null);
   const [editForm, setEditForm]   = useState(null);
+  const [newHeading, setNewHeading] = useState("");
+  const [addingHeading, setAddingHeading] = useState(false);
+  const [dragOverMi, setDragOverMi] = useState(null);
 
   const allPlayers = [...nukeNames,...whaleNames];
   const compOptions = ["Round 1","Round 2","Round 3",...(competitions||[]).map(c=>c.name)];
 
   const saveAll = async (newMatches) => {
     await firestore.update("history", year.id, { matches: newMatches });
+  };
+
+  // Drag reorder matches
+  const handleMatchDrop = async (e, targetMi) => {
+    const srcMi = parseInt(e.dataTransfer.getData("matchMi"));
+    if (isNaN(srcMi)||srcMi===targetMi) { setDragOverMi(null); return; }
+    const arr = [...(year.matches||[])];
+    const [moved] = arr.splice(srcMi,1);
+    arr.splice(targetMi,0,moved);
+    await saveAll(arr);
+    setDragOverMi(null);
+  };
+
+  // Add subheading (stored as a special match entry with type:"heading")
+  const addHeading = async () => {
+    if (!newHeading.trim()) return;
+    await saveAll([...(year.matches||[]), { type:"heading", label:newHeading.trim() }]);
+    setNewHeading(""); setAddingHeading(false); showToast("Subheading added!");
   };
 
   const addMatch = async () => {
@@ -958,47 +1149,75 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
         <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
           ⚔️ Match Results <span style={{ color:"rgba(255,255,255,0.25)", fontWeight:400 }}>({(year.matches||[]).length})</span>
         </div>
-        {!adding&&editingMi===null&&<button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>}
+        {!adding&&editingMi===null&&<div style={{ display:"flex", gap:6 }}>
+          <button style={{ ...s.btnGhost, fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingHeading(a=>!a)}>+ Subheading</button>
+          <button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>
+        </div>}
       </div>
 
       {adding&&<MatchForm vals={form} setVals={setForm} onSave={addMatch} onCancel={()=>{setAdding(false);setForm(blankMatch);}} saveLabel="Save Match"/>}
+
+      {/* Add subheading UI */}
+      {addingHeading&&(
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <input autoFocus style={{ flex:1, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:13, padding:"8px 10px", outline:"none" }}
+            value={newHeading} onChange={e=>setNewHeading(e.target.value)} placeholder="Subheading (e.g. Round 1, Day 1...)"
+            onKeyDown={e=>{ if(e.key==="Enter") addHeading(); if(e.key==="Escape") setAddingHeading(false); }}/>
+          <button style={s.btnFire} onClick={addHeading}>Add</button>
+          <button style={s.btnGhost} onClick={()=>setAddingHeading(false)}>Cancel</button>
+        </div>
+      )}
 
       {(year.matches||[]).length===0&&!adding&&(
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.2)", textAlign:"center", padding:"16px 0" }}>No matches yet — tap + Add Match</div>
       )}
 
       {(year.matches||[]).map((m,mi)=>(
-        <div key={mi}>
-          {editingMi===mi&&editForm
+        <div key={mi} draggable={m.type!=="heading"}
+          onDragStart={e=>{if(m.type!=="heading")e.dataTransfer.setData("matchMi",String(mi));}}
+          onDragOver={e=>{e.preventDefault();setDragOverMi(mi);}}
+          onDrop={e=>handleMatchDrop(e,mi)} onDragLeave={()=>setDragOverMi(null)}>
+          {/* Subheading */}
+          {m.type==="heading"&&(
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:14, marginBottom:6 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.6)", letterSpacing:"0.08em", textTransform:"uppercase" }}>{m.label}</div>
+              <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
+              <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:10 }} onClick={()=>saveAll((year.matches||[]).filter((_,i)=>i!==mi))}>✕</button>
+            </div>
+          )}
+          {m.type!=="heading"&&editingMi===mi&&editForm
             ? <MatchForm vals={editForm} setVals={setEditForm} onSave={saveEdit} onCancel={()=>{setEditingMi(null);setEditForm(null);}} saveLabel="Save Changes"/>
-            : (
-              <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
-                  <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-                    <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
-                    {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
-                    {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+            : m.type!=="heading"&&(
+              <div style={{ background:`rgba(255,255,255,${dragOverMi===mi?"0.08":"0.03"})`, border:`1px solid ${dragOverMi===mi?"rgba(255,255,255,0.25)":m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"flex-start" }}>
+                <span style={{ color:"rgba(255,255,255,0.15)", fontSize:16, paddingTop:4, cursor:"grab", flexShrink:0 }}>⠿</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
+                    <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
+                      {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                      {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+                    </div>
+                    <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
+                    <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
+                      {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                      {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
+                    </div>
                   </div>
-                  <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
-                  <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
-                    <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
-                    {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
-                    {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
-                  </div>
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                  {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
-                  {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth}pts</span>}
-                  {m.winner==="tie"&&<span style={{ fontSize:11, color:"#ffd700" }}>🤝 TIE</span>}
-                  <div style={{ marginLeft:"auto", display:"flex", gap:5, alignItems:"center" }}>
-                    {["nukes","tie","whales"].map(w=>(
-                      <button key={w} onClick={()=>updateWinnerOnly(mi,w)}
-                        style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
-                        {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
-                      </button>
-                    ))}
-                    <button style={{ ...s.btnGhost, padding:"3px 10px", fontSize:11 }} onClick={()=>startEdit(mi)}>✏️ Edit</button>
-                    <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                    {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
+                    {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth}pts</span>}
+                    {m.winner==="tie"&&<span style={{ fontSize:11, color:"#ffd700" }}>🤝 TIE</span>}
+                    <div style={{ marginLeft:"auto", display:"flex", gap:5, alignItems:"center" }}>
+                      {["nukes","tie","whales"].map(w=>(
+                        <button key={w} onClick={()=>updateWinnerOnly(mi,w)}
+                          style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
+                          {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
+                        </button>
+                      ))}
+                      <button style={{ ...s.btnGhost, padding:"3px 10px", fontSize:11 }} onClick={()=>startEdit(mi)}>✏️ Edit</button>
+                      <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1063,6 +1282,9 @@ function RulesSection({ rules, showToast }) {
   const blank = { title:"", body:"", order:rules.length+1 };
   const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+  const sorted = [...rules].sort((a,b)=>(a.order||0)-(b.order||0));
+
   const save = async () => {
     if (!form.title||!form.body) return showToast("Title and body required",true);
     try {
@@ -1071,30 +1293,57 @@ function RulesSection({ rules, showToast }) {
       setForm({...blank,order:rules.length+2});
     } catch(e) { showToast(e.message,true); }
   };
+
+  const handleDrop = async (e, targetId) => {
+    const srcId = e.dataTransfer.getData("ruleId");
+    if (!srcId||srcId===targetId) { setDragOver(null); return; }
+    const src = sorted.find(r=>r.id===srcId);
+    const tgt = sorted.find(r=>r.id===targetId);
+    if (src&&tgt) {
+      await firestore.update("rules",srcId,{order:tgt.order||0});
+      await firestore.update("rules",targetId,{order:src.order||0});
+    }
+    setDragOver(null);
+    showToast("Reordered!");
+  };
+
   return (
     <div>
       <div style={s.sectionTitle}>📋 Rules</div>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:14 }}>Drag ⠿ to reorder</div>
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add Rule"}</div>
-        <div style={s.grid2}>
-          <div><div style={s.label}>Title</div><input style={s.input} value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
-          <div><div style={s.label}>Order</div><input style={s.input} type="number" value={form.order} onChange={e=>setForm(f=>({...f,order:e.target.value}))}/></div>
-        </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Body</div><textarea rows={3} value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))}/></div>
+        <div><div style={s.label}>Title</div><input style={{...s.input,marginBottom:10}} value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+        <div><div style={s.label}>Body</div><textarea rows={3} value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))}/></div>
         <div style={{ ...s.row, marginTop:14 }}>
           <button style={s.btnFire} onClick={save}>{editing?"Save":"Add"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
         </div>
       </div>
-      {rules.map(r=>(
-        <div key={r.id} style={{ ...s.card, padding:"12px 14px" }}>
+      {sorted.map((r,i)=>(
+        <div key={r.id} draggable onDragStart={e=>e.dataTransfer.setData("ruleId",r.id)}
+          onDragOver={e=>{e.preventDefault();setDragOver(r.id);}}
+          onDrop={e=>handleDrop(e,r.id)} onDragLeave={()=>setDragOver(null)}
+          style={{ ...s.card, padding:"12px 14px", borderColor:dragOver===r.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", cursor:"grab" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", minWidth:18 }}>#{r.order}</div>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14 }}>⠿</span>
             <div style={{ flex:1, fontWeight:700 }}>{r.title}</div>
             <button style={s.btnGhost} onClick={()=>{setEditing(r.id);setForm({title:r.title,body:r.body,order:r.order});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{await firestore.delete("rules",r.id);}}>✕</button>
           </div>
-          <div style={{ fontSize:13, color:"rgba(255,255,255,0.45)", lineHeight:1.5, fontFamily:"'Barlow',sans-serif" }}>{r.body}</div>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,0.45)", lineHeight:1.5, fontFamily:"'Barlow',sans-serif" }}>
+            {(r.body||"").split("\n").map((line,li)=>{
+              const isBullet = line.trimStart().startsWith("-") || line.trimStart().startsWith("•");
+              const text = isBullet ? line.trimStart().replace(/^[-•]\s*/,"") : line;
+              if (!text.trim()) return <div key={li} style={{ height:"0.5em" }}/>;
+              return (
+                <div key={li} style={{ display:"flex", gap:8, marginBottom:2 }}>
+                  {isBullet&&<span style={{ color:"rgba(255,255,255,0.25)", flexShrink:0 }}>•</span>}
+                  <span>{text}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ))}
     </div>
