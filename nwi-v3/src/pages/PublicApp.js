@@ -228,31 +228,63 @@ export default function PublicApp({ onGoAdmin }) {
             </div>
 
             {lbTab==="team" && (
-              <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-                {[{team:"nukes",pts:teamPoints.nukes},{team:"whales",pts:teamPoints.whales}].sort((a,b)=>b.pts-a.pts).map((t,i)=>(
-                  <div key={t.team} className={`card ${t.team==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:"18px" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                      <div style={{ fontSize:26, fontWeight:900, color:i===0?"#ffd700":"rgba(255,255,255,0.2)" }}>{i+1}</div>
-                      <div style={{ fontSize:30 }}>{TEAMS[t.team].emoji}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:18, fontWeight:800, color:TEAMS[t.team].color }}>{TEAMS[t.team].name}</div>
-                        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{activePlayers.filter(p=>teamAssign[p.name]===t.team).length} players</div>
-                      </div>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontSize:38, fontWeight:900, color:TEAMS[t.team].color, lineHeight:1 }}>{t.pts}</div>
-                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>PTS</div>
-                      </div>
-                    </div>
-                    {totalPtsAvail>0&&(
-                      <div style={{ marginTop:12 }}>
-                        <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${(t.pts/totalPtsAvail)*100}%`, background:TEAMS[t.team].color, borderRadius:3, transition:"width 0.5s" }}/>
+              <div>
+                <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
+                  {[{team:"nukes",pts:teamPoints.nukes},{team:"whales",pts:teamPoints.whales}].sort((a,b)=>b.pts-a.pts).map((t,i)=>{
+                    const clinched=t.team==="nukes"?nukesClinched:whalesClinched;
+                    const elim=t.team==="nukes"?nukesElim:whalesElim;
+                    const needed=t.team==="nukes"?nukeWinPts:whaleWinPts;
+                    return (
+                      <div key={t.team} className={`card ${t.team==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:"16px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                          <div style={{ fontSize:24, fontWeight:900, color:i===0?"#ffd700":"rgba(255,255,255,0.2)" }}>{i+1}</div>
+                          <div style={{ fontSize:28 }}>{TEAMS[t.team].emoji}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t.team].color }}>{TEAMS[t.team].name}</div>
+                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>{activePlayers.filter(p=>teamAssign[p.name]===t.team).length} players</div>
+                          </div>
+                          <div style={{ textAlign:"right" }}>
+                            <div style={{ fontSize:36, fontWeight:900, color:TEAMS[t.team].color, lineHeight:1 }}>{t.pts}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>PTS</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:3 }}>{Math.round((t.pts/totalPtsAvail)*100)}% of available points</div>
+                        {totalPtsAvail>0&&(
+                          <div style={{ marginTop:10 }}>
+                            <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:2, overflow:"hidden" }}>
+                              <div style={{ height:"100%", width:`${(t.pts/totalPtsAvail)*100}%`, background:TEAMS[t.team].color, borderRadius:2, transition:"width 0.5s" }}/>
+                            </div>
+                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:3 }}>{Math.round((t.pts/totalPtsAvail)*100)}% of available points</div>
+                          </div>
+                        )}
+                        {/* Projection inline */}
+                        {totalPtsAvail>0&&(
+                          <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+                            {clinched
+                              ? <div style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
+                              : elim
+                              ? <div style={{ fontSize:12, fontWeight:700, color:"#ff5555" }}>Eliminated</div>
+                              : <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Needs <strong style={{ color:TEAMS[t.team].color }}>{needed} more pts</strong> to clinch · {remainingPts} remaining</div>
+                            }
+                          </div>
+                        )}
                       </div>
-                    )}
+                    );
+                  })}
+                </div>
+                {/* Points breakdown */}
+                {totalPtsAvail>0&&(
+                  <div className="card" style={{ padding:"12px 16px" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
+                      {[["Total",totalPtsAvail,"#ffd700"],["Played",playedPts,"#4ade80"],["Left",remainingPts,"#00aaff"]].map(([l,v,c])=>(
+                        <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 4px" }}>
+                          <div style={{ fontSize:20, fontWeight:900, color:c }}>{v}</div>
+                          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
                   </div>
-                ))}
+                )}
               </div>
             )}
 
@@ -301,8 +333,9 @@ export default function PublicApp({ onGoAdmin }) {
                                 <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                 <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
                                 <td>
-                                  <div style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</div>
-                                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>{p.matchTies}T {p.matchLosses}L</div>
+                                  <span style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</span>
+                                  {" "}<span style={{ fontWeight:700, color:"#ffd700" }}>{p.matchTies}T</span>
+                                  {" "}<span style={{ fontWeight:700, color:"#ff5555" }}>{p.matchLosses}L</span>
                                 </td>
                                 <td style={{ fontWeight:700, color:"#00aaff" }}>{p.totalMatches>0?p.matchWinPct+"%":"—"}</td>
                               </tr>
@@ -352,42 +385,6 @@ export default function PublicApp({ onGoAdmin }) {
                 ))}
               </div>
             ))}
-          </div>
-        )}
-
-        {/* ── PROJECTIONS ── */}
-        {tab==="projections" && (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Projections</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
-              {["nukes","whales"].map(t=>{
-                const pts=teamPoints[t], needed=t==="nukes"?nukeWinPts:whaleWinPts;
-                const clinched=t==="nukes"?nukesClinched:whalesClinched, elim=t==="nukes"?nukesElim:whalesElim;
-                return (
-                  <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:16, textAlign:"center" }}>
-                    <div style={{ fontSize:26 }}>{TEAMS[t].emoji}</div>
-                    <div style={{ fontSize:15, fontWeight:800, color:TEAMS[t].color, marginTop:6, marginBottom:10 }}>{TEAMS[t].name}</div>
-                    {clinched ? <div style={{ padding:"8px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, fontSize:13, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
-                      : elim ? <div style={{ padding:"8px", background:"rgba(255,80,80,0.12)", border:"1px solid rgba(255,80,80,0.25)", borderRadius:8, fontSize:13, fontWeight:700, color:"#ff5555" }}>Eliminated</div>
-                      : <div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginBottom:4 }}>NEEDS</div><div style={{ fontSize:30, fontWeight:900, color:TEAMS[t].color }}>{needed}</div><div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>more pts to clinch</div></div>
-                    }
-                    <div style={{ marginTop:10, fontSize:12, color:"rgba(255,255,255,0.35)" }}>{pts} pts</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="card" style={{ padding:16 }}>
-              <div style={{ fontSize:13, fontWeight:700, marginBottom:12, letterSpacing:"0.06em", textTransform:"uppercase" }}>Breakdown</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
-                {[["Total",totalPtsAvail,"#ffd700"],["Played",playedPts,"#4ade80"],["Left",remainingPts,"#00aaff"]].map(([l,v,c])=>(
-                  <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:10 }}>
-                    <div style={{ fontSize:22, fontWeight:900, color:c }}>{v}</div>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>{l.toUpperCase()}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop:12, fontSize:12, color:"rgba(255,255,255,0.3)" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} points</div>
-            </div>
           </div>
         )}
 
@@ -469,40 +466,39 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── PLAYERS ── */}
         {tab==="players" && (
           <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Player Profiles</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:16 }}>
-              {currentYear} — tap a player to see their full profile
-            </div>
-            {["nukes","whales"].map(team=>{
-              const tp = activePlayers.filter(p=>teamAssign[p.name]===team);
-              return (
-                <div key={team} style={{ marginBottom:24 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-                    <span style={{ fontSize:18 }}>{TEAMS[team].emoji}</span>
-                    <span style={{ fontSize:17, fontWeight:800, color:TEAMS[team].color, textTransform:"uppercase" }}>{TEAMS[team].name}</span>
-                    <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>({tp.length})</span>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                    {tp.map(p=>(
-                      <div key={p.id||p.name} className="card" style={{ padding:"12px 14px", borderColor:`${TEAMS[team].color}22`, cursor:"pointer" }} onClick={()=>setSelectedPlayer({...p, team})}>
-                        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                          {p.photoURL ? <img src={p.photoURL} alt={p.name} style={{ width:44, height:44, borderRadius:"50%", objectFit:"cover", border:`2px solid ${TEAMS[team].color}55` }}/>
-                            : <div style={{ width:44, height:44, borderRadius:"50%", background:TEAMS[team].bg, border:`2px solid ${TEAMS[team].color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:TEAMS[team].color }}>{p.name?.[0]}</div>}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:15, fontWeight:700 }}>{p.name}</div>
-                            <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>HCP {p.handicap}{p.hometown?` · ${p.hometown}`:""}</div>
-                          </div>
-                          <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:20, fontWeight:900, color:TEAMS[team].color }}>{playerStats[p.name]?.ptsWon||0}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>PTS</div>
-                          </div>
+            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>Player Profiles</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:20 }}>Tap any player to see their full profile</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {[...roster].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+                const team = teamAssign[p.name];
+                const tc = team ? TEAMS[team] : null;
+                const at = allTimeStats[p.name];
+                return (
+                  <div key={p.id||p.name} className="card" style={{ padding:"12px 14px", cursor:"pointer" }} onClick={()=>setSelectedPlayer({...p, team})}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                      {p.photoURL
+                        ? <img src={p.photoURL} alt={p.name} style={{ width:46, height:46, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.12)" }}/>
+                        : <div style={{ width:46, height:46, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"rgba(255,255,255,0.3)" }}>{p.name?.[0]}</div>
+                      }
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:15, fontWeight:700 }}>{p.name}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
+                          {p.handicap!=null&&p.handicap!==""&&<span>HCP {p.handicap}</span>}
+                          {p.hometown&&<span>{p.handicap!=null&&p.handicap!==""?" · ":""}{p.hometown}</span>}
                         </div>
+                        {tc&&<div style={{ fontSize:10, color:tc.color, marginTop:2 }}>{tc.emoji} {tc.name} {currentYear}</div>}
                       </div>
-                    ))}
+                      {at&&at.totalMatches>0&&(
+                        <div style={{ textAlign:"right" }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#ff8c00" }}>{at.ptsWinPct}%</div>
+                          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>all-time</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -619,40 +615,98 @@ export default function PublicApp({ onGoAdmin }) {
       {selectedPlayer && (
         <div className="player-modal-backdrop" onClick={()=>setSelectedPlayer(null)}>
           <div className="player-modal" onClick={e=>e.stopPropagation()}>
+            {/* Header */}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em" }}>PLAYER PROFILE</div>
               <button onClick={()=>setSelectedPlayer(null)} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
             </div>
-            <div style={{ display:"flex", gap:16, alignItems:"flex-start", marginBottom:16 }}>
+
+            {/* Photo + name */}
+            <div style={{ display:"flex", gap:16, alignItems:"flex-start", marginBottom:20 }}>
               {selectedPlayer.photoURL
-                ? <img src={selectedPlayer.photoURL} alt={selectedPlayer.name} style={{ width:72, height:72, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.15)", flexShrink:0 }}/>
-                : <div style={{ width:72, height:72, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, fontWeight:900, color:"rgba(255,255,255,0.3)", flexShrink:0 }}>{selectedPlayer.name?.[0]}</div>
+                ? <img src={selectedPlayer.photoURL} alt={selectedPlayer.name} style={{ width:80, height:80, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.15)", flexShrink:0 }}/>
+                : <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, fontWeight:900, color:"rgba(255,255,255,0.25)", flexShrink:0 }}>{selectedPlayer.name?.[0]}</div>
               }
-              <div>
-                <div style={{ fontSize:24, fontWeight:900 }}>{selectedPlayer.name}</div>
-                {selectedPlayer.team && <div style={{ fontSize:13, color:TEAMS[selectedPlayer.team]?.color||"#888", marginTop:2 }}>{TEAMS[selectedPlayer.team]?.emoji} {TEAMS[selectedPlayer.team]?.name}</div>}
-                {selectedPlayer.hometown && <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>📍 {selectedPlayer.hometown}</div>}
-                {selectedPlayer.handicap != null && <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>Handicap: {selectedPlayer.handicap}</div>}
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:22, fontWeight:900, lineHeight:1.1 }}>{selectedPlayer.name}</div>
+                {selectedPlayer.team&&TEAMS[selectedPlayer.team]&&(
+                  <div style={{ fontSize:12, color:TEAMS[selectedPlayer.team].color, marginTop:4 }}>{TEAMS[selectedPlayer.team].emoji} {TEAMS[selectedPlayer.team].name} · {currentYear}</div>
+                )}
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
+                  {selectedPlayer.hometown&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>📍 {selectedPlayer.hometown}</span>}
+                  {selectedPlayer.handicap!=null&&selectedPlayer.handicap!==""&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>⛳ HCP {selectedPlayer.handicap}</span>}
+                </div>
               </div>
             </div>
-            {selectedPlayer.bio && <div style={{ fontSize:14, color:"rgba(255,255,255,0.5)", lineHeight:1.6, fontFamily:"'Barlow',sans-serif", marginBottom:16, padding:"12px 14px", background:"rgba(255,255,255,0.03)", borderRadius:10 }}>{selectedPlayer.bio}</div>}
-            {/* Stats */}
+
+            {/* Bio */}
+            {selectedPlayer.bio&&(
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.6, fontFamily:"'Barlow',sans-serif", marginBottom:14, padding:"11px 13px", background:"rgba(255,255,255,0.03)", borderRadius:10 }}>
+                {selectedPlayer.bio}
+              </div>
+            )}
+
+            {/* Golf profile fields */}
+            {(selectedPlayer.favoriteClub||selectedPlayer.golferComparison||selectedPlayer.strengths||selectedPlayer.weaknesses)&&(
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
+                {selectedPlayer.favoriteClub&&(
+                  <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:4 }}>FAVORITE CLUB</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#e8edf3" }}>🏌️ {selectedPlayer.favoriteClub}</div>
+                  </div>
+                )}
+                {selectedPlayer.golferComparison&&(
+                  <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:4 }}>GOLFER COMPARISON</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:"#ffd700" }}>⭐ {selectedPlayer.golferComparison}</div>
+                  </div>
+                )}
+                {selectedPlayer.strengths&&(
+                  <div style={{ background:"rgba(74,222,128,0.06)", borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"rgba(74,222,128,0.5)", letterSpacing:"0.08em", marginBottom:4 }}>STRENGTHS</div>
+                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)" }}>✅ {selectedPlayer.strengths}</div>
+                  </div>
+                )}
+                {selectedPlayer.weaknesses&&(
+                  <div style={{ background:"rgba(255,80,80,0.06)", borderRadius:10, padding:"10px 12px" }}>
+                    <div style={{ fontSize:10, color:"rgba(255,80,80,0.5)", letterSpacing:"0.08em", marginBottom:4 }}>WEAKNESSES</div>
+                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)" }}>⚠️ {selectedPlayer.weaknesses}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* All-time stats */}
             {(() => {
               const at = allTimeStats[selectedPlayer.name];
               if (!at || at.ptsAvail === 0) return null;
-              const tot = at.matchWins + at.matchLosses + at.matchTies;
+              const pct = Math.round((at.ptsWon/at.ptsAvail)*100);
               return (
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:16 }}>
-                  {[["All-Time Pts",at.ptsWon,"#ff8c00"],["Pts Win%",at.ptsAvail>0?Math.round((at.ptsWon/at.ptsAvail)*100)+"%":"—","#ffd700"],["Matches",`${at.matchWins}W ${at.matchTies}T ${at.matchLosses}L`,"#4ade80"]].map(([l,v,c])=>(
-                    <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:18, fontWeight:800, color:c }}>{v}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>{l}</div>
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:8 }}>ALL-TIME STATS</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#ff8c00" }}>{at.ptsWon}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WON</div>
                     </div>
-                  ))}
+                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#ffd700" }}>{pct}%</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WIN%</div>
+                    </div>
+                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                      <div style={{ fontSize:13, fontWeight:800, lineHeight:1.4 }}>
+                        <span style={{ color:"#4ade80" }}>{at.matchWins}W</span>{" "}
+                        <span style={{ color:"#ffd700" }}>{at.matchTies}T</span>{" "}
+                        <span style={{ color:"#ff5555" }}>{at.matchLosses}L</span>
+                      </div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>RECORD</div>
+                    </div>
+                  </div>
                 </div>
               );
             })()}
-            {/* Years participated */}
+
+            {/* Tournament appearances */}
             {(() => {
               const years = history.filter(h => (h.matches||[]).some(m=>[...(m.nukes||[]),...(m.whales||[])].includes(selectedPlayer.name))).map(h=>h.year).sort((a,b)=>b-a);
               if (!years.length) return null;
