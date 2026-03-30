@@ -104,7 +104,7 @@ export default function PublicApp({ onGoAdmin }) {
       ptsWinPct:   st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0,
       matchWinPct: tot > 0 ? Math.round((st.matchWins / tot) * 100) : 0,
     };
-  }).sort((a, b) => b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon);
+  }).sort((a, b) => b.ptsWon - a.ptsWon || b.ptsWinPct - a.ptsWinPct);
 
   // All-time stats
   const allTimeStats = {};
@@ -292,7 +292,7 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="individual" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Ranked by pts win % · Pts% = pts won ÷ pts competed · Match% = wins ÷ matches played</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Ranked by pts win % · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played</div>
                 <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                   <table>
                     <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Match%</th></tr></thead>
@@ -324,7 +324,7 @@ export default function PublicApp({ onGoAdmin }) {
                   ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
                   : <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                       <table>
-                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Record</th><th>Match%</th></tr></thead>
+                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Record</th><th>Win%</th></tr></thead>
                         <tbody>
                           {allTimeLb.map((p,i)=>{
                             const rp = roster.find(r=>r.name===p.name);
@@ -545,7 +545,7 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)" }}>{isNuke?"☢️ ":isWhale?"🐋 ":"⏳ "}{isTBD?"In Progress":h.winner}</div>
                         <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
-                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp||"—"}</span>
+                          {h.mvp&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp}</span>}
                           <span style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>·</span>
                           <span style={{ fontSize:12, color:"rgba(255,69,0,0.7)" }}>{nukePts}</span>
                           <span style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>–</span>
@@ -670,7 +670,6 @@ export default function PublicApp({ onGoAdmin }) {
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:22, fontWeight:900, lineHeight:1.1 }}>{selectedPlayer.name}</div>
                 {selectedPlayer.nickname&&<div style={{ fontSize:14, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginTop:2 }}>"{selectedPlayer.nickname}"</div>}
-                {selectedPlayer.nickname&&<div style={{ fontSize:14, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginTop:2 }}>"{selectedPlayer.nickname}"</div>}
                 {selectedPlayer.team&&selectedPlayer.team!=="tbd"&&TEAMS[selectedPlayer.team]&&(
                   <div style={{ fontSize:12, color:TEAMS[selectedPlayer.team].color, marginTop:4 }}>{TEAMS[selectedPlayer.team].emoji} {TEAMS[selectedPlayer.team].name} · {currentYear}</div>
                 )}
@@ -763,6 +762,16 @@ export default function PublicApp({ onGoAdmin }) {
                 const playerTeam = assign[selectedPlayer.name];
                 return playerTeam && h.winner === (playerTeam==="nukes"?"THE NUKES":"THE WHALES");
               });
+              // Awards from superlatives across all years
+              const awards = [];
+              history.forEach(h => {
+                (h.superlatives||[]).forEach(sup => {
+                  if (sup.player === selectedPlayer.name) {
+                    awards.push({ year: h.year, title: sup.title });
+                  }
+                });
+              });
+              awards.sort((a,b)=>b.year-a.year);
               return (
                 <div>
                   {titles.length>0&&(
@@ -770,6 +779,19 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏆 TITLES WON ({titles.length})</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
                         {titles.map(t=><span key={t.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,200,0,0.12)", border:"1px solid rgba(255,200,0,0.25)", color:"#ffd700", fontWeight:700 }}>🏆 {t.year}</span>)}
+                      </div>
+                    </div>
+                  )}
+                  {awards.length>0&&(
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏅 AWARDS ({awards.length})</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {awards.map((a,i)=>(
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:8, padding:"7px 12px" }}>
+                            <span style={{ fontSize:13, color:"#ffd700", fontWeight:700, flex:1 }}>🏅 {a.title}</span>
+                            <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>{a.year}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
