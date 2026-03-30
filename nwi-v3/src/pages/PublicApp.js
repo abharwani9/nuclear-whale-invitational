@@ -356,46 +356,42 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="matchups" && (
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Round Matchups</div>
-            {rounds.length===0&&<div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.25)" }}>No rounds set up yet</div>}
-            {["Day 1","Day 2","Day 3"].map(day=>{
-              const dayRounds = rounds.filter(r=>r.day===day);
-              if(!dayRounds.length) return null;
+            {rounds.filter(r=>r.type!=="segment").length===0&&<div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.25)" }}>No rounds set up yet</div>}
+            {/* Render rounds in order, segments as subheadings */}
+            {[...rounds].sort((a,b)=>(a.order??0)-(b.order??0)).map(round=>{
+              if (round.type==="segment") return (
+                <div key={round.id} style={{ display:"flex", alignItems:"center", gap:10, marginTop:20, marginBottom:12 }}>
+                  <div style={{ fontSize:16, fontWeight:900, letterSpacing:"0.06em", textTransform:"uppercase", color:"#e8edf3" }}>{round.label}</div>
+                  <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
+                </div>
+              );
               return (
-                <div key={day} style={{ marginBottom:28 }}>
-                  {/* Day header */}
-                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
-                    <div style={{ fontSize:18, fontWeight:900, letterSpacing:"0.08em", textTransform:"uppercase", color:"#e8edf3" }}>{day}</div>
-                    <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
+                <div key={round.id} style={{ marginBottom:20 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+                    <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
+                    {round.day&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:20 }}>{round.day}</div>}
+                    {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginLeft:"auto" }}>Win={round.pointsPerWin}pts</div>
                   </div>
-                  {dayRounds.map(round=>(
-                    <div key={round.id} style={{ marginBottom:20 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-                        <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
-                        {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginLeft:"auto" }}>Win={round.pointsPerWin}pts</div>
-                      </div>
-                      {(round.matchups||[]).map((m,mi)=>(
-                        <div key={mi} className="card" style={{ padding:"14px", marginBottom:10 }}>
-                          {/* Competition badge per matchup */}
-                          {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {m.pointsWorth||round.pointsPerWin}pts</div>}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
-                            <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
-                              <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
-                              {(m.nukes||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
-                              {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
-                              {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
-                            </div>
-                            <div style={{ textAlign:"center", fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
-                            <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
-                              <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
-                              {(m.whales||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
-                              {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
-                              {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
-                            </div>
-                          </div>
-                          {!m.winner&&<div style={{ textAlign:"center", marginTop:8, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING</div>}
+                  {(round.matchups||[]).map((m,mi)=>(
+                    <div key={mi} className="card" style={{ padding:"14px", marginBottom:10 }}>
+                      {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {m.pointsWorth||round.pointsPerWin}pts</div>}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
+                        <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
+                          <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
+                          {(m.nukes||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
+                          {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+                          {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
-                      ))}
+                        <div style={{ textAlign:"center", fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
+                        <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
+                          <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
+                          {(m.whales||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
+                          {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
+                          {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
+                        </div>
+                      </div>
+                      {!m.winner&&<div style={{ textAlign:"center", marginTop:8, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING</div>}
                     </div>
                   ))}
                 </div>
