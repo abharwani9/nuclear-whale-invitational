@@ -48,19 +48,6 @@ const s = {
   sectionTitle: { fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 },
 };
 
-// ── ORDERING HELPER ──────────────────────────────────────────────────────────
-async function moveItem(items, id, direction, collection) {
-  const sorted = [...items].sort((a,b)=>(a.order??0)-(b.order??0));
-  // Assign sequential orders first
-  for (let i=0;i<sorted.length;i++) sorted[i] = {...sorted[i], order: i*10};
-  const idx = sorted.findIndex(x=>x.id===id);
-  const swapIdx = idx + direction;
-  if (swapIdx<0||swapIdx>=sorted.length) return;
-  const a = sorted[idx], b = sorted[swapIdx];
-  await firestore.update(collection, a.id, {order: b.order});
-  await firestore.update(collection, b.id, {order: a.order});
-}
-
 const SECTIONS = [
   { id:"roster",       label:"Player Roster",    icon:"👤" },
   { id:"draft",        label:"Draft / Teams",    icon:"🎲" },
@@ -1399,9 +1386,9 @@ function RulesSection({ rules, showToast }) {
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 function SettingsSection({ meta, showToast }) {
-  const [form, setForm] = useState({ name:"", year:"", date:"", location:"", tagline:"" });
+  const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", location:meta.location||"", tagline:meta.tagline||"" }); setLoaded(true); }
+  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"" }); setLoaded(true); }
   const save = async () => {
     try { await firestore.set("meta","tournament",{...form,year:Number(form.year)}); showToast("Saved!"); }
     catch(e) { showToast(e.message,true); }
@@ -1412,7 +1399,9 @@ function SettingsSection({ meta, showToast }) {
       <div style={s.card}>
         <div style={s.grid2}>
           <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
-          <div><div style={s.label}>Date</div><input style={s.input} type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
+          <div><div style={s.label}>Tournament Date</div><input style={s.input} type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
+          <div><div style={s.label}>Countdown Start Time</div><input style={s.input} type="time" value={form.startTime||"10:00"} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))}/></div>
+          <div style={{ display:"flex", alignItems:"flex-end" }}><div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", lineHeight:1.5 }}>Time is based on each viewer's device timezone</div></div>
         </div>
         <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))}/></div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
