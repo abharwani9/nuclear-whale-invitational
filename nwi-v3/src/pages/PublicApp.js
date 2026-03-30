@@ -44,7 +44,7 @@ export default function PublicApp({ onGoAdmin }) {
   // Players active this tournament = those in the draft assignments
   const activePlayers = roster.filter(p => teamAssign[p.name]); // includes tbd
 
-  const tournamentDate = new Date((meta?.date || "2026-08-13") + "T10:00:00");
+  const tournamentDate = new Date((meta?.date || "2026-08-13") + "T" + (meta?.startTime || "10:00") + ":00");
 
   // ── Password ────────────────────────────────────────────────────────────────
   // ── Countdown ───────────────────────────────────────────────────────────────
@@ -404,7 +404,7 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="countdown" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
             <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:40 }}>August 13, 2026 · 10:00 AM</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:40 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
             {countdown.over
               ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
               : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
