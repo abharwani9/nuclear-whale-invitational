@@ -592,7 +592,6 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
       {/* Add segment button */}
       <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>Use ▲▼ to reorder · Add subsection headers to group rounds</div>
         <button style={{ ...s.btnGhost, marginLeft:"auto", fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingSegment(a=>!a)}>+ Subsection</button>
       </div>
       {addingSegment&&(
