@@ -536,30 +536,62 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   };
 
   const addMatchup = async (round) => {
-    await firestore.update("rounds",round.id,{matchups:[...(round.matchups||[]),{nukes:["",""],whales:["",""],winner:null,competitionName:"",pointsWorth:""}]});
+    const curr = getMatchups(round); await saveMatchups(round, [...curr, {nukes:["",""],whales:["",""],winner:null,competitionName:"",pointsWorth:""}]);
+  };
+
+  // Local matchup state per round — avoids Firebase re-render flicker
+  const [localMatchups, setLocalMatchups] = useState({});
+
+  // Keep local state in sync when Firebase updates (but don't overwrite mid-edit)
+  useEffect(() => {
+    setLocalMatchups(prev => {
+      const next = {...prev};
+      rounds.forEach(r => {
+        // Only sync if we don't have a pending local edit for this round
+        if (!next[r.id]) next[r.id] = r.matchups || [];
+      });
+      return next;
+    });
+  }, [rounds]);
+
+  const getMatchups = (round) => localMatchups[round.id] ?? round.matchups ?? [];
+
+  const updateLocal = (roundId, newMatchups) => {
+    setLocalMatchups(prev => ({...prev, [roundId]: newMatchups}));
+  };
+
+  const saveMatchups = async (round, newMatchups) => {
+    updateLocal(round.id, newMatchups);
+    await firestore.update("rounds", round.id, {matchups: newMatchups});
   };
 
   const updateMatchupPlayer = async (round, mi, side, idx, value) => {
-    const updated = (round.matchups||[]).map((m,i)=>{
-      if(i!==mi) return m;
-      const arr=[...(m[side]||[""," "])]; arr[idx]=value; return {...m,[side]:arr};
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => {
+      if (i !== mi) return m;
+      const arr = [...(m[side] || ["",""])];
+      arr[idx] = value;
+      return {...m, [side]: arr};
     });
-    await firestore.update("rounds",round.id,{matchups:updated});
+    await saveMatchups(round, updated);
   };
 
   const updateWinner = async (round, mi, winner) => {
-    const updated = (round.matchups||[]).map((m,i)=>i===mi?{...m,winner}:m);
-    await firestore.update("rounds",round.id,{matchups:updated});
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => i===mi ? {...m, winner} : m);
+    await saveMatchups(round, updated);
     showToast("Result saved!");
   };
 
   const delMatchup = async (round, mi) => {
-    await firestore.update("rounds",round.id,{matchups:(round.matchups||[]).filter((_,i)=>i!==mi)});
+    const current = getMatchups(round);
+    await saveMatchups(round, current.filter((_,i) => i !== mi));
   };
 
   const updateMatchupField = async (round, mi, field, value) => {
-    const updated = (round.matchups||[]).map((m,i)=>i===mi?{...m,[field]:value}:m);
-    await firestore.update("rounds",round.id,{matchups:updated});
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => i===mi ? {...m, [field]: value} : m);
+    await saveMatchups(round, updated);
   };
 
   return (
@@ -631,13 +663,13 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
-          {(round.matchups||[]).map((m,mi)=>(
+          {getMatchups(round).map((m,mi)=>(
             <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"12px", marginBottom:8 }}>
               <div style={s.grid2}>
                 <div>
                   <div style={{ fontSize:11, color:"#ff4500", marginBottom:5 }}>☢️ NUKES</div>
                   {[0,1].map(idx=>(
-                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.nukes||[])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"nukes",idx,e.target.value)}>
+                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.nukes||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"nukes",idx,e.target.value)}>
                       <option value="">— Player —</option>
                       {nukeNames.map(n=><option key={n}>{n}</option>)}
                     </select>
@@ -646,7 +678,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                 <div>
                   <div style={{ fontSize:11, color:"#00aaff", marginBottom:5 }}>🐋 WHALES</div>
                   {[0,1].map(idx=>(
-                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.whales||[])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"whales",idx,e.target.value)}>
+                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.whales||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"whales",idx,e.target.value)}>
                       <option value="">— Player —</option>
                       {whaleNames.map(n=><option key={n}>{n}</option>)}
                     </select>
