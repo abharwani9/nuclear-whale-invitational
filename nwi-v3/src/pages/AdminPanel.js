@@ -847,13 +847,6 @@ function ScheduleSection({ schedule, showToast }) {
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>{items.length} event{items.length!==1?"s":""}</div>
             </div>
             <SchedDayList items={items} showToast={showToast} setEditing={setEditing} setForm={setForm}/>
-                <span style={{ fontSize:16 }}>{item.icon}</span>
-                <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
-                <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
-                <button style={s.btnGhost} onClick={()=>{setEditing(item.id);setForm({day:item.day,time:item.time,event:item.event,icon:item.icon||"",course:item.course||""});}}>Edit</button>
-                <button style={s.btnDanger} onClick={async()=>{await firestore.delete("schedule",item.id);}}>✕</button>
-              </div>
-            ))}
           </div>
         );
       })}
