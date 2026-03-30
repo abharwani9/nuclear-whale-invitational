@@ -295,7 +295,7 @@ export default function PublicApp({ onGoAdmin }) {
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Ranked by pts win % · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played</div>
                 <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                   <table>
-                    <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Match%</th></tr></thead>
+                    <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Win%</th></tr></thead>
                     <tbody>
                       {individualLb.map((p,i)=>{
                         const tc = (p.team && p.team!=="tbd") ? TEAMS[p.team] : null;
