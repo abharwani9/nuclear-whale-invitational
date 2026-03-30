@@ -5,6 +5,33 @@ import { uploadToCloudinary } from "../cloudinary/config";
 import { seedDatabase } from "../firebase/seed";
 import AdminMedia from "./AdminMedia";
 
+// ── ORDERING HELPER: swap two items by order field ────────────────────────────
+async function moveItem(items, id, direction, collectionName) {
+  const sorted = [...items].map((x,i)=>({...x,order:x.order??i*10})).sort((a,b)=>a.order-b.order);
+  for (let i=0;i<sorted.length;i++) sorted[i]={...sorted[i],order:i*10};
+  const idx = sorted.findIndex(x=>x.id===id);
+  const swapIdx = idx + direction;
+  if (idx<0||swapIdx<0||swapIdx>=sorted.length) return;
+  await firestore.update(collectionName, sorted[idx].id, {order: sorted[swapIdx].order});
+  await firestore.update(collectionName, sorted[swapIdx].id, {order: sorted[idx].order});
+}
+
+// Up/Down button component
+function OrderBtns({ items, id, collection, small }) {
+  const sorted = [...items].sort((a,b)=>(a.order??0)-(b.order??0));
+  const idx = sorted.findIndex(x=>x.id===id);
+  const sz = small ? "22px" : "26px";
+  const fs = small ? 10 : 12;
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+      <button disabled={idx===0} onClick={()=>moveItem(items,id,-1,collection)}
+        style={{ width:sz,height:sz,padding:0,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:idx===0?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.6)",cursor:idx===0?"default":"pointer",fontSize:fs,lineHeight:1 }}>▲</button>
+      <button disabled={idx===sorted.length-1} onClick={()=>moveItem(items,id,1,collection)}
+        style={{ width:sz,height:sz,padding:0,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:idx===sorted.length-1?"rgba(255,255,255,0.15)":"rgba(255,255,255,0.6)",cursor:idx===sorted.length-1?"default":"pointer",fontSize:fs,lineHeight:1 }}>▼</button>
+    </div>
+  );
+}
+
 const ADMIN_CODES = ["nuke2026", "whale2026", "admin2026"];
 
 const s = {
@@ -20,6 +47,19 @@ const s = {
   grid2:    { display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 },
   sectionTitle: { fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 },
 };
+
+// ── ORDERING HELPER ──────────────────────────────────────────────────────────
+async function moveItem(items, id, direction, collection) {
+  const sorted = [...items].sort((a,b)=>(a.order??0)-(b.order??0));
+  // Assign sequential orders first
+  for (let i=0;i<sorted.length;i++) sorted[i] = {...sorted[i], order: i*10};
+  const idx = sorted.findIndex(x=>x.id===id);
+  const swapIdx = idx + direction;
+  if (swapIdx<0||swapIdx>=sorted.length) return;
+  const a = sorted[idx], b = sorted[swapIdx];
+  await firestore.update(collection, a.id, {order: b.order});
+  await firestore.update(collection, b.id, {order: a.order});
+}
 
 const SECTIONS = [
   { id:"roster",       label:"Player Roster",    icon:"👤" },
@@ -468,22 +508,15 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"" };
   const [form, setForm]           = useState(blankRound);
   const [editingRound, setEditingRound] = useState(null);
-  const [dragOverRound, setDragOverRound] = useState(null);
+  const [newSegment, setNewSegment] = useState("");
+  const [addingSegment, setAddingSegment] = useState(false);
 
-  const handleRoundDrop = async (e, targetId) => {
-    const srcId = e.dataTransfer.getData("roundId");
-    if (!srcId||srcId===targetId) { setDragOverRound(null); return; }
-    const current = [...rounds].map((r,i)=>({...r, order: r.order??i}));
-    const reindexed = [...current].sort((a,b)=>a.order-b.order).map((r,i)=>({...r,order:i*10}));
-    const filtered = reindexed.filter(r=>r.id!==srcId);
-    const srcItem = reindexed.find(r=>r.id===srcId);
-    const tgtPos = filtered.findIndex(r=>r.id===targetId);
-    if (!srcItem||tgtPos<0) { setDragOverRound(null); return; }
-    filtered.splice(tgtPos,0,srcItem);
-    for (let i=0;i<filtered.length;i++) {
-      await firestore.update("rounds", filtered[i].id, { order: i*10 });
-    }
-    setDragOverRound(null);
+  const addSegment = async () => {
+    if (!newSegment.trim()) return;
+    // segments stored as special round entries with type:"segment"
+    const maxOrder = Math.max(0,...rounds.map(r=>r.order||0));
+    await firestore.add("rounds",{type:"segment",label:newSegment.trim(),order:maxOrder+10,matchups:[]});
+    setNewSegment(""); setAddingSegment(false); showToast("Subsection added!");
   };
 
   const currentYear = meta?.year || new Date().getFullYear();
@@ -558,20 +591,36 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
         </div>
       </div>
 
-      <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginBottom:8 }}>Drag ⠿ to reorder rounds</div>
+      {/* Add segment button */}
+      <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>Use ▲▼ to reorder · Add subsection headers to group rounds</div>
+        <button style={{ ...s.btnGhost, marginLeft:"auto", fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingSegment(a=>!a)}>+ Subsection</button>
+      </div>
+      {addingSegment&&(
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <input autoFocus style={{ flex:1,...s.input,fontSize:13 }} value={newSegment} onChange={e=>setNewSegment(e.target.value)}
+            placeholder="e.g. Day 1, Morning Rounds..." onKeyDown={e=>{if(e.key==="Enter")addSegment();if(e.key==="Escape")setAddingSegment(false);}}/>
+          <button style={s.btnFire} onClick={addSegment}>Add</button>
+          <button style={s.btnGhost} onClick={()=>setAddingSegment(false)}>Cancel</button>
+        </div>
+      )}
       {[...rounds].sort((a,b)=>(a.order??0)-(b.order??0)).map(round=>(
-        <div key={round.id} draggable
-          onDragStart={e=>e.dataTransfer.setData("roundId",round.id)}
-          onDragOver={e=>{e.preventDefault();setDragOverRound(round.id);}}
-          onDrop={e=>handleRoundDrop(e,round.id)} onDragLeave={()=>setDragOverRound(null)}
-          style={{ ...s.card, borderColor:dragOverRound===round.id?"rgba(255,255,255,0.3)":"rgba(255,200,0,0.15)", cursor:"grab" }}>
+        round.type==="segment" ? (
+          /* Segment subheading */
+          <div key={round.id} style={{ display:"flex", alignItems:"center", gap:8, marginTop:16, marginBottom:8 }}>
+            <OrderBtns items={rounds} id={round.id} collection="rounds"/>
+            <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.08em", textTransform:"uppercase", flex:1 }}>{round.label}</div>
+            <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:11 }} onClick={async()=>{ if(window.confirm("Delete subsection?")) await firestore.delete("rounds",round.id); }}>✕</button>
+          </div>
+        ) : (
+        <div key={round.id} style={{ ...s.card, borderColor:"rgba(255,200,0,0.15)", marginBottom:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <OrderBtns items={rounds} id={round.id} collection="rounds"/>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
               <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}</div>
             </div>
-            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name,day:round.day,pointsPerWin:round.pointsPerWin,pointsPerTie:round.pointsPerTie,competitionName:round.competitionName||""});}}>Edit</button>
+            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
           {(round.matchups||[]).map((m,mi)=>(
@@ -626,6 +675,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
           ))}
           <button style={{ ...s.btnGhost, marginTop:4 }} onClick={()=>addMatchup(round)}>+ Add Matchup</button>
         </div>
+        )
       ))}
     </div>
   );
@@ -765,11 +815,8 @@ function ScheduleSection({ schedule, showToast }) {
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>{items.length} event{items.length!==1?"s":""}</div>
             </div>
             {items.map(item=>(
-              <div key={item.id} draggable onDragStart={e=>handleDragStart(e,item.id)}
-                onDragOver={e=>{e.preventDefault();setDragOver(item.id);}}
-                onDrop={e=>handleDrop(e,item.id)} onDragLeave={()=>setDragOver(null)}
-                style={{ ...s.card, padding:"10px 12px", display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", borderColor:dragOver===item.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", opacity:1 }}>
-                <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14, cursor:"grab" }}>⠿</span>
+              <div key={item.id}
+                style={{ ...s.card, padding:"10px 12px", display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
                 <span style={{ fontSize:16 }}>{item.icon}</span>
                 <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
                 <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
@@ -790,30 +837,7 @@ function CompetitionsSection({ competitions, showToast }) {
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
   const [resultFor, setResultFor] = useState(null);
-  const [dragOverComp, setDragOverComp] = useState(null);
-
-  const handleCompDrop = async (e, targetId) => {
-    const srcId = e.dataTransfer.getData("compId");
-    if (!srcId||srcId===targetId) { setDragOverComp(null); return; }
-    // Get current display order (assign index as order to all first)
-    const current = [...competitions].map((c,i)=>({...c, order: c.order??i}));
-    // Ensure all have unique values by re-indexing
-    const reindexed = [...current].sort((a,b)=>a.order-b.order).map((c,i)=>({...c,order:i*10}));
-    const srcItem = reindexed.find(c=>c.id===srcId);
-    const tgtItem = reindexed.find(c=>c.id===targetId);
-    if (!srcItem||!tgtItem) { setDragOverComp(null); return; }
-    // Move src to tgt position - update all items with new order
-    const filtered = reindexed.filter(c=>c.id!==srcId);
-    const tgtPos = filtered.findIndex(c=>c.id===targetId);
-    filtered.splice(tgtPos,0,srcItem);
-    // Save new order for all items
-    for (let i=0;i<filtered.length;i++) {
-      if (filtered[i].order !== i*10 || filtered[i].id===srcId) {
-        await firestore.update("competitions", filtered[i].id, { order: i*10 });
-      }
-    }
-    setDragOverComp(null);
-  };
+  // ordering done via OrderBtns component
 
   const save = async () => {
     if (!form.name) return showToast("Name required", true);
@@ -851,15 +875,10 @@ function CompetitionsSection({ competitions, showToast }) {
       </div>
 
       {/* Competition list */}
-      <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginBottom:8 }}>Drag ⠿ to reorder</div>
       {[...competitions].sort((a,b)=>(a.order??0)-(b.order??0)).map(c=>(
-        <div key={c.id} draggable
-          onDragStart={e=>e.dataTransfer.setData("compId",c.id)}
-          onDragOver={e=>{e.preventDefault();setDragOverComp(c.id);}}
-          onDrop={e=>handleCompDrop(e,c.id)} onDragLeave={()=>setDragOverComp(null)}
-          style={{ ...s.card, borderColor:dragOverComp===c.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", cursor:"grab" }}>
+        <div key={c.id} style={{ ...s.card }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <OrderBtns items={competitions} id={c.id} collection="competitions"/>
             <span style={{ fontSize:24 }}>{c.icon}</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:15, fontWeight:700 }}>{c.name}</div>
@@ -1089,8 +1108,6 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
   const [editForm, setEditForm]   = useState(null);
   const [newHeading, setNewHeading] = useState("");
   const [addingHeading, setAddingHeading] = useState(false);
-  const [dragOverMi, setDragOverMi] = useState(null);
-
   const allPlayers = [...nukeNames,...whaleNames];
   const compOptions = ["Round 1","Round 2","Round 3",...(competitions||[]).map(c=>c.name)];
 
@@ -1098,18 +1115,12 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
     await firestore.update("history", year.id, { matches: newMatches });
   };
 
-  // Drag reorder matches
-  const handleMatchDrop = async (e, targetMi) => {
-    e.preventDefault(); e.stopPropagation();
-    const srcMi = parseInt(e.dataTransfer.getData("matchMi"));
-    if (isNaN(srcMi)||srcMi===targetMi) { setDragOverMi(null); return; }
+  const moveMatch = async (mi, dir) => {
     const arr = [...(year.matches||[])];
-    const [moved] = arr.splice(srcMi,1);
-    // Adjust targetMi if src was before target
-    const adjustedTarget = srcMi < targetMi ? targetMi - 1 : targetMi;
-    arr.splice(adjustedTarget,0,moved);
+    const swapIdx = mi + dir;
+    if (swapIdx<0||swapIdx>=arr.length) return;
+    [arr[mi], arr[swapIdx]] = [arr[swapIdx], arr[mi]];
     await saveAll(arr);
-    setDragOverMi(null);
   };
 
   // Add subheading (stored as a special match entry with type:"heading")
@@ -1225,10 +1236,7 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
       )}
 
       {(year.matches||[]).map((m,mi)=>(
-        <div key={mi} draggable={true}
-          onDragStart={e=>e.dataTransfer.setData("matchMi",String(mi))}
-          onDragOver={e=>{e.preventDefault();setDragOverMi(mi);}}
-          onDrop={e=>handleMatchDrop(e,mi)} onDragLeave={()=>setDragOverMi(null)}>
+        <div key={mi}>
           {/* Subheading */}
           {m.type==="heading"&&(
             <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:14, marginBottom:6 }}>
@@ -1240,8 +1248,11 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
           {m.type!=="heading"&&editingMi===mi&&editForm
             ? <MatchForm vals={editForm} setVals={setEditForm} onSave={saveEdit} onCancel={()=>{setEditingMi(null);setEditForm(null);}} saveLabel="Save Changes"/>
             : m.type!=="heading"&&(
-              <div style={{ background:`rgba(255,255,255,${dragOverMi===mi?"0.08":"0.03"})`, border:`1px solid ${dragOverMi===mi?"rgba(255,255,255,0.25)":m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"flex-start" }}>
-                <span style={{ color:"rgba(255,255,255,0.15)", fontSize:16, paddingTop:4, cursor:"grab", flexShrink:0 }}>⠿</span>
+              <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"flex-start" }}>
+                <div style={{ display:"flex", flexDirection:"column", gap:2, paddingTop:4, flexShrink:0 }}>
+                  <button onClick={()=>moveMatch(mi,-1)} disabled={mi===0} style={{ width:22,height:22,padding:0,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:10 }}>▲</button>
+                  <button onClick={()=>moveMatch(mi,1)} disabled={mi===(year.matches||[]).length-1} style={{ width:22,height:22,padding:0,background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:3,color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:10 }}>▼</button>
+                </div>
                 <div style={{ flex:1 }}>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
                     <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
@@ -1334,35 +1345,22 @@ function RulesSection({ rules, showToast }) {
   const blank = { title:"", body:"", order:rules.length+1 };
   const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
-  const [dragOver, setDragOver] = useState(null);
   const sorted = [...rules].sort((a,b)=>(a.order||0)-(b.order||0));
 
   const save = async () => {
     if (!form.title||!form.body) return showToast("Title and body required",true);
     try {
-      if (editing) { await firestore.update("rules",editing,{...form,order:Number(form.order)}); showToast("Updated!"); setEditing(null); }
-      else { await firestore.add("rules",{...form,order:Number(form.order)}); showToast("Added!"); }
-      setForm({...blank,order:rules.length+2});
+      const maxOrder = rules.length ? Math.max(...rules.map(r=>r.order||0))+10 : 0;
+      if (editing) { await firestore.update("rules",editing,{...form,order:Number(form.order)||0}); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("rules",{...form,order:maxOrder}); showToast("Added!"); }
+      setForm({...blank,order:0});
     } catch(e) { showToast(e.message,true); }
-  };
-
-  const handleDrop = async (e, targetId) => {
-    const srcId = e.dataTransfer.getData("ruleId");
-    if (!srcId||srcId===targetId) { setDragOver(null); return; }
-    const src = sorted.find(r=>r.id===srcId);
-    const tgt = sorted.find(r=>r.id===targetId);
-    if (src&&tgt) {
-      await firestore.update("rules",srcId,{order:tgt.order||0});
-      await firestore.update("rules",targetId,{order:src.order||0});
-    }
-    setDragOver(null);
-    showToast("Reordered!");
   };
 
   return (
     <div>
       <div style={s.sectionTitle}>📋 Rules</div>
-      <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:14 }}>Drag ⠿ to reorder</div>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:14 }}>Use ▲▼ to reorder</div>
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add Rule"}</div>
         <div><div style={s.label}>Title</div><input style={{...s.input,marginBottom:10}} value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
@@ -1373,12 +1371,9 @@ function RulesSection({ rules, showToast }) {
         </div>
       </div>
       {sorted.map((r,i)=>(
-        <div key={r.id} draggable onDragStart={e=>e.dataTransfer.setData("ruleId",r.id)}
-          onDragOver={e=>{e.preventDefault();setDragOver(r.id);}}
-          onDrop={e=>handleDrop(e,r.id)} onDragLeave={()=>setDragOver(null)}
-          style={{ ...s.card, padding:"12px 14px", borderColor:dragOver===r.id?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)", cursor:"grab" }}>
+        <div key={r.id} style={{ ...s.card, padding:"12px 14px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14 }}>⠿</span>
+            <OrderBtns items={rules} id={r.id} collection="rules" small/>
             <div style={{ flex:1, fontWeight:700 }}>{r.title}</div>
             <button style={s.btnGhost} onClick={()=>{setEditing(r.id);setForm({title:r.title,body:r.body,order:r.order});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{await firestore.delete("rules",r.id);}}>✕</button>
