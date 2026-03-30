@@ -29,25 +29,59 @@ export default function AdminMedia({ showToast }) {
   const { data: media } = useCollection("media");
   const filtered = media.filter(m=>m.type===mediaTab);
 
+  const [multiFiles, setMultiFiles] = useState([]); // for bulk photo upload
+  const [multiProgress, setMultiProgress] = useState(null); // "3/8" style
+
   const handleFile = (e) => {
-    const f=e.target.files[0]; if(!f) return;
-    const maxMB=mediaTab==="audio"?50:20;
-    if(f.size>maxMB*1024*1024){showToast(`File too large — max ${maxMB}MB`,true);return;}
-    setFile(f); if(mediaTab==="photo") setPreview(URL.createObjectURL(f)); else setPreview(null);
-    if(!form.name) setForm(f2=>({...f2,name:f.name.replace(/\.[^.]+$/,"")}));
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const maxMB = mediaTab==="audio" ? 50 : 20;
+    // Multi-photo mode
+    if (mediaTab==="photo" && files.length > 1) {
+      const tooBig = files.filter(f=>f.size>maxMB*1024*1024);
+      if (tooBig.length) { showToast(`${tooBig.length} file(s) too large — max ${maxMB}MB each`, true); return; }
+      setMultiFiles(files); setFile(null); setPreview(null);
+      return;
+    }
+    // Single file mode
+    const f = files[0];
+    if (f.size>maxMB*1024*1024) { showToast(`File too large — max ${maxMB}MB`, true); return; }
+    setFile(f); setMultiFiles([]);
+    if (mediaTab==="photo") setPreview(URL.createObjectURL(f)); else setPreview(null);
+    if (!form.name) setForm(f2=>({...f2, name:f.name.replace(/\.[^.]+$/, "")}));
   };
 
   const uploadFile = async () => {
-    if(!file) return showToast("Please select a file first",true);
-    if(!form.name) return showToast("Please enter a name",true);
+    // Bulk photo upload
+    if (multiFiles.length > 0) {
+      const year = parseInt(form.year) || new Date().getFullYear();
+      let done = 0;
+      setMultiProgress(`0/${multiFiles.length}`);
+      for (const f of multiFiles) {
+        try {
+          const url = await uploadToCloudinary(f, "photo", ()=>{});
+          const name = f.name.replace(/\.[^.]+$/, "");
+          await firestore.add("media", { type:"photo", url, name, description:form.description||"", year, uploadedAt:new Date().toISOString(), uploader:"admin", fileSize:f.size, mimeType:f.type });
+          done++;
+          setMultiProgress(`${done}/${multiFiles.length}`);
+        } catch(e) { showToast(`Failed: ${f.name}`, true); }
+      }
+      showToast(`${done} photo${done!==1?"s":""} uploaded!`);
+      setMultiFiles([]); setMultiProgress(null); setForm(f=>({...f,name:"",description:""}));
+      if (fileRef.current) fileRef.current.value="";
+      return;
+    }
+    // Single file upload
+    if (!file) return showToast("Please select a file first", true);
+    if (!form.name) return showToast("Please enter a name", true);
     setProgress(0);
     try {
-      const url=await uploadToCloudinary(file,mediaTab,setProgress);
-      await firestore.add("media",{ type:mediaTab, url, name:form.name, description:form.description||"", year:parseInt(form.year)||new Date().getFullYear(), uploadedAt:new Date().toISOString(), uploader:"admin", fileSize:file.size, mimeType:file.type });
+      const url = await uploadToCloudinary(file, mediaTab, setProgress);
+      await firestore.add("media", { type:mediaTab, url, name:form.name, description:form.description||"", year:parseInt(form.year)||new Date().getFullYear(), uploadedAt:new Date().toISOString(), uploader:"admin", fileSize:file.size, mimeType:file.type });
       showToast(`${TYPE_LABELS[mediaTab]} uploaded!`);
-      setFile(null);setPreview(null);setProgress(null);setForm(f=>({...f,name:"",description:""}));
-      if(fileRef.current) fileRef.current.value="";
-    } catch(e) { showToast("Upload failed: "+e.message,true); setProgress(null); }
+      setFile(null); setPreview(null); setProgress(null); setForm(f=>({...f,name:"",description:""}));
+      if (fileRef.current) fileRef.current.value="";
+    } catch(e) { showToast("Upload failed: "+e.message, true); setProgress(null); }
   };
 
   const addLink = async () => {
@@ -108,7 +142,7 @@ export default function AdminMedia({ showToast }) {
             </div>
             <div style={{ marginBottom:14 }}><div style={s.label}>Description (optional)</div><input style={s.input} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Optional note"/></div>
 
-            <input ref={fileRef} type="file" accept={ACCEPTED[mediaTab]} style={{ display:"none" }} onChange={handleFile}/>
+            <input ref={fileRef} type="file" accept={ACCEPTED[mediaTab]} multiple={mediaTab==="photo"} style={{ display:"none" }} onChange={handleFile}/>
             {preview&&<img src={preview} alt="preview" style={{ width:"100%", maxHeight:180, objectFit:"cover", borderRadius:8, marginBottom:10 }}/>}
             {file&&!preview&&(
               <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,0.05)", borderRadius:8, marginBottom:10 }}>
@@ -126,7 +160,9 @@ export default function AdminMedia({ showToast }) {
               </div>
             )}
             <div style={{ display:"flex", gap:8 }}>
-              <button style={{...s.btnGhost,flex:1}} onClick={()=>fileRef.current.click()}>{file?"📁 Change file":`📁 Choose ${TYPE_LABELS[mediaTab]}`}</button>
+              <button style={{...s.btnGhost,flex:1}} onClick={()=>fileRef.current.click()}>
+                  {multiFiles.length>0?`📸 ${multiFiles.length} photos selected`:file?"📁 Change file":`📁 Choose ${TYPE_LABELS[mediaTab]}${mediaTab==="photo"?" (select multiple)":""}`}
+                </button>
               {file&&<button style={{...s.btnFire,flex:2}} onClick={uploadFile} disabled={progress!==null}>{progress!==null?`Uploading ${progress}%...`:"⬆ Upload"}</button>}
             </div>
           </div>
