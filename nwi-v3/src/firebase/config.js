@@ -1,5 +1,20 @@
+// src/firebase/config.js
+// ─────────────────────────────────────────────────────────────────
+// SETUP INSTRUCTIONS:
+// 1. Go to https://console.firebase.google.com
+// 2. Click "Add project" → name it "nuclear-whale-invitational"
+// 3. Disable Google Analytics (not needed) → Create project
+// 4. Click the </> Web icon to add a web app
+// 5. Register app with nickname "NWI App"
+// 6. Copy the firebaseConfig values below from your Firebase console
+// 7. In Firebase console: Build → Firestore Database → Create database
+//    → Start in "test mode" → choose a region → Done
+// 8. In Firebase console: Build → Storage → Get started
+//    → Start in "test mode" → Done  (for player photos)
+// ─────────────────────────────────────────────────────────────────
+
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, memoryLocalCache } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES:
@@ -13,6 +28,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// Use memory cache only — disables offline persistence so data is always fresh
+export const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 export const auth = getAuth(app);
 export default app;
