@@ -694,16 +694,21 @@ export default function PublicApp({ onGoAdmin }) {
           const totalPaidOut = winners.reduce((sum,w)=>sum+(w.amount||0),0);
           const runningTotal = totalContributed - totalPaidOut;
 
-          // Per-player total owed across ALL years
+          // Only show owed amounts for years AFTER the last payout
+          const lastPaidYear = winners.length > 0
+            ? Math.max(...winners.map(w=>w.year))
+            : 0;
+
           const playerOwed = {};
           yearEntries.forEach(e => {
-            (e.optedIn||[]).forEach(name => {
-              playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
-            });
+            if (e.year > lastPaidYear) {
+              (e.optedIn||[]).forEach(name => {
+                playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
+              });
+            }
           });
           const playersInPool = Object.keys(playerOwed).sort((a,b)=>playerOwed[b]-playerOwed[a]);
           const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-          const playersOut = allPlayers.filter(p=>!playerOwed[p.name]);
 
           return (
             <div>
