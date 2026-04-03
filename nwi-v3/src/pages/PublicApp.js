@@ -29,6 +29,9 @@ export default function PublicApp({ onGoAdmin }) {
   const [atSort, setAtSort]         = useState("ptsWinPct");
   const [atDir, setAtDir]           = useState("desc");
   const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
+  const [indSort, setIndSort]       = useState("ptsWon");
+  const [indDir, setIndDir]         = useState("desc");
+  const indSortLabels = { ptsWon:"points won", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
 
   const { data: roster }       = useCollection("roster");       // master player profiles
   const { data: rounds }       = useCollection("rounds");
@@ -295,28 +298,55 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="individual" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Ranked by pts win % · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played</div>
-                <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
-                  <table>
-                    <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>W-T-L</th><th>Win%</th></tr></thead>
-                    <tbody>
-                      {individualLb.map((p,i)=>{
-                        const tc = (p.team && p.team!=="tbd") ? TEAMS[p.team] : null;
-                        const totalM = p.matchWins+p.matchTies+p.matchLosses;
-                        return (
-                          <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
-                            <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                            <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div></td>
-                            <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
-                            <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                            <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
-                            <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                {(() => {
+                  const handleIndSort = (col) => {
+                    if (indSort===col) setIndDir(d=>d==="desc"?"asc":"desc");
+                    else { setIndSort(col); setIndDir("desc"); }
+                  };
+                  const sorted = [...individualLb].sort((a,b) => {
+                    let diff = 0;
+                    if (indSort==="ptsWon")    diff = b.ptsWon - a.ptsWon;
+                    if (indSort==="ptsWinPct") diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
+                    if (indSort==="record")    diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
+                    if (indSort==="winPct")    diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
+                    return indDir==="asc" ? -diff : diff;
+                  });
+                  const thS = (col) => ({ cursor:"pointer", userSelect:"none", color:indSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
+                  const arr = (col) => indSort===col ? (indDir==="desc"?" ▼":" ▲") : " ↕";
+                  return (
+                    <>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Sorted by <span style={{ color:"#ffd700" }}>{indSortLabels[indSort]}</span> ({indDir==="desc"?"highest first":"lowest first"}) · tap column to sort</div>
+                      <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
+                        <table>
+                          <thead><tr>
+                            <th>#</th>
+                            <th>Player</th>
+                            <th style={thS("ptsWon")} onClick={()=>handleIndSort("ptsWon")}>Pts{arr("ptsWon")}</th>
+                            <th style={thS("ptsWinPct")} onClick={()=>handleIndSort("ptsWinPct")}>Pts%{arr("ptsWinPct")}</th>
+                            <th style={thS("record")} onClick={()=>handleIndSort("record")}>W-T-L{arr("record")}</th>
+                            <th style={thS("winPct")} onClick={()=>handleIndSort("winPct")}>Win%{arr("winPct")}</th>
+                          </tr></thead>
+                          <tbody>
+                            {sorted.map((p,i)=>{
+                              const tc = (p.team && p.team!=="tbd") ? TEAMS[p.team] : null;
+                              const totalM = p.matchWins+p.matchTies+p.matchLosses;
+                              return (
+                                <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
+                                  <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
+                                  <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div></td>
+                                  <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
+                                  <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
+                                  <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
+                                  <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
