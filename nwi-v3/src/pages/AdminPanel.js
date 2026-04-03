@@ -1504,8 +1504,6 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const currentYear = meta?.year || new Date().getFullYear();
   const ledger = holePool?.find(h => h.id === "ledger");
 
-  const currentOptedIn = [];
-  const currentContrib = 0;
   const [winnerYear, setWinnerYear]     = useState(String(currentYear));
   const [winnerName, setWinnerName]     = useState("");
   const [winnerDate, setWinnerDate]     = useState("");
