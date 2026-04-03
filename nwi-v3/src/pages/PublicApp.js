@@ -87,11 +87,16 @@ export default function PublicApp({ onGoAdmin }) {
       try {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
-          // Check for existing registration first to avoid duplicates
-          let sw = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
-          if (!sw) {
-            sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+          // Unregister any stale service workers first
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            if (!reg.active?.scriptURL?.includes("firebase-messaging-sw")) {
+              await reg.unregister();
+            }
           }
+          // Register the messaging service worker
+          const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache: "none" });
+          await sw.update(); // force update check
           const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
           if (token) {
             const { firestore } = await import("../firebase/hooks");
