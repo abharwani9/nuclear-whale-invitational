@@ -1829,6 +1829,34 @@ function SettingsSection({ meta, showToast }) {
           {sending ? "Sending..." : `📬 Send to ${(fcmTokens||[]).length} Subscriber${(fcmTokens||[]).length!==1?"s":""}`}
         </button>
       </div>
+
+      {/* Subscriber management */}
+      {(fcmTokens||[]).length>0&&(
+        <div style={s.card}>
+          <div style={{ fontSize:14, fontWeight:700, marginBottom:10 }}>📱 Subscribers ({(fcmTokens||[]).length})</div>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:12 }}>Tokens are anonymous. Remove stale ones if someone stopped using the app.</div>
+          {[...(fcmTokens||[])].sort((a,b)=>b.updatedAt?.localeCompare(a.updatedAt||"")||0).map((t,i)=>(
+            <div key={t.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8, marginBottom:6 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"monospace" }}>...{(t.token||"").slice(-16)}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginTop:2 }}>Added {t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : "unknown"}</div>
+              </div>
+              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={async()=>{
+                if(window.confirm("Remove this subscriber?")) {
+                  await firestore.delete("fcm_tokens", t.id);
+                  showToast("Subscriber removed");
+                }
+              }}>✕</button>
+            </div>
+          ))}
+          <button style={{ ...s.btnDanger, marginTop:8, width:"100%" }} onClick={async()=>{
+            if(window.confirm(`Remove ALL ${(fcmTokens||[]).length} subscribers? They will need to re-allow notifications.`)) {
+              for (const t of (fcmTokens||[])) await firestore.delete("fcm_tokens", t.id);
+              showToast("All subscribers removed");
+            }
+          }}>Remove All Subscribers</button>
+        </div>
+      )}
     </div>
   );
 }
