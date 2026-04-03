@@ -1504,8 +1504,8 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const currentYear = meta?.year || new Date().getFullYear();
   const ledger = holePool?.find(h => h.id === "ledger");
 
-  const [buyIn, setBuyIn]               = useState("");
-  const [loaded, setLoaded]             = useState(false);
+  const currentOptedIn = [];
+  const currentContrib = 0;
   const [winnerYear, setWinnerYear]     = useState(String(currentYear));
   const [winnerName, setWinnerName]     = useState("");
   const [winnerDate, setWinnerDate]     = useState("");
@@ -1519,8 +1519,6 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const yearEntries = (ledger?.yearEntries || []).sort((a,b)=>b.year-a.year);
   const winners     = ledger?.winners || [];
   const currentEntry = yearEntries.find(e => String(e.year) === String(currentYear));
-
-  if (currentEntry && !loaded) { setBuyIn(String(currentEntry.buyIn||"")); setLoaded(true); }
 
   // Financials — pool resets per winner year: total contributed up to & including winner year minus prior payouts
   const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
@@ -1550,12 +1548,6 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
     updated.contributions = (updated.optedIn||[]).length * (Number(updated.buyIn)||0);
     const rest = yearEntries.filter(e=>String(e.year)!==String(year));
     return [...rest, updated].sort((a,b)=>b.year-a.year);
-  };
-
-  const saveBuyIn = async () => {
-    if (!buyIn) return showToast("Enter a buy-in amount", true);
-    await saveLedger({ yearEntries: upsertYearEntry(currentYear, { buyIn: Number(buyIn) }) });
-    showToast("Buy-in saved!");
   };
 
   const togglePlayer = async (name, year) => {
@@ -1596,23 +1588,6 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
         <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>💰 Total Pool (All Years)</div>
         <div style={{ fontSize:52, fontWeight:900, color:"#4ade80", lineHeight:1 }}>${Math.round(runningTotal)}</div>
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:6 }}>${Math.round(totalContributed)} contributed · ${Math.round(totalPaidOut)} paid out</div>
-      </div>
-
-      {/* Current year buy-in */}
-      <div style={s.card}>
-        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:"#4ade80" }}>💰 {currentYear} Buy-In</div>
-        <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
-          <div style={{ flex:1 }}>
-            <div style={s.label}>Amount Per Player ($)</div>
-            <input style={s.input} type="number" step="1" value={buyIn} onChange={e=>setBuyIn(e.target.value)} placeholder="e.g. 20"/>
-          </div>
-          <button style={s.btnFire} onClick={saveBuyIn}>Save</button>
-        </div>
-        {currentEntry?.buyIn&&(
-          <div style={{ marginTop:10, fontSize:13, color:"rgba(255,255,255,0.4)" }}>
-            {currentOptedIn.length} players × ${currentEntry.buyIn} = <strong style={{ color:"#4ade80" }}>${currentContrib}</strong>
-          </div>
-        )}
       </div>
 
       {/* Add historical year */}
