@@ -1,5 +1,5 @@
 // firebase-messaging-sw.js
-// 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES (same as src/firebase/config.js)
+// 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES
 
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
@@ -18,16 +18,15 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 const messaging = firebase.messaging();
 
-// onBackgroundMessage fires when the app is in background
-// We explicitly show ONE notification here with a dedup tag
 messaging.onBackgroundMessage(payload => {
-  const title = payload.data?.nwi_title || payload.notification?.title || 'Nuclear Whale Invitational';
-  const body  = payload.data?.nwi_body  || payload.notification?.body  || '';
+  // Show the full payload as the notification body so we can see what's coming through
+  const title = 'DEBUG - NWI';
+  const body  = JSON.stringify(payload);
 
   return self.registration.showNotification(title, {
     body,
     icon: '/logo192.png',
-    tag: 'nwi',       // same tag = replaces any existing notification, no duplicates
-    renotify: true,   // still buzzes even with same tag
+    tag: 'nwi',
+    renotify: true,
   });
 });
