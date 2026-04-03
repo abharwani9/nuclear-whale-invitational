@@ -13,19 +13,21 @@ firebase.initializeApp({
   appId: "1:877175227248:web:c587c9fc446d1c324305b5"
 });
 
-self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 const messaging = firebase.messaging();
 
+// Data-only message handler — we control the notification display entirely
 messaging.onBackgroundMessage(payload => {
-  // Read from webpush.notification (set by worker) — tag prevents duplicates
-  const title = payload.notification?.title || payload.data?.title || 'Nuclear Whale Invitational';
-  const body  = payload.notification?.body  || payload.data?.body  || '';
-  self.registration.showNotification(title, {
+  const title = payload.data?.nwi_title || 'Nuclear Whale Invitational';
+  const body  = payload.data?.nwi_body  || '';
+  // tag prevents any duplicate — same tag replaces previous notification
+  return self.registration.showNotification(title, {
     body,
     icon: '/logo192.png',
-    tag: 'nwi',
-    renotify: true,
+    badge: '/logo192.png',
+    tag: 'nwi-unique',
+    renotify: false,
   });
 });
