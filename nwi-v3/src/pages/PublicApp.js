@@ -713,9 +713,9 @@ export default function PublicApp({ onGoAdmin }) {
               {/* Big green total */}
               <div className="card" style={{ padding:"28px 20px", marginBottom:20, textAlign:"center", background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.25)" }}>
                 <div style={{ fontSize:15, color:"rgba(255,255,255,0.4)", letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Current Pool</div>
-                <div style={{ fontSize:64, fontWeight:900, color:"#4ade80", lineHeight:1 }}>💰 ${runningTotal.toFixed(2)}</div>
+                <div style={{ fontSize:64, fontWeight:900, color:"#4ade80", lineHeight:1 }}>💰 ${Math.round(runningTotal)}</div>
                 <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)", marginTop:10 }}>
-                  ${totalContributed.toFixed(2)} total contributed · ${totalPaidOut.toFixed(2)} paid out
+                  ${Math.round(totalContributed)} total contributed · ${Math.round(totalPaidOut)} paid out
                 </div>
               </div>
 
@@ -728,9 +728,9 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ fontSize:24 }}>⛳</div>
                       <div style={{ flex:1 }}>
                         <div style={{ fontWeight:800, fontSize:15 }}>{w.name}</div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year} · {new Date(w.date).toLocaleDateString()}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year}{w.date?` · ${new Date(w.date).toLocaleDateString()}`:""}</div>
                       </div>
-                      <div style={{ fontSize:22, fontWeight:900, color:"#ffd700" }}>${(w.amount||0).toFixed(2)}</div>
+                      <div style={{ fontSize:22, fontWeight:900, color:"#ffd700" }}>${Math.round(w.amount||0)}</div>
                     </div>
                   ))}
                 </div>
@@ -757,7 +757,7 @@ export default function PublicApp({ onGoAdmin }) {
                             </div>
                           </div>
                           <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${owed.toFixed(2)}</div>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(owed)}</div>
                             <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
                           </div>
                         </div>
@@ -767,22 +767,12 @@ export default function PublicApp({ onGoAdmin }) {
                   {/* Total row */}
                   <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 14px", borderTop:"1px solid rgba(255,255,255,0.07)", marginTop:4 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>{playersInPool.length} players total</div>
-                    <div style={{ fontSize:15, fontWeight:900, color:"#4ade80" }}>${runningTotal.toFixed(2)}</div>
+                    <div style={{ fontSize:15, fontWeight:900, color:"#4ade80" }}>${Math.round(runningTotal)}</div>
                   </div>
                 </div>
               )}
 
-              {/* Not in pool */}
-              {playersOut.length>0&&(
-                <div>
-                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>✕ Not In Pool</div>
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                    {playersOut.map(p=>(
-                      <div key={p.id} style={{ padding:"6px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:20, fontSize:13, color:"rgba(255,255,255,0.35)" }}>{p.name}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
           );
         })()}
@@ -933,8 +923,25 @@ export default function PublicApp({ onGoAdmin }) {
                 });
               });
               awards.sort((a,b)=>b.year-a.year);
+              // Hole-in-one wins
+              const ledger = holePool?.find(h=>h.id==="ledger");
+              const holeWins = (ledger?.winners||[]).filter(w=>w.name===selectedPlayer.name).sort((a,b)=>b.year-a.year);
               return (
                 <div>
+                  {holeWins.length>0&&(
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>⛳ HOLE-IN-ONE ({holeWins.length})</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {holeWins.map((w,i)=>(
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:8, padding:"7px 12px" }}>
+                            <span style={{ fontSize:14 }}>⛳</span>
+                            <span style={{ fontSize:13, color:"#4ade80", fontWeight:700, flex:1 }}>Hole-in-One — ${Math.round(w.amount||0)}</span>
+                            <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>{w.year}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {titles.length>0&&(
                     <div style={{ marginBottom:14 }}>
                       <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏆 TITLES WON ({titles.length})</div>
