@@ -18,16 +18,17 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 const messaging = firebase.messaging();
 
-// Data-only message handler — we control the notification display entirely
+// webpush.notification in the FCM payload handles display automatically with the tag
+// onBackgroundMessage is NOT called when webpush.notification is present
+// So we don't need to call showNotification here — FCM handles it with our tag
 messaging.onBackgroundMessage(payload => {
-  const title = payload.data?.nwi_title || 'Nuclear Whale Invitational';
-  const body  = payload.data?.nwi_body  || '';
-  // tag prevents any duplicate — same tag replaces previous notification
-  return self.registration.showNotification(title, {
-    body,
-    icon: '/logo192.png',
-    badge: '/logo192.png',
-    tag: 'nwi-unique',
-    renotify: false,
-  });
+  // Only fires for data-only messages — not needed since we use webpush.notification
+  // Kept as safety net
+  if (!payload.notification && !payload.webpush?.notification) {
+    const title = payload.data?.nwi_title || 'Nuclear Whale Invitational';
+    const body  = payload.data?.nwi_body  || '';
+    return self.registration.showNotification(title, {
+      body, icon: '/logo192.png', tag: 'nwi-unique', renotify: false,
+    });
+  }
 });
