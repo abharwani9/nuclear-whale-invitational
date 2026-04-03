@@ -27,6 +27,8 @@ export default function PublicApp({ onGoAdmin }) {
   const [lbTab, setLbTab]           = useState("team");
   const [expandedHistory, setExpandedHistory] = useState(null);
   const [atSort, setAtSort]         = useState("ptsWinPct");
+  const [atDir, setAtDir]           = useState("desc");
+  const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
 
   const { data: roster }       = useCollection("roster");       // master player profiles
   const { data: rounds }       = useCollection("rounds");
@@ -320,29 +322,34 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="alltime" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Record sorts by most wins</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Sorted by <span style={{ color:"#ffd700" }}>{atSortLabels[atSort]}</span> ({atDir==="desc"?"highest first":"lowest first"}) · tap column to sort</div>
                 {allTimeLb.length===0
                   ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
                   : (() => {
+                      const handleSort = (col) => {
+                        if (atSort===col) setAtDir(d=>d==="desc"?"asc":"desc");
+                        else { setAtSort(col); setAtDir("desc"); }
+                      };
                       const sorted = [...allTimeLb].sort((a,b) => {
-                        if (atSort==="ptsWon")     return b.ptsWon - a.ptsWon;
-                        if (atSort==="ptsWinPct")  return b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
-                        if (atSort==="record")     return b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
-                        if (atSort==="winPct")     return b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
-                        return 0;
+                        let diff = 0;
+                        if (atSort==="ptsWon")    diff = b.ptsWon - a.ptsWon;
+                        if (atSort==="ptsWinPct") diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
+                        if (atSort==="record")    diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
+                        if (atSort==="winPct")    diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
+                        return atDir==="asc" ? -diff : diff;
                       });
                       const thStyle = (col) => ({ cursor:"pointer", userSelect:"none", color:atSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
-                      const arrow = (col) => atSort===col ? " ▼" : "";
+                      const arrow = (col) => atSort===col ? (atDir==="desc"?" ▼":" ▲") : " ↕";
                       return (
                         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                           <table>
                             <thead><tr>
                               <th>#</th>
                               <th>Player</th>
-                              <th style={thStyle("ptsWon")} onClick={()=>setAtSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
-                              <th style={thStyle("ptsWinPct")} onClick={()=>setAtSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
-                              <th style={thStyle("record")} onClick={()=>setAtSort("record")}>Record{arrow("record")}</th>
-                              <th style={thStyle("winPct")} onClick={()=>setAtSort("winPct")}>Win%{arrow("winPct")}</th>
+                              <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
+                              <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
+                              <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
+                              <th style={thStyle("winPct")} onClick={()=>handleSort("winPct")}>Win%{arrow("winPct")}</th>
                             </tr></thead>
                             <tbody>
                               {sorted.map((p,i)=>{
