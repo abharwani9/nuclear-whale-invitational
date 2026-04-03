@@ -18,15 +18,9 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 const messaging = firebase.messaging();
 
+// webpush.notification in the payload handles display with tag dedup
+// onBackgroundMessage is NOT called when webpush.notification is present in FCM v1
+// So this handler only fires for data-only messages — do nothing here
 messaging.onBackgroundMessage(payload => {
-  // Show the full payload as the notification body so we can see what's coming through
-  const title = 'DEBUG - NWI';
-  const body  = JSON.stringify(payload);
-
-  return self.registration.showNotification(title, {
-    body,
-    icon: '/logo192.png',
-    tag: 'nwi',
-    renotify: true,
-  });
+  // Intentionally empty — webpush.notification handles display
 });
