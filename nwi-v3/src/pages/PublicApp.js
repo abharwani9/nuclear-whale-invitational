@@ -1,6 +1,7 @@
 // src/pages/PublicApp.js
 import { useState, useEffect } from "react";
 import { useCollection, useDocument } from "../firebase/hooks";
+import { messaging, getToken, onMessage, VAPID_KEY } from "../firebase/config";
 import MediaGallery from "./MediaGallery";
 
 const TEAMS = {
@@ -71,6 +72,78 @@ export default function PublicApp({ onGoAdmin }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [tournamentDate]);
+
+  const [notifEnabled, setNotifEnabled] = useState(null); // null=unknown, true=on, false=off
+  const [notifToken, setNotifToken]     = useState(null);
+
+  // Request notification permission and register token
+  useEffect(() => {
+    if (!messaging) return;
+    // Check localStorage for user's preference
+    const savedPref = localStorage.getItem("nwi_notif");
+    if (savedPref === "off") { setNotifEnabled(false); return; }
+
+    const register = async () => {
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+          const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+          if (token) {
+            const { firestore } = await import("../firebase/hooks");
+            const tokenKey = token.slice(-20);
+            await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
+            setNotifToken(token);
+            setNotifEnabled(true);
+            localStorage.setItem("nwi_notif", "on");
+            localStorage.setItem("nwi_token_key", tokenKey);
+          }
+        } else {
+          setNotifEnabled(false);
+        }
+      } catch(e) {
+        console.log("Notification permission:", e.message);
+        setNotifEnabled(false);
+      }
+    };
+    register();
+
+    if (onMessage) {
+      onMessage(messaging, payload => {
+        const { title, body } = payload.notification || {};
+        if (title) alert(`🔔 ${title}\n${body||""}`);
+      });
+    }
+  }, []);
+
+  const toggleNotifications = async () => {
+    const { firestore } = await import("../firebase/hooks");
+    const tokenKey = localStorage.getItem("nwi_token_key");
+    if (notifEnabled) {
+      // Turn off — remove token from Firestore
+      if (tokenKey) {
+        try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
+      }
+      setNotifEnabled(false);
+      localStorage.setItem("nwi_notif", "off");
+    } else {
+      // Turn on — re-register token
+      try {
+        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+        if (token) {
+          const key = token.slice(-20);
+          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
+          setNotifToken(token);
+          setNotifEnabled(true);
+          localStorage.setItem("nwi_notif", "on");
+          localStorage.setItem("nwi_token_key", key);
+        }
+      } catch(e) {
+        alert("Could not enable notifications. Please check your device settings.");
+      }
+    }
+  };
 
   // ── Points engine ───────────────────────────────────────────────────────────
   const teamPoints = { nukes: 0, whales: 0 };
@@ -189,8 +262,14 @@ export default function PublicApp({ onGoAdmin }) {
       <div style={{ background:"linear-gradient(180deg,#0d1520,#07090e)", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"20px 16px 14px" }}>
         <div style={{ maxWidth:680, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4 }}>
-              <span className="live-dot"/>LIVE · {meta?.year || 2026}
+            <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span><span className="live-dot"/>LIVE · {meta?.year || 2026}</span>
+              {messaging && notifEnabled !== null && (
+                <button onClick={toggleNotifications} title={notifEnabled?"Turn off notifications":"Turn on notifications"}
+                  style={{ background:"none", border:"none", cursor:"pointer", fontSize:16, opacity:notifEnabled?1:0.35, padding:0, lineHeight:1 }}>
+                  {notifEnabled ? "🔔" : "🔕"}
+                </button>
+              )}
             </div>
             <h1 style={{ fontWeight:900, fontSize:"clamp(24px,6vw,46px)", letterSpacing:"0.04em", textTransform:"uppercase", lineHeight:1.05, background:"linear-gradient(90deg,#ff4500,#ff8c00 35%,#fff 50%,#00aaff 65%,#0066cc)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
               NUCLEAR WHALE<br/>INVITATIONAL
