@@ -64,6 +64,7 @@ const SECTIONS = [
   { id:"rounds",       label:"Rounds",           icon:"⚔️"  },
   { id:"schedule",     label:"Schedule",         icon:"📅" },
   { id:"competitions", label:"Competitions",     icon:"🎯" },
+  { id:"hole",         label:"Hole-in-One Pool", icon:"⛳" },
   { id:"media",        label:"Media Vault",      icon:"🎬" },
   { id:"history",      label:"History",          icon:"📜" },
   { id:"rules",        label:"Rules",            icon:"📋" },
@@ -84,6 +85,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
   const { data: rules }        = useCollection("rules", "order");
   const { data: meta }         = useDocument("meta", "tournament");
   const { data: drafts }       = useCollection("drafts");
+  const { data: holePool }     = useCollection("holepool");
 
   const showToast = (msg, err=false) => { setToast({msg,err}); setTimeout(()=>setToast(null), 3000); };
   const tryLogin  = () => {
@@ -143,6 +145,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="rounds"       && <RoundsSection rounds={rounds} roster={roster} drafts={drafts} competitions={competitions} meta={meta} showToast={showToast}/>}
         {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
         {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
+        {section==="hole"         && <HoleInOneSection roster={roster} holePool={holePool} meta={meta} showToast={showToast}/>}
         {section==="media"        && <AdminMedia showToast={showToast}/>}
         {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
@@ -1496,6 +1499,232 @@ function RulesSection({ rules, showToast }) {
 }
 
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
+// ── HOLE-IN-ONE POOL ─────────────────────────────────────────────────────────
+// ── HOLE-IN-ONE POOL ─────────────────────────────────────────────────────────
+function HoleInOneSection({ roster, holePool, meta, showToast }) {
+  const currentYear = meta?.year || new Date().getFullYear();
+
+  // Single "ledger" document stores everything
+  const ledger = holePool?.find(h => h.id === "ledger");
+
+  const [buyIn, setBuyIn]           = useState("");
+  const [loaded, setLoaded]         = useState(false);
+  const [winnerName, setWinnerName] = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [manualYear, setManualYear] = useState(String(currentYear));
+  const [manualAmt, setManualAmt]   = useState("");
+  const [manualNote, setManualNote] = useState("");
+  const [showManual, setShowManual] = useState(false);
+
+  // yearEntries: [{ year, buyIn, optedIn: [names], contributions: number }]
+  const yearEntries = ledger?.yearEntries || [];
+  const currentEntry = yearEntries.find(e => String(e.year) === String(currentYear));
+  const winners = ledger?.winners || []; // [{ name, amount, year, date }]
+
+  if (currentEntry && !loaded) { setBuyIn(String(currentEntry.buyIn||"")); setLoaded(true); }
+
+  // Calculate running total = sum of all yearly contributions minus payouts
+  const totalContributed = yearEntries.reduce((sum, e) => sum + (e.contributions || 0), 0);
+  const totalPaidOut = winners.reduce((sum, w) => sum + (w.amount || 0), 0);
+  const runningTotal = totalContributed - totalPaidOut;
+
+  // Current year contributions
+  const currentOptedIn = currentEntry?.optedIn || [];
+  const currentContrib = currentOptedIn.length * (Number(currentEntry?.buyIn) || 0);
+
+  const saveLedger = async (updates) => {
+    try {
+      if (ledger) {
+        await firestore.update("holepool", "ledger", updates);
+      } else {
+        await firestore.set("holepool", "ledger", { yearEntries: [], winners: [], ...updates });
+      }
+    } catch(e) { showToast(e.message, true); }
+  };
+
+  const updateYearEntry = (entry) => {
+    const rest = yearEntries.filter(e => String(e.year) !== String(currentYear));
+    return [...rest, entry].sort((a,b)=>b.year-a.year);
+  };
+
+  const saveBuyIn = async () => {
+    if (!buyIn) return showToast("Enter a buy-in amount", true);
+    const entry = { ...currentEntry, year: currentYear, buyIn: Number(buyIn),
+      optedIn: currentEntry?.optedIn || [],
+      contributions: (currentEntry?.optedIn||[]).length * Number(buyIn) };
+    await saveLedger({ yearEntries: updateYearEntry(entry) });
+    showToast("Buy-in saved!");
+  };
+
+  const togglePlayer = async (name) => {
+    const current = currentOptedIn.includes(name)
+      ? currentOptedIn.filter(n=>n!==name)
+      : [...currentOptedIn, name];
+    const bIn = Number(currentEntry?.buyIn || buyIn) || 0;
+    const entry = { ...currentEntry, year: currentYear, buyIn: bIn,
+      optedIn: current, contributions: current.length * bIn };
+    await saveLedger({ yearEntries: updateYearEntry(entry) });
+  };
+
+  const addManualEntry = async () => {
+    if (!manualAmt || !manualYear) return showToast("Year and amount required", true);
+    const yr = Number(manualYear);
+    const amt = Number(manualAmt);
+    const existing = yearEntries.find(e=>String(e.year)===String(yr));
+    const entry = { year: yr, buyIn: existing?.buyIn||0, optedIn: existing?.optedIn||[],
+      contributions: (existing?.contributions||0) + amt,
+      notes: (existing?.notes||"") + (manualNote ? ` ${manualNote}` : "") };
+    const rest = yearEntries.filter(e=>String(e.year)!==String(yr));
+    await saveLedger({ yearEntries: [...rest, entry].sort((a,b)=>b.year-a.year) });
+    setManualAmt(""); setManualNote(""); setShowManual(false);
+    showToast(`Added $${amt} from ${yr}!`);
+  };
+
+  const recordWinner = async () => {
+    if (!winnerName.trim()) return showToast("Enter winner name", true);
+    const winner = { name: winnerName.trim(), amount: runningTotal, year: currentYear, date: new Date().toISOString() };
+    await saveLedger({ winners: [...winners, winner] });
+    setWinnerName(""); setConfirmReset(false);
+    showToast(`🎉 ${winnerName} wins $${runningTotal.toFixed(2)}! Pool continues for next year.`);
+  };
+
+  const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>⛳ Hole-in-One Pool</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>
+        The pool rolls over every year until someone hits a hole-in-one. All yearly contributions accumulate.
+      </div>
+
+      {/* Running total banner */}
+      <div style={{ ...s.card, background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.2)", textAlign:"center", marginBottom:16 }}>
+        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>Total Pool (All Years)</div>
+        <div style={{ fontSize:52, fontWeight:900, color:"#4ade80", lineHeight:1 }}>${runningTotal.toFixed(2)}</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:6 }}>
+          ${totalContributed.toFixed(2)} contributed · ${totalPaidOut.toFixed(2)} paid out
+        </div>
+      </div>
+
+      {/* Current year buy-in */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:"#4ade80" }}>💰 {currentYear} Buy-In</div>
+        <div style={{ display:"flex", gap:8, alignItems:"flex-end" }}>
+          <div style={{ flex:1 }}>
+            <div style={s.label}>Amount Per Player ($)</div>
+            <input style={s.input} type="number" step="1" value={buyIn} onChange={e=>setBuyIn(e.target.value)} placeholder="e.g. 20"/>
+          </div>
+          <button style={s.btnFire} onClick={saveBuyIn}>Save</button>
+        </div>
+        {currentEntry?.buyIn&&(
+          <div style={{ marginTop:10, fontSize:13, color:"rgba(255,255,255,0.4)" }}>
+            {currentOptedIn.length} players × ${currentEntry.buyIn} = <strong style={{ color:"#4ade80" }}>${currentContrib}</strong> from {currentYear}
+          </div>
+        )}
+      </div>
+
+      {/* Add historical entry */}
+      <div style={s.card}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:showManual?14:0 }}>
+          <div style={{ fontSize:14, fontWeight:700 }}>📋 Add Historical Year Data</div>
+          <button style={{ ...s.btnGhost, fontSize:11 }} onClick={()=>setShowManual(m=>!m)}>{showManual?"Cancel":"+ Add"}</button>
+        </div>
+        {showManual&&(
+          <div>
+            <div style={s.grid2}>
+              <div><div style={s.label}>Year</div><input style={s.input} type="number" value={manualYear} onChange={e=>setManualYear(e.target.value)}/></div>
+              <div><div style={s.label}>Total Contributed ($)</div><input style={s.input} type="number" step="1" value={manualAmt} onChange={e=>setManualAmt(e.target.value)} placeholder="e.g. 160"/></div>
+            </div>
+            <div style={{ marginTop:10 }}><div style={s.label}>Note (optional)</div><input style={s.input} value={manualNote} onChange={e=>setManualNote(e.target.value)} placeholder="e.g. 8 players × $20"/></div>
+            <button style={{ ...s.btnFire, marginTop:12 }} onClick={addManualEntry}>Add Entry</button>
+          </div>
+        )}
+      </div>
+
+      {/* Player opt-in toggles for current year */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>👥 {currentYear} Player Opt-Ins</div>
+        {!currentEntry?.buyIn&&<div style={{ fontSize:12, color:"rgba(255,200,0,0.7)", marginBottom:12 }}>⚠️ Set a buy-in amount first</div>}
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {sortedRoster.map(p=>{
+            const inPool = currentOptedIn.includes(p.name);
+            return (
+              <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:inPool?"rgba(74,222,128,0.08)":"rgba(255,255,255,0.03)", border:`1px solid ${inPool?"rgba(74,222,128,0.25)":"rgba(255,255,255,0.07)"}`, borderRadius:10 }}>
+                {p.photoURL?<img src={p.photoURL} alt={p.name} style={{ width:32, height:32, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:14 }}>{p.name?.[0]}</div>}
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, fontSize:14 }}>{p.name}</div>
+                  {inPool&&currentEntry?.buyIn&&<div style={{ fontSize:11, color:"#4ade80" }}>Owes ${currentEntry.buyIn}</div>}
+                </div>
+                <button onClick={()=>togglePlayer(p.name)}
+                  style={{ padding:"6px 14px", borderRadius:8, border:`1px solid ${inPool?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:inPool?"rgba(74,222,128,0.15)":"none", color:inPool?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                  {inPool?"✓ In":"Out"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Record winner */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:8, color:"#ffd700" }}>🏆 Record Hole-in-One Winner</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:12 }}>
+          Pays out the full cumulative pool (${runningTotal.toFixed(2)}) to the winner. The pool continues accumulating after payout.
+        </div>
+        {!confirmReset?(
+          <button style={{ ...s.btnFire, width:"100%" }} onClick={()=>setConfirmReset(true)}>⛳ Record Winner</button>
+        ):(
+          <div>
+            <div style={s.label}>Winner Name</div>
+            <input style={{ ...s.input, marginBottom:10 }} value={winnerName} onChange={e=>setWinnerName(e.target.value)} placeholder="Player who hit the hole-in-one"/>
+            <div style={{ display:"flex", gap:8 }}>
+              <button style={{ ...s.btnFire, flex:1 }} onClick={recordWinner}>Confirm — Pay ${runningTotal.toFixed(2)} to {winnerName||"..."}</button>
+              <button style={s.btnGhost} onClick={()=>setConfirmReset(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Yearly ledger */}
+      <div style={s.card}>
+        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>📊 Yearly Ledger</div>
+        {yearEntries.length===0&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No entries yet</div>}
+        {yearEntries.map((e,i)=>(
+          <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:"rgba(255,255,255,0.03)", borderRadius:8, marginBottom:6 }}>
+            <div style={{ fontSize:14, fontWeight:800, color:"rgba(255,255,255,0.5)", minWidth:40 }}>{e.year}</div>
+            <div style={{ flex:1, fontSize:13, color:"rgba(255,255,255,0.5)" }}>
+              {e.optedIn?.length>0?`${e.optedIn.length} players × $${e.buyIn}`:e.notes||"Manual entry"}
+            </div>
+            <div style={{ fontWeight:700, color:"#4ade80" }}>${(e.contributions||0).toFixed(2)}</div>
+          </div>
+        ))}
+        {yearEntries.length>0&&(
+          <div style={{ display:"flex", justifyContent:"flex-end", paddingTop:8, borderTop:"1px solid rgba(255,255,255,0.06)", marginTop:4 }}>
+            <div style={{ fontSize:14, fontWeight:800, color:"#4ade80" }}>Total: ${totalContributed.toFixed(2)}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Past payouts */}
+      {winners.length>0&&(
+        <div style={s.card}>
+          <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>🎉 Past Payouts</div>
+          {[...winners].reverse().map((w,i)=>(
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:10, marginBottom:6 }}>
+              <div style={{ fontSize:20 }}>⛳</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700 }}>{w.name}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year} · {new Date(w.date).toLocaleDateString()}</div>
+              </div>
+              <div style={{ fontSize:18, fontWeight:900, color:"#ffd700" }}>${(w.amount||0).toFixed(2)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsSection({ meta, showToast }) {
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
