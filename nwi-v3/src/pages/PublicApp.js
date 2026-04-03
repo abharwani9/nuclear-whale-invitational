@@ -87,7 +87,11 @@ export default function PublicApp({ onGoAdmin }) {
       try {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
-          const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+          // Check for existing registration first to avoid duplicates
+          let sw = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+          if (!sw) {
+            sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+          }
           const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
           if (token) {
             const { firestore } = await import("../firebase/hooks");
@@ -129,7 +133,10 @@ export default function PublicApp({ onGoAdmin }) {
     } else {
       // Turn on — re-register token
       try {
-        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        let sw = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
+        if (!sw) {
+          sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+        }
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
         if (token) {
           const key = token.slice(-20);
