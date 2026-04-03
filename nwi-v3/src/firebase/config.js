@@ -16,6 +16,7 @@
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, memoryLocalCache } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 // 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES:
 const firebaseConfig = {
@@ -27,8 +28,20 @@ const firebaseConfig = {
   appId: "1:877175227248:web:c587c9fc446d1c324305b5"
 };
 
+// 🔧 REPLACE THIS with your VAPID key from Firebase Console
+// Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Key pair
+export const VAPID_KEY = "BK6nf34XmWKpO9SKYa2M7PLEqEykuIzzyC158Y5AQxnHDQxBSyvC8tJV_PAHQhIBIUxpsBz5J8VjGhK5Z6o2dR8";
+
 const app = initializeApp(firebaseConfig);
-// Use memory cache only — disables offline persistence so data is always fresh
 export const db = initializeFirestore(app, { localCache: memoryLocalCache() });
 export const auth = getAuth(app);
+
+// Messaging — only initialize in browser (not during SSR)
+let messaging = null;
+try {
+  messaging = getMessaging(app);
+} catch(e) {
+  console.log("Messaging not available:", e.message);
+}
+export { messaging, getToken, onMessage };
 export default app;
