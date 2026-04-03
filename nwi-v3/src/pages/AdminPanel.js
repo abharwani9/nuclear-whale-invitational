@@ -695,7 +695,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                   <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>💰 POINTS WORTH</div>
                   <input style={s.input} type="number" step="0.5" placeholder={`Default: ${round.pointsPerWin}`}
                     value={m.pointsWorth||""} onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
-                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>Leave blank to use round default ({round.pointsPerWin}pts)</div>
+                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>Win={m.pointsWorth||round.pointsPerWin}pts · Tie={m.pointsWorth ? m.pointsWorth/2 : round.pointsPerTie}pts</div>
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -706,8 +706,11 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                     {w==="nukes"?"☢️ Win":w==="whales"?"🐋 Win":w==="tie"?"🤝 Tie":"Pending"}
                   </button>
                 ))}
-                <div style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,200,0,0.6)", fontWeight:700 }}>
-                  {(m.pointsWorth||round.pointsPerWin)}pts
+                <div style={{ marginLeft:"auto", fontSize:12, fontWeight:700 }}>
+                  {m.pointsWorth
+                    ? <span style={{ color:"#ff8c00" }}>Win={m.pointsWorth}pts · Tie={m.pointsWorth/2}pts</span>
+                    : <span style={{ color:"rgba(255,200,0,0.5)" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts</span>
+                  }
                 </div>
                 <button style={{ ...s.btnDanger, padding:"4px 10px" }} onClick={()=>delMatchup(round,mi)}>✕</button>
               </div>
