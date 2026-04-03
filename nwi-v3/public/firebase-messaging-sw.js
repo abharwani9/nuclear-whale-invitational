@@ -1,5 +1,5 @@
 // firebase-messaging-sw.js
-// 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES
+// 🔧 REPLACE THESE WITH YOUR FIREBASE PROJECT VALUES (same as src/firebase/config.js)
 
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
@@ -18,17 +18,16 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 const messaging = firebase.messaging();
 
-// webpush.notification in the FCM payload handles display automatically with the tag
-// onBackgroundMessage is NOT called when webpush.notification is present
-// So we don't need to call showNotification here — FCM handles it with our tag
+// onBackgroundMessage fires when the app is in background
+// We explicitly show ONE notification here with a dedup tag
 messaging.onBackgroundMessage(payload => {
-  // Only fires for data-only messages — not needed since we use webpush.notification
-  // Kept as safety net
-  if (!payload.notification && !payload.webpush?.notification) {
-    const title = payload.data?.nwi_title || 'Nuclear Whale Invitational';
-    const body  = payload.data?.nwi_body  || '';
-    return self.registration.showNotification(title, {
-      body, icon: '/logo192.png', tag: 'nwi-unique', renotify: false,
-    });
-  }
+  const title = payload.data?.nwi_title || payload.notification?.title || 'Nuclear Whale Invitational';
+  const body  = payload.data?.nwi_body  || payload.notification?.body  || '';
+
+  return self.registration.showNotification(title, {
+    body,
+    icon: '/logo192.png',
+    tag: 'nwi',       // same tag = replaces any existing notification, no duplicates
+    renotify: true,   // still buzzes even with same tag
+  });
 });
