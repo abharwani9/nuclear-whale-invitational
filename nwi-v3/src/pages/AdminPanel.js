@@ -1753,11 +1753,40 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
 function SettingsSection({ meta, showToast }) {
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"" }); setLoaded(true); }
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifBody, setNotifBody]   = useState("");
+  const [sending, setSending]       = useState(false);
+  const { data: fcmTokens } = useCollection("fcm_tokens");
+
+  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"" }); setLoaded(true); }
+
   const save = async () => {
     try { await firestore.set("meta","tournament",{...form,year:Number(form.year)}); showToast("Saved!"); }
     catch(e) { showToast(e.message,true); }
   };
+
+  const sendNotification = async () => {
+    if (!notifTitle.trim()) return showToast("Title is required", true);
+    const tokens = (fcmTokens||[]).map(t=>t.token).filter(Boolean);
+    if (tokens.length === 0) return showToast("No subscribers yet — no one has allowed notifications", true);
+    const workerUrl = meta?.workerUrl;
+    const workerSecret = meta?.workerSecret;
+    if (!workerUrl) return showToast("Cloudflare Worker URL not set — add it in Settings", true);
+    setSending(true);
+    try {
+      const res = await fetch(workerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerSecret||""}` },
+        body: JSON.stringify({ tokens, title: notifTitle.trim(), message: notifBody.trim() }),
+      });
+      const data = await res.json();
+      await firestore.add("notifications", { title:notifTitle.trim(), body:notifBody.trim(), sentAt:new Date().toISOString(), sentTo:data.sent||0 });
+      showToast(`📬 Sent to ${data.sent} subscriber${data.sent!==1?"s":""}!`);
+      setNotifTitle(""); setNotifBody("");
+    } catch(e) { showToast("Failed: " + e.message, true); }
+    setSending(false);
+  };
+
   return (
     <div>
       <div style={s.sectionTitle}>⚙️ Settings</div>
@@ -1777,7 +1806,28 @@ function SettingsSection({ meta, showToast }) {
           <div style={s.label}>Admin Codes</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}><strong style={{ color:"#ff4500" }}>nuke2026</strong> · <strong style={{ color:"#00aaff" }}>whale2026</strong> · <strong style={{ color:"#ffd700" }}>admin2026</strong></div>
         </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Cloudflare Worker URL (for push notifications)</div>
+          <input style={s.input} value={form.workerUrl||""} onChange={e=>setForm(f=>({...f,workerUrl:e.target.value}))} placeholder="https://nwi-notif.your-name.workers.dev"/>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Worker Secret</div>
+          <input style={s.input} type="password" value={form.workerSecret||""} onChange={e=>setForm(f=>({...f,workerSecret:e.target.value}))} placeholder="The secret you set in Cloudflare"/>
+        </div>
         <button style={{ ...s.btnFire, marginTop:14 }} onClick={save}>Save Settings</button>
+      </div>
+
+      {/* Send Notification */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>🔔 Send Push Notification</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>
+          {(fcmTokens||[]).length} subscriber{(fcmTokens||[]).length!==1?"s":""} · Sends to everyone who allowed notifications
+        </div>
+        <div><div style={s.label}>Title</div><input style={{ ...s.input, marginBottom:10 }} value={notifTitle} onChange={e=>setNotifTitle(e.target.value)} placeholder="e.g. Day 1 Results Are In!"/></div>
+        <div><div style={s.label}>Message</div><textarea rows={2} value={notifBody} onChange={e=>setNotifBody(e.target.value)} placeholder="e.g. Nukes lead 18-12 after Day 1. Check the leaderboard!"/></div>
+        <button style={{ ...s.btnFire, marginTop:12, width:"100%" }} onClick={sendNotification} disabled={sending||!notifTitle.trim()}>
+          {sending ? "Sending..." : `📬 Send to ${(fcmTokens||[]).length} Subscriber${(fcmTokens||[]).length!==1?"s":""}`}
+        </button>
       </div>
     </div>
   );
