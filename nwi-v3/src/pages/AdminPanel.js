@@ -1512,7 +1512,7 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const [showWinner, setShowWinner]     = useState(false);
   const [editYear, setEditYear]         = useState(null);
   const [editBuyIn, setEditBuyIn]       = useState("");
-  const [collapsed, setCollapsed]       = useState({});
+  const [expanded, setExpanded]         = useState({});
   const [editingWinner, setEditingWinner]   = useState(null);
   const [editWinnerForm, setEditWinnerForm] = useState({}); // year → bool
 
@@ -1582,7 +1582,7 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   };
 
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-  const toggleCollapse = (yr) => setCollapsed(c=>({...c,[yr]:!c[yr]}));
+  const toggleExpanded = (yr) => setExpanded(e=>({...e,[yr]:!e[yr]}));
 
   return (
     <div>
@@ -1628,17 +1628,27 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
       {/* Per-year opt-in toggles — collapsible */}
       {yearEntries.map(entry=>{
         const isCurrentYear = String(entry.year)===String(currentYear);
-        const isCollapsed = collapsed[entry.year] !== false && !isCurrentYear; // historical collapsed by default
+        // Current year expanded by default; historical collapsed by default
+        const isExpanded = isCurrentYear ? (expanded[entry.year] !== false) : !!expanded[entry.year];
+        const isCollapsed = !isExpanded;
         return (
           <div key={entry.year} style={s.card}>
-            <div style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }} onClick={()=>toggleCollapse(entry.year)}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:700 }}>
-                  {isCurrentYear?`⭐ ${entry.year} (Current Year)`:String(entry.year)}
-                  <span style={{ fontSize:12, fontWeight:400, color:"rgba(255,255,255,0.35)", marginLeft:8 }}>${entry.buyIn||0}/player · {(entry.optedIn||[]).length} players · ${entry.contributions||0}</span>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ flex:1, cursor:"pointer", display:"flex", alignItems:"center", gap:8 }} onClick={()=>toggleExpanded(entry.year)}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700 }}>
+                    {isCurrentYear?`⭐ ${entry.year} (Current Year)`:String(entry.year)}
+                    <span style={{ fontSize:12, fontWeight:400, color:"rgba(255,255,255,0.35)", marginLeft:8 }}>${entry.buyIn||0}/player · {(entry.optedIn||[]).length} players · ${entry.contributions||0}</span>
+                  </div>
                 </div>
+                <span style={{ color:"rgba(255,255,255,0.3)", fontSize:12 }}>{isCollapsed?"▶ Show":"▼ Hide"}</span>
               </div>
-              <span style={{ color:"rgba(255,255,255,0.3)", fontSize:12 }}>{isCollapsed?"▶ Show":"▼ Hide"}</span>
+              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11, flexShrink:0 }} onClick={async()=>{
+                if(window.confirm(`Delete ${entry.year} from the pool? This cannot be undone.`)) {
+                  await saveLedger({ yearEntries: yearEntries.filter(e=>String(e.year)!==String(entry.year)) });
+                  showToast(`${entry.year} removed`);
+                }
+              }}>✕</button>
             </div>
             {!isCollapsed&&(
               <div style={{ marginTop:12 }}>
