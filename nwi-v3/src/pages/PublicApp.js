@@ -14,6 +14,7 @@ const TABS = [
   { id: "countdown",    label: "Countdown",     icon: "⏳" },
   { id: "schedule",     label: "Schedule",      icon: "📅" },
   { id: "competitions", label: "Competitions",  icon: "🎯" },
+  { id: "hole",         label: "Hole-in-One",   icon: "⛳" },
   { id: "players",      label: "Players",       icon: "👤" },
   { id: "history",      label: "History",       icon: "📜" },
   { id: "media",        label: "Media",         icon: "🎬" },
@@ -39,6 +40,7 @@ export default function PublicApp({ onGoAdmin }) {
   const { data: competitions } = useCollection("competitions");
   const { data: history }      = useCollection("history");
   const { data: rules }        = useCollection("rules", "order");
+  const { data: holePool }     = useCollection("holepool");
   const { data: meta }         = useDocument("meta", "tournament");
   const { data: drafts }       = useCollection("drafts");
 
