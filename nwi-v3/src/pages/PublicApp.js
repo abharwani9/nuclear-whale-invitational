@@ -26,6 +26,7 @@ export default function PublicApp({ onGoAdmin }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [lbTab, setLbTab]           = useState("team");
   const [expandedHistory, setExpandedHistory] = useState(null);
+  const [atSort, setAtSort]         = useState("ptsWinPct");
 
   const { data: roster }       = useCollection("roster");       // master player profiles
   const { data: rounds }       = useCollection("rounds");
@@ -319,33 +320,53 @@ export default function PublicApp({ onGoAdmin }) {
 
             {lbTab==="alltime" && (
               <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments — ranked by pts win % · includes current tournament</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Record sorts by most wins</div>
                 {allTimeLb.length===0
                   ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
-                  : <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
-                      <table>
-                        <thead><tr><th>#</th><th>Player</th><th>Pts</th><th>Pts%</th><th>Record</th><th>Win%</th></tr></thead>
-                        <tbody>
-                          {allTimeLb.map((p,i)=>{
-                            const rp = roster.find(r=>r.name===p.name);
-                            return (
-                              <tr key={p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>rp&&setSelectedPlayer({...rp,...p})}>
-                                <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                                <td style={{ fontWeight:700 }}>{p.name}</td>
-                                <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
-                                <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                <td>
-                                  <span style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</span>
-                                  {" "}<span style={{ fontWeight:700, color:"#ffd700" }}>{p.matchTies}T</span>
-                                  {" "}<span style={{ fontWeight:700, color:"#ff5555" }}>{p.matchLosses}L</span>
-                                </td>
-                                <td style={{ fontWeight:700, color:"#00aaff" }}>{p.totalMatches>0?p.matchWinPct+"%":"—"}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                  : (() => {
+                      const sorted = [...allTimeLb].sort((a,b) => {
+                        if (atSort==="ptsWon")     return b.ptsWon - a.ptsWon;
+                        if (atSort==="ptsWinPct")  return b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
+                        if (atSort==="record")     return b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
+                        if (atSort==="winPct")     return b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
+                        return 0;
+                      });
+                      const thStyle = (col) => ({ cursor:"pointer", userSelect:"none", color:atSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
+                      const arrow = (col) => atSort===col ? " ▼" : "";
+                      return (
+                        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
+                          <table>
+                            <thead><tr>
+                              <th>#</th>
+                              <th>Player</th>
+                              <th style={thStyle("ptsWon")} onClick={()=>setAtSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
+                              <th style={thStyle("ptsWinPct")} onClick={()=>setAtSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
+                              <th style={thStyle("record")} onClick={()=>setAtSort("record")}>Record{arrow("record")}</th>
+                              <th style={thStyle("winPct")} onClick={()=>setAtSort("winPct")}>Win%{arrow("winPct")}</th>
+                            </tr></thead>
+                            <tbody>
+                              {sorted.map((p,i)=>{
+                                const rp = roster.find(r=>r.name===p.name);
+                                return (
+                                  <tr key={p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>rp&&setSelectedPlayer({...rp,...p})}>
+                                    <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
+                                    <td style={{ fontWeight:700 }}>{p.name}</td>
+                                    <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
+                                    <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
+                                    <td>
+                                      <span style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</span>
+                                      {" "}<span style={{ fontWeight:700, color:"#ffd700" }}>{p.matchTies}T</span>
+                                      {" "}<span style={{ fontWeight:700, color:"#ff5555" }}>{p.matchLosses}L</span>
+                                    </td>
+                                    <td style={{ fontWeight:700, color:"#00aaff" }}>{p.totalMatches>0?p.matchWinPct+"%":"—"}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()
                 }
               </div>
             )}
