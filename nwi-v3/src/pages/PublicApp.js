@@ -871,4 +871,106 @@ export default function PublicApp({ onGoAdmin }) {
       )}
     </div>
   );
-}
+}        {tab==="hole" && (() => {
+          const currentYear = meta?.year || new Date().getFullYear();
+          const ledger = holePool?.find(h=>h.id==="ledger");
+          const yearEntries = ledger?.yearEntries || [];
+          const winners = ledger?.winners || [];
+          const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
+          const totalPaidOut = winners.reduce((sum,w)=>sum+(w.amount||0),0);
+          const runningTotal = totalContributed - totalPaidOut;
+
+          // Per-player total owed across ALL years
+          const playerOwed = {};
+          yearEntries.forEach(e => {
+            (e.optedIn||[]).forEach(name => {
+              playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
+            });
+          });
+          const playersInPool = Object.keys(playerOwed).sort((a,b)=>playerOwed[b]-playerOwed[a]);
+          const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+          const playersOut = allPlayers.filter(p=>!playerOwed[p.name]);
+
+          return (
+            <div>
+              <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One Pool</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Rolls over every year — whoever hits a hole-in-one takes the full cumulative pot.</div>
+
+              {/* Big green total */}
+              <div className="card" style={{ padding:"28px 20px", marginBottom:20, textAlign:"center", background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.25)" }}>
+                <div style={{ fontSize:15, color:"rgba(255,255,255,0.4)", letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Current Pool</div>
+                <div style={{ fontSize:64, fontWeight:900, color:"#4ade80", lineHeight:1 }}>💰 ${runningTotal.toFixed(2)}</div>
+                <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)", marginTop:10 }}>
+                  ${totalContributed.toFixed(2)} total contributed · ${totalPaidOut.toFixed(2)} paid out
+                </div>
+              </div>
+
+              {/* Past payouts */}
+              {winners.length>0&&(
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>🏆 Past Winners</div>
+                  {[...winners].reverse().map((w,i)=>(
+                    <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+                      <div style={{ fontSize:24 }}>⛳</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:800, fontSize:15 }}>{w.name}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year} · {new Date(w.date).toLocaleDateString()}</div>
+                      </div>
+                      <div style={{ fontSize:22, fontWeight:900, color:"#ffd700" }}>${(w.amount||0).toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Individual ledger - who owes what */}
+              {playersInPool.length>0&&(
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(74,222,128,0.7)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>💵 Individual Ledger</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Total each player has contributed across all years</div>
+                  {playersInPool.map(name=>{
+                    const p = roster.find(r=>r.name===name);
+                    const owed = playerOwed[name]||0;
+                    // Show per-year breakdown
+                    const years = yearEntries.filter(e=>(e.optedIn||[]).includes(name)).sort((a,b)=>a.year-b.year);
+                    return (
+                      <div key={name} className="card" style={{ padding:"12px 14px", marginBottom:8, borderColor:"rgba(74,222,128,0.12)", background:"rgba(74,222,128,0.03)" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          {p?.photoURL?<img src={p.photoURL} alt={name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15 }}>{name?.[0]}</div>}
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
+                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
+                              {years.map(e=>`${e.year}: $${e.buyIn}`).join(" · ")}
+                            </div>
+                          </div>
+                          <div style={{ textAlign:"right" }}>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${owed.toFixed(2)}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Total row */}
+                  <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 14px", borderTop:"1px solid rgba(255,255,255,0.07)", marginTop:4 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>{playersInPool.length} players total</div>
+                    <div style={{ fontSize:15, fontWeight:900, color:"#4ade80" }}>${runningTotal.toFixed(2)}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Not in pool */}
+              {playersOut.length>0&&(
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>✕ Not In Pool</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {playersOut.map(p=>(
+                      <div key={p.id} style={{ padding:"6px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:20, fontSize:13, color:"rgba(255,255,255,0.35)" }}>{p.name}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        
