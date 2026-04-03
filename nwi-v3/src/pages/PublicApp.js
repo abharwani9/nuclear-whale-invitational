@@ -110,8 +110,8 @@ export default function PublicApp({ onGoAdmin }) {
 
     if (onMessage) {
       onMessage(messaging, payload => {
-        const { title, body } = payload.notification || {};
-        if (title) alert(`🔔 ${title}\n${body||""}`);
+        // Foreground — service worker handles display, no need to alert
+        console.log("Foreground notification received:", payload);
       });
     }
   }, []);
