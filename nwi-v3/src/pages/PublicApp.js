@@ -167,13 +167,17 @@ export default function PublicApp({ onGoAdmin }) {
 
   rounds.forEach(round => {
     (round.matchups || []).forEach(m => {
-      // Per-matchup points if set, otherwise fall back to round default
       const pts = (m.pointsWorth > 0 ? m.pointsWorth : round.pointsPerWin) || 0;
       const tiePts = pts / 2;
       const nk = m.nukes || [], wh = m.whales || [];
+      const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
+      // Always count team pts available for clinch/elimination math
       teamPtsAvail.nukes += pts; teamPtsAvail.whales += pts;
-      nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
-      wh.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
+      // Only count player ptsAvail and stats for completed matches
+      if (hasResult) {
+        nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
+        wh.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
+      }
       if (m.winner === "nukes") {
         teamPoints.nukes += pts;
         nk.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
@@ -203,8 +207,11 @@ export default function PublicApp({ onGoAdmin }) {
   const allTimeStats = {};
   history.forEach(yr => {
     (yr.matches || []).forEach(m => {
+      if (m.type === "heading") return; // skip headings
       const pts = m.pointsWorth || 0, tiePts = pts / 2;
       const nk = m.nukes || [], wh = m.whales || [];
+      const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
+      if (!hasResult) return; // skip pending matches entirely
       [...nk, ...wh].forEach(n => { if (!allTimeStats[n]) allTimeStats[n] = { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 }; allTimeStats[n].ptsAvail += pts; });
       if (m.winner === "nukes")  { nk.forEach(n => { if (allTimeStats[n]) { allTimeStats[n].ptsWon += pts; allTimeStats[n].matchWins++; } }); wh.forEach(n => { if (allTimeStats[n]) allTimeStats[n].matchLosses++; }); }
       else if (m.winner === "whales") { wh.forEach(n => { if (allTimeStats[n]) { allTimeStats[n].ptsWon += pts; allTimeStats[n].matchWins++; } }); nk.forEach(n => { if (allTimeStats[n]) allTimeStats[n].matchLosses++; }); }
@@ -685,7 +692,7 @@ export default function PublicApp({ onGoAdmin }) {
               const isWhale=h.winner==="THE WHALES";
               const isTBD=!h.winner||h.winner==="TBD";
               const isExp=expandedHistory===h.id;
-              const matchCount=(h.matches||[]).length;
+              const matchCount=(h.matches||[]).filter(m=>m.type!=="heading").length;
               const nukePts=h.nukes_pts??0, whalePts=h.whales_pts??0;
               return (
                 <div key={h.id} style={{ marginBottom:10 }}>
