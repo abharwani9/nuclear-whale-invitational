@@ -1857,14 +1857,14 @@ function SettingsSection({ meta, showToast }) {
           <div><div style={s.label}>Countdown Start Time</div><input style={s.input} type="time" value={form.startTime||"10:00"} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))}/></div>
           <div style={{ display:"flex", alignItems:"flex-end" }}><div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", lineHeight:1.5 }}>Time is based on each viewer's device timezone</div></div>
         </div>
-        <div style={{ marginTop:10, position:"relative" }}>
-          <div style={s.label}>Location (display)</div>
-          <LocationAutocomplete value={form.location} onChange={val=>setForm(f=>({...f,location:val}))}/>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Location</div>
+          <input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Thornton, NH"/>
         </div>
-        <div style={{ marginTop:10, position:"relative" }}>
-          <div style={s.label}>Weather Location (city for forecast — if different)</div>
-          <LocationAutocomplete value={form.weatherLocation||""} onChange={val=>setForm(f=>({...f,weatherLocation:val}))}/>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Use a nearby larger city if your venue doesn't appear in weather search</div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Weather City</div>
+          <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>App Password (all users)</div>
