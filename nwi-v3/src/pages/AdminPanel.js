@@ -1762,7 +1762,9 @@ function LocationAutocomplete({ value, onChange }) {
     if (q.length < 3) { setSuggestions([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1`);
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1`, {
+        headers: { "User-Agent": "NuclearWhaleInvitational/1.0" }
+      });
       const data = await res.json();
       setSuggestions(data.map(r => ({ label: r.display_name, short: r.display_name.split(",").slice(0,3).join(",") })));
     } catch(e) {}
