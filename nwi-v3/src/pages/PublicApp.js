@@ -241,20 +241,6 @@ export default function PublicApp({ onGoAdmin }) {
   const nukeWins  = history.filter(h => h.winner === "THE NUKES").length;
   const whaleWins = history.filter(h => h.winner === "THE WHALES").length;
 
-  // Momentum — last 5 completed matches
-  const recentMatches = [];
-  rounds.forEach(round => {
-    (round.matchups||[]).forEach(m => {
-      if (m.winner==="nukes"||m.winner==="whales"||m.winner==="tie") {
-        recentMatches.push({ winner:m.winner, pts:(m.pointsWorth>0?m.pointsWorth:round.pointsPerWin)||0 });
-      }
-    });
-  });
-  const last5 = recentMatches.slice(-5);
-  const momentumNukes  = last5.filter(m=>m.winner==="nukes").length;
-  const momentumWhales = last5.filter(m=>m.winner==="whales").length;
-  const momentumLeader = last5.length===0 ? null : momentumNukes>momentumWhales ? "nukes" : momentumWhales>momentumNukes ? "whales" : "tie";
-
   // ── Styles ──────────────────────────────────────────────────────────────────
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
@@ -356,6 +342,7 @@ export default function PublicApp({ onGoAdmin }) {
                     const clinched=t.team==="nukes"?nukesClinched:whalesClinched;
                     const elim=t.team==="nukes"?nukesElim:whalesElim;
                     const needed=t.team==="nukes"?nukeWinPts:whaleWinPts;
+                    const magicNumber = Math.floor(totalPtsAvail/2)+1;
                     return (
                       <div key={t.team} className={`card ${t.team==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:"16px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -371,35 +358,22 @@ export default function PublicApp({ onGoAdmin }) {
                           </div>
                         </div>
                         {totalPtsAvail>0&&(
-                          <div style={{ marginTop:10 }}>
-                            <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:2, overflow:"hidden" }}>
-                              <div style={{ height:"100%", width:`${(t.pts/totalPtsAvail)*100}%`, background:TEAMS[t.team].color, borderRadius:2, transition:"width 0.5s" }}/>
-                            </div>
-                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:3 }}>{Math.round((t.pts/totalPtsAvail)*100)}% of available points</div>
-                          </div>
-                        )}
-                        {/* Clinch progress bar */}
-                        {totalPtsAvail>0&&(
-                          <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+                          <div style={{ marginTop:12 }}>
                             {clinched ? (
-                              <div style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
+                              <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
                             ) : elim ? (
-                              <div style={{ fontSize:12, fontWeight:700, color:"#ff5555" }}>❌ Eliminated</div>
+                              <div style={{ fontSize:13, fontWeight:700, color:"#ff5555" }}>❌ Eliminated</div>
                             ) : (
                               <div>
-                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>
-                                  <span>Progress to clinch</span>
-                                  <span><strong style={{ color:TEAMS[t.team].color }}>{needed} pts needed</strong> · {remainingPts} remaining</span>
+                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:5 }}>
+                                  <span>{t.pts} / {magicNumber} pts to clinch</span>
+                                  <span>Need {needed} more</span>
                                 </div>
-                                {/* Progress bar: how far toward the magic number */}
-                                <div style={{ height:6, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
-                                  <div style={{ height:"100%", borderRadius:3, transition:"width 0.5s",
+                                <div style={{ height:8, background:"rgba(255,255,255,0.07)", borderRadius:4, overflow:"hidden" }}>
+                                  <div style={{ height:"100%", borderRadius:4, transition:"width 0.5s",
                                     background:TEAMS[t.team].color,
-                                    width:`${Math.min(100, Math.round((t.pts / (totalPtsAvail/2+0.5))*100))}%`
+                                    width:`${Math.min(100, Math.round((t.pts/magicNumber)*100))}%`
                                   }}/>
-                                </div>
-                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>
-                                  {Math.round((t.pts/(totalPtsAvail/2+0.5))*100)}% to magic number ({Math.floor(totalPtsAvail/2)+1} pts)
                                 </div>
                               </div>
                             )}
@@ -409,7 +383,6 @@ export default function PublicApp({ onGoAdmin }) {
                     );
                   })}
                 </div>
-                {/* Points breakdown */}
                 {totalPtsAvail>0&&(
                   <div className="card" style={{ padding:"12px 16px" }}>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
@@ -426,7 +399,7 @@ export default function PublicApp({ onGoAdmin }) {
               </div>
             )}
 
-            {lbTab==="individual" && (
+                        {lbTab==="individual" && (
               <div>
                 {(() => {
                   const handleIndSort = (col) => {
