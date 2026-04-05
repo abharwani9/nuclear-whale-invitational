@@ -73,7 +73,7 @@ const SECTIONS = [
 
 export default function AdminPanel({ authed, onAuth, onBack }) {
   const [code, setCode]       = useState("");
-  const [section, setSection] = useState("roster");
+  const [section, setSection] = useState("rounds");
   const [toast, setToast]     = useState(null);
   const [seeding, setSeeding] = useState(false);
 
