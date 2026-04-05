@@ -34,11 +34,18 @@ function WeatherWidget({ location, tournamentDate }) {
       try {
         // Strip everything after comma for cleaner city search
         const cityQuery = location.split(",")[0].trim();
+        const stateQuery = location.split(",")[1]?.trim() || "";
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=10&language=en&format=json`);
         const geoData = await geoRes.json();
         if (!geoData.results?.length) { setLoading(false); return; }
-        // Try to find US result first, then fall back to first result
-        const usResult = geoData.results.find(r => r.country_code === "US") || geoData.results[0];
+        // Find best match: state name match first, then US, then first result
+        const results = geoData.results;
+        const stateMatch = stateQuery ? results.find(r =>
+          r.country_code === "US" &&
+          (r.admin1?.toLowerCase().includes(stateQuery.toLowerCase()) ||
+           stateQuery.toLowerCase().includes(r.admin1?.toLowerCase()))
+        ) : null;
+        const usResult = stateMatch || results.find(r => r.country_code === "US") || results[0];
         const { latitude, longitude, name, admin1 } = usResult;
         const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
         const wxData = await wxRes.json();
