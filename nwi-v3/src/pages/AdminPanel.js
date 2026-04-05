@@ -1818,7 +1818,7 @@ function SettingsSection({ meta, showToast }) {
   const [sending, setSending]       = useState(false);
   const { data: fcmTokens } = useCollection("fcm_tokens");
 
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"" }); setLoaded(true); }
+  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"" }); setLoaded(true); }
 
   const save = async () => {
     try { await firestore.set("meta","tournament",{...form,year:Number(form.year)}); showToast("Saved!"); }
@@ -1858,8 +1858,13 @@ function SettingsSection({ meta, showToast }) {
           <div style={{ display:"flex", alignItems:"flex-end" }}><div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", lineHeight:1.5 }}>Time is based on each viewer's device timezone</div></div>
         </div>
         <div style={{ marginTop:10, position:"relative" }}>
-          <div style={s.label}>Location</div>
+          <div style={s.label}>Location (display)</div>
           <LocationAutocomplete value={form.location} onChange={val=>setForm(f=>({...f,location:val}))}/>
+        </div>
+        <div style={{ marginTop:10, position:"relative" }}>
+          <div style={s.label}>Weather Location (city for forecast — if different)</div>
+          <LocationAutocomplete value={form.weatherLocation||""} onChange={val=>setForm(f=>({...f,weatherLocation:val}))}/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Use a nearby larger city if your venue doesn't appear in weather search</div>
         </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>App Password (all users)</div>
