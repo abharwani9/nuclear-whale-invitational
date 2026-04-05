@@ -561,32 +561,138 @@ export default function PublicApp({ onGoAdmin }) {
         )}
 
         {/* ── COUNTDOWN ── */}
-        {tab==="countdown" && (
-          <div style={{ textAlign:"center", padding:"20px 0" }}>
-            <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:40 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
-            {countdown.over
-              ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
-              : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
-                  {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
-                    <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
-                      <div style={{ fontSize:"clamp(28px,8vw,46px)", fontWeight:900, color:k==="seconds"?"#ff4500":"#e8edf3", lineHeight:1 }}>{String(countdown[k]??0).padStart(2,"0")}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginTop:4 }}>{label}</div>
+        {tab==="countdown" && (() => {
+          const [weather, setWeather] = useState(null);
+          const [weatherLoading, setWeatherLoading] = useState(false);
+
+          useEffect(() => {
+            if (!meta?.location) return;
+            setWeatherLoading(true);
+            const fetchWeather = async () => {
+              try {
+                // Geocode location to lat/lng
+                const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(meta.location)}&format=json&limit=1`);
+                const geoData = await geoRes.json();
+                if (!geoData.length) return;
+                const { lat, lon } = geoData[0];
+                // Fetch forecast from Open-Meteo (free, no key needed)
+                const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
+                const wxData = await wxRes.json();
+                setWeather({ ...wxData, lat, lon });
+              } catch(e) { console.log("Weather error:", e); }
+              setWeatherLoading(false);
+            };
+            fetchWeather();
+          }, [meta?.location]);
+
+          const wxIcon = code => {
+            if (code === 0) return "☀️";
+            if (code <= 2) return "⛅";
+            if (code <= 3) return "☁️";
+            if (code <= 49) return "🌫️";
+            if (code <= 59) return "🌦️";
+            if (code <= 69) return "🌧️";
+            if (code <= 79) return "🌨️";
+            if (code <= 84) return "🌧️";
+            if (code <= 99) return "⛈️";
+            return "🌡️";
+          };
+
+          const wxDesc = code => {
+            if (code === 0) return "Clear";
+            if (code <= 2) return "Partly Cloudy";
+            if (code <= 3) return "Cloudy";
+            if (code <= 49) return "Foggy";
+            if (code <= 59) return "Drizzle";
+            if (code <= 69) return "Rain";
+            if (code <= 79) return "Snow";
+            if (code <= 84) return "Showers";
+            if (code <= 99) return "Thunderstorm";
+            return "Unknown";
+          };
+
+          // Find which forecast days overlap with tournament date
+          const tournamentDateStr = meta?.date;
+
+          return (
+            <div style={{ textAlign:"center", padding:"20px 0" }}>
+              <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:40 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
+              {countdown.over
+                ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
+                : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
+                    {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
+                      <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
+                        <div style={{ fontSize:"clamp(28px,8vw,46px)", fontWeight:900, color:k==="seconds"?"#ff4500":"#e8edf3", lineHeight:1 }}>{String(countdown[k]??0).padStart(2,"0")}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginTop:4 }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+              }
+
+              {/* Weather widget */}
+              {meta?.location && (
+                <div style={{ textAlign:"left", marginBottom:24 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
+                    🌤️ Weather · {meta.location}
+                  </div>
+                  {weatherLoading ? (
+                    <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>Loading forecast...</div>
+                  ) : weather ? (
+                    <div>
+                      {/* Current conditions */}
+                      <div className="card" style={{ padding:"14px 16px", marginBottom:8, display:"flex", alignItems:"center", gap:14 }}>
+                        <div style={{ fontSize:40 }}>{wxIcon(weather.current_weather?.weathercode)}</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 }}>{Math.round(weather.current_weather?.temperature)}°F</div>
+                          <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{wxDesc(weather.current_weather?.weathercode)} · Wind {Math.round(weather.current_weather?.windspeed)} mph</div>
+                        </div>
+                        <div style={{ textAlign:"right", fontSize:11, color:"rgba(255,255,255,0.3)" }}>
+                          <div>Now</div>
+                        </div>
+                      </div>
+                      {/* 7-day forecast */}
+                      <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4, scrollbarWidth:"none" }}>
+                        {(weather.daily?.time||[]).map((date, i) => {
+                          const isTournament = tournamentDateStr && date === tournamentDateStr;
+                          const hi = Math.round(weather.daily.temperature_2m_max[i]);
+                          const lo = Math.round(weather.daily.temperature_2m_min[i]);
+                          const rain = weather.daily.precipitation_probability_max[i];
+                          const code = weather.daily.weathercode[i];
+                          const dayName = i === 0 ? "Today" : new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday:"short" });
+                          return (
+                            <div key={date} className="card" style={{ flex:"0 0 auto", width:72, padding:"10px 6px", textAlign:"center",
+                              borderColor:isTournament?"rgba(255,200,0,0.4)":undefined,
+                              background:isTournament?"rgba(255,200,0,0.06)":undefined }}>
+                              {isTournament && <div style={{ fontSize:8, color:"#ffd700", fontWeight:700, letterSpacing:"0.05em", marginBottom:3 }}>⛳ TRN</div>}
+                              <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>{dayName}</div>
+                              <div style={{ fontSize:20 }}>{wxIcon(code)}</div>
+                              <div style={{ fontSize:12, fontWeight:700, marginTop:4 }}>{hi}°</div>
+                              <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>{lo}°</div>
+                              {rain > 0 && <div style={{ fontSize:9, color:"#00aaff", marginTop:3 }}>💧{rain}%</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>Could not load weather</div>
+                  )}
                 </div>
-            }
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {["nukes","whales"].map(t=>(
-                <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:18 }}>
-                  <div style={{ fontSize:32 }}>{TEAMS[t].emoji}</div>
-                  <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t].color, marginTop:8 }}>{TEAMS[t].name}</div>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{t==="nukes"?`${nukeWins} titles`:`${whaleWins} titles`}</div>
-                </div>
-              ))}
+              )}
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                {["nukes","whales"].map(t=>(
+                  <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:18 }}>
+                    <div style={{ fontSize:32 }}>{TEAMS[t].emoji}</div>
+                    <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t].color, marginTop:8 }}>{TEAMS[t].name}</div>
+                    <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{t==="nukes"?`${nukeWins} titles`:`${whaleWins} titles`}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── SCHEDULE ── */}
         {tab==="schedule" && (
