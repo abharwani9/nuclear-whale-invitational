@@ -253,8 +253,8 @@ export default function PublicApp({ onGoAdmin }) {
     .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;}
     .nuke-card{border-color:rgba(255,69,0,0.3)!important;box-shadow:0 0 20px rgba(255,69,0,0.1);}
     .whale-card{border-color:rgba(0,170,255,0.25)!important;box-shadow:0 0 20px rgba(0,170,255,0.08);}
-    @keyframes flicker{0%,100%{text-shadow:0 0 12px #ff4500,0 0 30px #ff4500;}50%{text-shadow:0 0 6px #ff6a00,0 0 15px #ff6a00;}}
-    @keyframes wave{0%,100%{text-shadow:0 0 12px #00aaff,0 0 30px #00aaff;}50%{text-shadow:0 0 6px #00ccff,0 0 15px #00ccff;}}
+    @keyframes flicker{0%,100%{text-shadow:0 0 6px rgba(255,69,0,0.4);}50%{text-shadow:0 0 3px rgba(255,106,0,0.3);}}
+    @keyframes wave{0%,100%{text-shadow:0 0 6px rgba(0,170,255,0.4);}50%{text-shadow:0 0 3px rgba(0,204,255,0.3);}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
     @keyframes slideIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
     .live-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite;display:inline-block;margin-right:6px;}
@@ -366,8 +366,7 @@ export default function PublicApp({ onGoAdmin }) {
                             ) : (
                               <div>
                                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:5 }}>
-                                  <span>{t.pts} / {magicNumber} pts to clinch</span>
-                                  <span>Need {needed} more</span>
+                                  <span>{t.pts} out of {magicNumber} pts to clinch · won {Math.round((t.pts/totalPtsAvail)*100)}% of available points</span>
                                 </div>
                                 <div style={{ height:8, background:"rgba(255,255,255,0.07)", borderRadius:4, overflow:"hidden" }}>
                                   <div style={{ height:"100%", borderRadius:4, transition:"width 0.5s",
