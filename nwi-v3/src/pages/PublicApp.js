@@ -31,7 +31,9 @@ function WeatherWidget({ location, tournamentDate }) {
     setLoading(true);
     const fetchWeather = async () => {
       try {
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`);
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`, {
+                headers: { "User-Agent": "NuclearWhaleInvitational/1.0" }
+              });
         const geoData = await geoRes.json();
         if (!geoData.length) { setLoading(false); return; }
         const { lat, lon } = geoData[0];
@@ -112,7 +114,10 @@ function WeatherWidget({ location, tournamentDate }) {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>Could not load weather</div>
+        <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>
+          Could not load weather for "{location}"<br/>
+          <span style={{ fontSize:11 }}>Try a city + state format, e.g. "Myrtle Beach, SC"</span>
+        </div>
       )}
     </div>
   );
