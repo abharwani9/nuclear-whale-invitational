@@ -1762,11 +1762,11 @@ function LocationAutocomplete({ value, onChange }) {
     if (q.length < 3) { setSuggestions([]); return; }
     setLoading(true);
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1`, {
-        headers: { "User-Agent": "NuclearWhaleInvitational/1.0" }
-      });
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`);
       const data = await res.json();
-      setSuggestions(data.map(r => ({ label: r.display_name, short: r.display_name.split(",").slice(0,3).join(",") })));
+      setSuggestions((data.results||[]).map(r => ({
+        label: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
+      })));
     } catch(e) {}
     setLoading(false);
   };
@@ -1781,10 +1781,8 @@ function LocationAutocomplete({ value, onChange }) {
   };
 
   const select = (label) => {
-    // Use a clean short version for display
-    const short = label.split(",").slice(0,3).join(",").trim();
-    setQuery(short);
-    onChange(short);
+    setQuery(label);
+    onChange(label);
     setSuggestions([]);
     setOpen(false);
   };
