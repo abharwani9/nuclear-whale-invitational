@@ -1750,6 +1750,66 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   );
 }
 
+// ── LOCATION AUTOCOMPLETE ─────────────────────────────────────────────────
+function LocationAutocomplete({ value, onChange }) {
+  const [query, setQuery] = useState(value||"");
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useState(null);
+
+  const search = async (q) => {
+    if (q.length < 3) { setSuggestions([]); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1`);
+      const data = await res.json();
+      setSuggestions(data.map(r => ({ label: r.display_name, short: r.display_name.split(",").slice(0,3).join(",") })));
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const handleChange = (e) => {
+    const q = e.target.value;
+    setQuery(q);
+    onChange(q);
+    setOpen(true);
+    clearTimeout(debounceRef[0]);
+    debounceRef[0] = setTimeout(() => search(q), 400);
+  };
+
+  const select = (label) => {
+    // Use a clean short version for display
+    const short = label.split(",").slice(0,3).join(",").trim();
+    setQuery(short);
+    onChange(short);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position:"relative" }}>
+      <input style={s.input} value={query} onChange={handleChange}
+        onFocus={()=>query.length>=3&&setOpen(true)}
+        onBlur={()=>setTimeout(()=>setOpen(false),200)}
+        placeholder="e.g. Pebble Beach, CA"/>
+      {loading && <div style={{ position:"absolute", right:10, top:10, fontSize:11, color:"rgba(255,255,255,0.3)" }}>...</div>}
+      {open && suggestions.length>0 && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:100, background:"#1a2235", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, marginTop:4, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.4)" }}>
+          {suggestions.map((s,i)=>(
+            <div key={i} onMouseDown={()=>select(s.label)}
+              style={{ padding:"10px 12px", fontSize:13, color:"rgba(255,255,255,0.8)", cursor:"pointer", borderBottom:"1px solid rgba(255,255,255,0.06)", lineHeight:1.4 }}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"}
+              onMouseLeave={e=>e.currentTarget.style.background="none"}>
+              📍 {s.short}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsSection({ meta, showToast }) {
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
@@ -1797,7 +1857,10 @@ function SettingsSection({ meta, showToast }) {
           <div><div style={s.label}>Countdown Start Time</div><input style={s.input} type="time" value={form.startTime||"10:00"} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))}/></div>
           <div style={{ display:"flex", alignItems:"flex-end" }}><div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", lineHeight:1.5 }}>Time is based on each viewer's device timezone</div></div>
         </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))}/></div>
+        <div style={{ marginTop:10, position:"relative" }}>
+          <div style={s.label}>Location</div>
+          <LocationAutocomplete value={form.location} onChange={val=>setForm(f=>({...f,location:val}))}/>
+        </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>App Password (all users)</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Current: <strong style={{ color:"#ff4500" }}>nwi2026</strong> — to change, ask Claude to update APP_PASSWORD in PublicApp.js</div>
