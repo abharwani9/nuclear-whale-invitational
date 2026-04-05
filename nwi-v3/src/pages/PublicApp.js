@@ -34,13 +34,15 @@ function WeatherWidget({ location, tournamentDate }) {
       try {
         // Strip everything after comma for cleaner city search
         const cityQuery = location.split(",")[0].trim();
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=1&language=en&format=json`);
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=10&language=en&format=json`);
         const geoData = await geoRes.json();
         if (!geoData.results?.length) { setLoading(false); return; }
-        const { latitude, longitude } = geoData.results[0];
+        // Try to find US result first, then fall back to first result
+        const usResult = geoData.results.find(r => r.country_code === "US") || geoData.results[0];
+        const { latitude, longitude, name, admin1 } = usResult;
         const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
         const wxData = await wxRes.json();
-        setWeather(wxData);
+        setWeather({ ...wxData, matchedCity: `${name}, ${admin1}` });
       } catch(e) { console.log("Weather error:", e); }
       setLoading(false);
     };
@@ -78,7 +80,7 @@ function WeatherWidget({ location, tournamentDate }) {
   return (
     <div style={{ textAlign:"left", marginBottom:24 }}>
       <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
-        🌤️ Weather · {location}
+        🌤️ Weather · {weather?.matchedCity || location}
       </div>
       {loading ? (
         <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>Loading forecast...</div>
