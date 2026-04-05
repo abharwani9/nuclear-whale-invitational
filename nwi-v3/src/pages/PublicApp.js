@@ -31,13 +31,12 @@ function WeatherWidget({ location, tournamentDate }) {
     setLoading(true);
     const fetchWeather = async () => {
       try {
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`, {
-                headers: { "User-Agent": "NuclearWhaleInvitational/1.0" }
-              });
+        // Use Open-Meteo's own geocoding — much more reliable than Nominatim
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`);
         const geoData = await geoRes.json();
-        if (!geoData.length) { setLoading(false); return; }
-        const { lat, lon } = geoData[0];
-        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
+        if (!geoData.results?.length) { setLoading(false); return; }
+        const { latitude, longitude } = geoData.results[0];
+        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
         const wxData = await wxRes.json();
         setWeather(wxData);
       } catch(e) { console.log("Weather error:", e); }
