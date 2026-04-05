@@ -627,9 +627,7 @@ export default function PublicApp({ onGoAdmin }) {
                   <div style={{ fontSize:28 }}>{c.icon}</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:10 }}>{c.desc}</div>
-                    {c.winner ? <div style={{ fontSize:14, fontWeight:700, color:"rgba(255,255,255,0.8)" }}>🏅 {c.winner}{c.detail?` — ${c.detail}`:""}</div>
-                      : <div style={{ fontSize:13, color:"rgba(255,255,255,0.25)", fontStyle:"italic" }}>Results pending</div>}
+                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>
                   </div>
                 </div>
               </div>
