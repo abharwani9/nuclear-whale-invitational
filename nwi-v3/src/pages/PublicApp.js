@@ -241,6 +241,20 @@ export default function PublicApp({ onGoAdmin }) {
   const nukeWins  = history.filter(h => h.winner === "THE NUKES").length;
   const whaleWins = history.filter(h => h.winner === "THE WHALES").length;
 
+  // Momentum — last 5 completed matches
+  const recentMatches = [];
+  rounds.forEach(round => {
+    (round.matchups||[]).forEach(m => {
+      if (m.winner==="nukes"||m.winner==="whales"||m.winner==="tie") {
+        recentMatches.push({ winner:m.winner, pts:(m.pointsWorth>0?m.pointsWorth:round.pointsPerWin)||0 });
+      }
+    });
+  });
+  const last5 = recentMatches.slice(-5);
+  const momentumNukes  = last5.filter(m=>m.winner==="nukes").length;
+  const momentumWhales = last5.filter(m=>m.winner==="whales").length;
+  const momentumLeader = last5.length===0 ? null : momentumNukes>momentumWhales ? "nukes" : momentumWhales>momentumNukes ? "whales" : "tie";
+
   // ── Styles ──────────────────────────────────────────────────────────────────
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
@@ -364,15 +378,31 @@ export default function PublicApp({ onGoAdmin }) {
                             <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:3 }}>{Math.round((t.pts/totalPtsAvail)*100)}% of available points</div>
                           </div>
                         )}
-                        {/* Projection inline */}
+                        {/* Clinch progress bar */}
                         {totalPtsAvail>0&&(
                           <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-                            {clinched
-                              ? <div style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
-                              : elim
-                              ? <div style={{ fontSize:12, fontWeight:700, color:"#ff5555" }}>Eliminated</div>
-                              : <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Needs <strong style={{ color:TEAMS[t.team].color }}>{needed} more pts</strong> to clinch · {remainingPts} remaining</div>
-                            }
+                            {clinched ? (
+                              <div style={{ fontSize:12, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
+                            ) : elim ? (
+                              <div style={{ fontSize:12, fontWeight:700, color:"#ff5555" }}>❌ Eliminated</div>
+                            ) : (
+                              <div>
+                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>
+                                  <span>Progress to clinch</span>
+                                  <span><strong style={{ color:TEAMS[t.team].color }}>{needed} pts needed</strong> · {remainingPts} remaining</span>
+                                </div>
+                                {/* Progress bar: how far toward the magic number */}
+                                <div style={{ height:6, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
+                                  <div style={{ height:"100%", borderRadius:3, transition:"width 0.5s",
+                                    background:TEAMS[t.team].color,
+                                    width:`${Math.min(100, Math.round((t.pts / (totalPtsAvail/2+0.5))*100))}%`
+                                  }}/>
+                                </div>
+                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>
+                                  {Math.round((t.pts/(totalPtsAvail/2+0.5))*100)}% to magic number ({Math.floor(totalPtsAvail/2)+1} pts)
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
