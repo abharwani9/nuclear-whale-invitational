@@ -1801,7 +1801,7 @@ function LocationAutocomplete({ value, onChange }) {
               style={{ padding:"10px 12px", fontSize:13, color:"rgba(255,255,255,0.8)", cursor:"pointer", borderBottom:"1px solid rgba(255,255,255,0.06)", lineHeight:1.4 }}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"}
               onMouseLeave={e=>e.currentTarget.style.background="none"}>
-              📍 {s.short}
+              📍 {s.label}
             </div>
           ))}
         </div>
