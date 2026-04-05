@@ -31,12 +31,25 @@ function WeatherWidget({ location, tournamentDate }) {
     setLoading(true);
     const fetchWeather = async () => {
       try {
-        // Use Open-Meteo's own geocoding — much more reliable than Nominatim
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`);
-        const geoData = await geoRes.json();
-        if (!geoData.results?.length) { setLoading(false); return; }
-        const { latitude, longitude } = geoData.results[0];
-        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
+        // Try multiple search strategies to find small towns
+        const searches = [
+          location,                                    // exact: "Thornton, NH"
+          location.split(",")[0].trim(),               // first part only: "Thornton"
+          location.replace(/,\s*[A-Z]{2}$/, ""),      // remove state abbrev
+        ];
+        let lat = null, lon = null;
+        for (const q of searches) {
+          if (!q) continue;
+          const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`);
+          const geoData = await geoRes.json();
+          if (geoData.results?.length) {
+            lat = geoData.results[0].latitude;
+            lon = geoData.results[0].longitude;
+            break;
+          }
+        }
+        if (!lat) { setLoading(false); return; }
+        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
         const wxData = await wxRes.json();
         setWeather(wxData);
       } catch(e) { console.log("Weather error:", e); }
@@ -676,7 +689,7 @@ export default function PublicApp({ onGoAdmin }) {
                   ))}
                 </div>
             }
-            <WeatherWidget location={meta?.location} tournamentDate={meta?.date}/>
+            <WeatherWidget location={meta?.weatherLocation || meta?.location} tournamentDate={meta?.date}/>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               {["nukes","whales"].map(t=>(
                 <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:18 }}>
