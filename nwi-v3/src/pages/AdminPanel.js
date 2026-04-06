@@ -1818,10 +1818,14 @@ function SettingsSection({ meta, showToast }) {
   const [sending, setSending]       = useState(false);
   const { data: fcmTokens } = useCollection("fcm_tokens");
 
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"" }); setLoaded(true); }
+  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n") }); setLoaded(true); }
 
   const save = async () => {
-    try { await firestore.set("meta","tournament",{...form,year:Number(form.year)}); showToast("Saved!"); }
+    try {
+      const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats});
+      showToast("Saved!");
+    }
     catch(e) { showToast(e.message,true); }
   };
 
@@ -1885,7 +1889,28 @@ function SettingsSection({ meta, showToast }) {
         <button style={{ ...s.btnFire, marginTop:14 }} onClick={save}>Save Settings</button>
       </div>
 
-      {/* Send Notification */}
+      {/* Superlatives voting */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>🏅 Superlatives Voting</div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600 }}>Voting Status</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{form.votingOpen?"Players can currently submit votes":"Voting is closed"}</div>
+          </div>
+          <button style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${form.votingOpen?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:form.votingOpen?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:form.votingOpen?"#4ade80":"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}
+            onClick={()=>setForm(f=>({...f,votingOpen:!f.votingOpen}))}>
+            {form.votingOpen?"✓ Open":"Closed"}
+          </button>
+        </div>
+        <div>
+          <div style={s.label}>Superlative Categories (one per line)</div>
+          <textarea rows={6} value={form.superlativeCategories||""} onChange={e=>setForm(f=>({...f,superlativeCategories:e.target.value}))}
+            placeholder={"Biggest Choke\nMost Clutch\nBest Shot of the Tournament\nMost Improved\nBiggest Trash Talker\nMVP"}/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Each line becomes a voting category. Save Settings to apply.</div>
+        </div>
+      </div>
+
+      {/* Send Notification */}}
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>🔔 Send Push Notification</div>
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>
