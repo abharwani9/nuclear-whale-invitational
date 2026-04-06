@@ -353,7 +353,10 @@ export default function PublicApp({ onGoAdmin }) {
   }, []);
 
   const toggleNotifications = async () => {
-    if (!tokenKey) return;
+    if (!tokenKey) {
+      alert(`Debug: tokenKey=${tokenKey}, notifToken=${notifToken ? "set" : "null"}, notifEnabled=${notifEnabled}`);
+      return;
+    }
     const { firestore } = await import("../firebase/hooks");
     if (notifEnabled) {
       try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
