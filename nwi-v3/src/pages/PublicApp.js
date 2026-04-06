@@ -316,55 +316,47 @@ export default function PublicApp({ onGoAdmin }) {
   const [notifEnabled, setNotifEnabled] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
 
-  // Derive bell state from fcmTokens collection — if our token is in there, we're subscribed
-  useEffect(() => {
-    if (!notifToken) return;
-    const tokenKey = notifToken.slice(-20);
-    const isIn = (fcmTokens||[]).some(t => t.id === tokenKey);
-    setNotifEnabled(isIn);
-  }, [fcmTokens, notifToken]);
-
-  // Request notification permission and register token on load
+  // On load: get token first, then check if it's in Firestore
   useEffect(() => {
     if (!messaging) return;
-    const register = async () => {
+    const init = async () => {
       try {
         const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          for (const reg of registrations) {
-            if (!reg.active?.scriptURL?.includes("firebase-messaging-sw")) {
-              await reg.unregister();
-            }
-          }
-          const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache: "none" });
-          await sw.update();
-          const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-          if (token) {
-            setNotifToken(token);
-            // Check if token is already in Firestore — if so, bell stays on
-            // If not (first time or was removed), add it back
-            const { firestore } = await import("../firebase/hooks");
-            const tokenKey = token.slice(-20);
-            const savedPref = localStorage.getItem("nwi_notif");
-            if (savedPref !== "off") {
-              await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
-              localStorage.setItem("nwi_token_key", tokenKey);
-            }
-          }
-        } else {
-          setNotifEnabled(false);
+        if (permission !== "granted") { setNotifEnabled(false); return; }
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          if (!reg.active?.scriptURL?.includes("firebase-messaging-sw")) await reg.unregister();
         }
+        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
+        await sw.update();
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+        if (!token) { setNotifEnabled(false); return; }
+        setNotifToken(token);
+        const tokenKey = token.slice(-20);
+        // Check Firestore to see if this token is subscribed
+        const { firestore } = await import("../firebase/hooks");
+        const doc = await firestore.getDoc("fcm_tokens", tokenKey);
+        if (doc) {
+          setNotifEnabled(true);
+        } else {
+          // Token not in Firestore — check if user wants it on
+          const pref = localStorage.getItem("nwi_notif");
+          if (pref === "on") {
+            // Re-add it
+            await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
+            setNotifEnabled(true);
+          } else {
+            setNotifEnabled(false);
+          }
+        }
+        localStorage.setItem("nwi_token_key", tokenKey);
       } catch(e) {
-        console.log("Notification permission:", e.message);
+        console.log("Notification init:", e.message);
+        setNotifEnabled(false);
       }
     };
-    register();
-    if (onMessage) {
-      onMessage(messaging, payload => {
-        console.log("Foreground notification received:", payload);
-      });
-    }
+    init();
+    if (onMessage) onMessage(messaging, payload => console.log("Foreground:", payload));
   }, []);
 
   const toggleNotifications = async () => {
