@@ -322,10 +322,16 @@ export default function PublicApp({ onGoAdmin }) {
     const init = async () => {
       try {
         const permission = await Notification.requestPermission();
-        if (permission !== "granted") { setNotifEnabled(false); return; }
-        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-        if (!token) { setNotifEnabled(false); return; }
+        if (permission !== "granted") { setNotifEnabled(false); alert("Permission not granted: " + permission); return; }
+        let sw;
+        try {
+          sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
+        } catch(e) { alert("SW registration failed: " + e.message); setNotifEnabled(false); return; }
+        let token;
+        try {
+          token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+        } catch(e) { alert("getToken failed: " + e.message); setNotifEnabled(false); return; }
+        if (!token) { alert("getToken returned empty"); setNotifEnabled(false); return; }
         setNotifToken(token);
         const key = token.slice(-20);
         setTokenKey(key);
