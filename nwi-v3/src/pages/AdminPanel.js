@@ -1954,16 +1954,18 @@ function SettingsSection({ meta, showToast }) {
                   <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No votes yet</div>
                 ) : sorted.map(([name, count], i) => {
                   const pct = Math.round((count / totalVoters) * 100);
+                  const isWinner = i === 0 && (sorted.length === 1 || sorted[1][1] < count);
+                  const isTied = i === 0 && sorted.length > 1 && sorted[1][1] === count;
                   return (
                     <div key={name} style={{ marginBottom:6 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                        <span style={{ fontWeight:i===0?700:400, color:i===0?"#4ade80":"rgba(255,255,255,0.6)" }}>
-                          {i===0?"🏅 ":""}{name}
+                        <span style={{ fontWeight:isWinner||isTied?700:400, color:isWinner?"#4ade80":isTied?"#ffd700":"rgba(255,255,255,0.6)" }}>
+                          {isWinner?"🏅 ":isTied?"🤝 ":""}{name}
                         </span>
                         <span style={{ color:"rgba(255,255,255,0.4)" }}>{count}/{totalVoters} · {pct}%</span>
                       </div>
                       <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
-                        <div style={{ height:"100%", width:`${pct}%`, background:i===0?"#4ade80":"rgba(255,255,255,0.2)", borderRadius:3, transition:"width 0.4s" }}/>
+                        <div style={{ height:"100%", width:`${pct}%`, background:isWinner?"#4ade80":isTied?"#ffd700":"rgba(255,255,255,0.2)", borderRadius:3, transition:"width 0.4s" }}/>
                       </div>
                     </div>
                   );
