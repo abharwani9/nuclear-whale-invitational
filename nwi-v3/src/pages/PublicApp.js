@@ -16,14 +16,14 @@ const TABS = [
   { id: "schedule",     label: "Schedule",      icon: "📅" },
   { id: "competitions", label: "Competitions",  icon: "🎯" },
   { id: "hole",         label: "Hole-in-One",   icon: "⛳" },
+  { id: "superlatives", label: "Superlatives",  icon: "🏅" },
   { id: "players",      label: "Players",       icon: "👤" },
   { id: "history",      label: "History",       icon: "📜" },
   { id: "media",        label: "Media",         icon: "🎬" },
   { id: "rules",        label: "Rules",         icon: "📋" },
-  { id: "superlatives", label: "Superlatives",  icon: "🏅" },
 ];
 
-function SuperlativesTab({ meta, roster, votes }) {
+function SuperlativesTab({ meta, roster, votes, drafts }) {
   const categories = meta?.superlativeCategories || [];
   const votingOpen = meta?.votingOpen === true;
 
@@ -41,7 +41,14 @@ function SuperlativesTab({ meta, roster, votes }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+  // Only show players in the current year draft
+  const currentYearStr = String(meta?.year || new Date().getFullYear());
+  const currentDraft = (drafts || []).find(d => String(d.year) === currentYearStr);
+  const assignments = currentDraft?.assignments || {};
+  const draftedPlayers = roster.filter(p => assignments[p.name] && assignments[p.name] !== "out");
+  const sortedRoster = draftedPlayers.length > 0
+    ? [...draftedPlayers].sort((a,b)=>a.name.localeCompare(b.name))
+    : [...roster].sort((a,b)=>a.name.localeCompare(b.name));
 
   const handleSubmit = async () => {
     const allAnswered = categories.every(c => selections[c]);
@@ -1115,7 +1122,7 @@ export default function PublicApp({ onGoAdmin }) {
 
         {/* ── SUPERLATIVES ── */}
         {tab==="superlatives" && (
-          <SuperlativesTab meta={meta} roster={roster} votes={votes}/>
+          <SuperlativesTab meta={meta} roster={roster} votes={votes} drafts={drafts}/>
         )}
 
                 {tab==="rules" && (
