@@ -315,9 +315,8 @@ export default function PublicApp({ onGoAdmin }) {
 
   const [notifEnabled, setNotifEnabled] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
+  const [tokenKey, setTokenKey]         = useState(null);
 
-  // Get a stable device ID stored in Firestore (not localStorage)
-  // We use the FCM token itself as the identifier
   useEffect(() => {
     if (!messaging) return;
     const init = async () => {
@@ -328,23 +327,19 @@ export default function PublicApp({ onGoAdmin }) {
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
         if (!token) { setNotifEnabled(false); return; }
         setNotifToken(token);
-        const tokenKey = token.slice(-20);
+        const key = token.slice(-20);
+        setTokenKey(key);
         const { firestore } = await import("../firebase/hooks");
-        // Check if this device has a preference stored in Firestore
-        const existing = await firestore.getDoc("fcm_tokens", tokenKey);
+        const existing = await firestore.getDoc("fcm_tokens", key);
         if (existing) {
-          // Token exists — notifications are on
           setNotifEnabled(true);
         } else {
-          // Token not in Firestore — check notif_prefs collection for this device's choice
-          const pref = await firestore.getDoc("notif_prefs", tokenKey);
+          const pref = await firestore.getDoc("notif_prefs", key);
           if (pref?.enabled === false) {
-            // User previously turned off
             setNotifEnabled(false);
           } else {
-            // First time or was on — register token
-            await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
-            await firestore.set("notif_prefs", tokenKey, { enabled: true });
+            await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
+            await firestore.set("notif_prefs", key, { enabled: true });
             setNotifEnabled(true);
           }
         }
@@ -358,17 +353,16 @@ export default function PublicApp({ onGoAdmin }) {
   }, []);
 
   const toggleNotifications = async () => {
-    if (!notifToken) return;
+    if (!tokenKey) return;
     const { firestore } = await import("../firebase/hooks");
-    const tokenKey = notifToken.slice(-20);
     if (notifEnabled) {
-      // Turn off — remove from fcm_tokens, save preference
       try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
       await firestore.set("notif_prefs", tokenKey, { enabled: false });
       setNotifEnabled(false);
     } else {
-      // Turn on — add back to fcm_tokens, save preference
-      await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString() });
+      if (notifToken) {
+        await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString() });
+      }
       await firestore.set("notif_prefs", tokenKey, { enabled: true });
       setNotifEnabled(true);
     }
