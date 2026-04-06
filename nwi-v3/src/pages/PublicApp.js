@@ -330,13 +330,13 @@ export default function PublicApp({ onGoAdmin }) {
         const key = token.slice(-20);
         setTokenKey(key);
         const { firestore } = await import("../firebase/hooks");
-        // Check notif_prefs — user's explicit choice persisted in Firestore
         const pref = await firestore.getDoc("notif_prefs", key);
         if (pref?.enabled === false) {
-          // User turned off — don't add token back
+          // User explicitly turned off — respect that
+          try { await firestore.delete("fcm_tokens", key); } catch(e) {}
           setNotifEnabled(false);
         } else {
-          // On by default or user turned on — ensure token is in Firestore
+          // No preference or enabled=true — always register and turn on
           await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
           await firestore.set("notif_prefs", key, { enabled: true });
           setNotifEnabled(true);
