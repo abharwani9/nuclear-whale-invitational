@@ -20,7 +20,106 @@ const TABS = [
   { id: "history",      label: "History",       icon: "📜" },
   { id: "media",        label: "Media",         icon: "🎬" },
   { id: "rules",        label: "Rules",         icon: "📋" },
+  { id: "superlatives", label: "Superlatives",  icon: "🏅" },
 ];
+
+function SuperlativesTab({ meta, roster, votes }) {
+  const categories = meta?.superlativeCategories || [];
+  const votingOpen = meta?.votingOpen === true;
+
+  const deviceId = (() => {
+    let id = localStorage.getItem("nwi_device_id");
+    if (!id) { id = Math.random().toString(36).slice(2); localStorage.setItem("nwi_device_id", id); }
+    return id;
+  })();
+
+  const myVoteDoc = votes?.find(v => v.id === deviceId);
+  const myVotes = myVoteDoc?.votes || {};
+  const hasSubmitted = !!myVoteDoc?.submittedAt;
+
+  const [selections, setSelections] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+
+  const handleSubmit = async () => {
+    const allAnswered = categories.every(c => selections[c]);
+    if (!allAnswered) { alert("Please vote in every category before submitting."); return; }
+    setSubmitting(true);
+    const { firestore } = await import("../firebase/hooks");
+    await firestore.set("votes", deviceId, { votes: selections, submittedAt: new Date().toISOString(), deviceId });
+    setSubmitted(true);
+    setSubmitting(false);
+  };
+
+  if (!votingOpen) return (
+    <div style={{ textAlign:"center", padding:"60px 20px" }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>🏅</div>
+      <div style={{ fontSize:22, fontWeight:800, color:"#e8edf3", marginBottom:8 }}>Voting Not Open Yet</div>
+      <div style={{ fontSize:14, color:"rgba(255,255,255,0.35)" }}>Check back during the tournament when voting opens.</div>
+    </div>
+  );
+
+  if (submitted || hasSubmitted) {
+    const displayVotes = hasSubmitted ? myVotes : selections;
+    return (
+      <div>
+        <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏅 Superlatives</div>
+        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Your votes are in! Results will be revealed by the admin.</div>
+        {categories.map(cat => {
+          const pick = displayVotes[cat];
+          const p = roster.find(r => r.name === pick);
+          return (
+            <div key={cat} className="card" style={{ padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>{cat}</div>
+                <div style={{ fontWeight:700, fontSize:15 }}>{pick || "—"}</div>
+              </div>
+              {p?.photoURL
+                ? <img src={p.photoURL} alt={pick} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>
+                : <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800 }}>{pick?.[0]}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏅 Superlatives</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Vote for one player in each category. One submission per device.</div>
+      {categories.map(cat => (
+        <div key={cat} style={{ marginBottom:24 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>{cat}</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {sortedRoster.map(p => {
+              const selected = selections[cat] === p.name;
+              return (
+                <div key={p.id} onClick={() => setSelections(s => ({ ...s, [cat]: selected ? null : p.name }))}
+                  style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px",
+                    background: selected ? "rgba(255,200,0,0.1)" : "rgba(255,255,255,0.03)",
+                    border: `1px solid ${selected ? "rgba(255,200,0,0.4)" : "rgba(255,255,255,0.07)"}`,
+                    borderRadius:10, cursor:"pointer" }}>
+                  {p.photoURL
+                    ? <img src={p.photoURL} alt={p.name} style={{ width:38, height:38, borderRadius:"50%", objectFit:"cover" }}/>
+                    : <div style={{ width:38, height:38, borderRadius:"50%", background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16 }}>{p.name?.[0]}</div>}
+                  <div style={{ flex:1, fontWeight:600, fontSize:14 }}>{p.name}</div>
+                  {selected && <div style={{ fontSize:20, color:"#ffd700" }}>✓</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <button onClick={handleSubmit} disabled={submitting}
+        style={{ width:"100%", padding:"14px", background:"linear-gradient(135deg,#ff8c00,#ff4500)", border:"none", borderRadius:12, color:"#fff", fontSize:16, fontWeight:800, cursor:"pointer", marginTop:8 }}>
+        {submitting ? "Submitting..." : "🏅 Submit My Votes"}
+      </button>
+    </div>
+  );
+}
 
 function WeatherWidget({ location, tournamentDate }) {
   const [weather, setWeather] = useState(null);
@@ -176,6 +275,7 @@ export default function PublicApp({ onGoAdmin }) {
   const { data: holePool }     = useCollection("holepool");
   const { data: meta }         = useDocument("meta", "tournament");
   const { data: drafts }       = useCollection("drafts");
+  const { data: votes }        = useCollection("votes");
 
   // Current year draft — maps playerName → team
   const currentYear = meta?.year || 2026;
@@ -1013,7 +1113,12 @@ export default function PublicApp({ onGoAdmin }) {
           );
         })()}
 
-        {tab==="rules" && (
+        {/* ── SUPERLATIVES ── */}
+        {tab==="superlatives" && (
+          <SuperlativesTab meta={meta} roster={roster} votes={votes}/>
+        )}
+
+                {tab==="rules" && (
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Rules & Format</div>
             {rules.map((r,i)=>(
