@@ -1811,6 +1811,7 @@ function LocationAutocomplete({ value, onChange }) {
 }
 
 function SettingsSection({ meta, showToast }) {
+  const { data: votes } = useCollection("votes");
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
   const [notifTitle, setNotifTitle] = useState("");
@@ -1898,7 +1899,12 @@ function SettingsSection({ meta, showToast }) {
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{form.votingOpen?"Players can currently submit votes":"Voting is closed"}</div>
           </div>
           <button style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${form.votingOpen?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:form.votingOpen?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:form.votingOpen?"#4ade80":"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}
-            onClick={()=>setForm(f=>({...f,votingOpen:!f.votingOpen}))}>
+            onClick={async()=>{
+              const newVal = !form.votingOpen;
+              setForm(f=>({...f,votingOpen:newVal}));
+              await firestore.set("meta","tournament",{...meta,votingOpen:newVal});
+              showToast(newVal?"Voting opened!":"Voting closed!");
+            }}>
             {form.votingOpen?"✓ Open":"Closed"}
           </button>
         </div>
@@ -1906,11 +1912,69 @@ function SettingsSection({ meta, showToast }) {
           <div style={s.label}>Superlative Categories (one per line)</div>
           <textarea rows={6} value={form.superlativeCategories||""} onChange={e=>setForm(f=>({...f,superlativeCategories:e.target.value}))}
             placeholder={"Biggest Choke\nMost Clutch\nBest Shot of the Tournament\nMost Improved\nBiggest Trash Talker\nMVP"}/>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Each line becomes a voting category. Save Settings to apply.</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4, marginBottom:10 }}>Each line becomes a voting category.</div>
+          <button style={s.btnFire} onClick={async()=>{
+            const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+            await firestore.set("meta","tournament",{...meta,superlativeCategories:cats});
+            showToast("Superlatives saved!");
+          }}>Save Superlatives</button>
         </div>
       </div>
 
-      {/* Send Notification */}}
+      {/* Vote results */}
+      {(votes||[]).length > 0 && (meta?.superlativeCategories||[]).length > 0 && (
+        <div style={s.card}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>📊 Vote Results</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{(votes||[]).length} submission{(votes||[]).length!==1?"s":""}</div>
+            </div>
+            <button style={{ ...s.btnDanger, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
+              if(!window.confirm("Clear ALL votes? This cannot be undone.")) return;
+              for(const v of (votes||[])) await firestore.delete("votes", v.id);
+              showToast("All votes cleared!");
+            }}>Clear All Votes</button>
+          </div>
+          {(meta.superlativeCategories||[]).map(cat => {
+            const tally = {};
+            const totalVoters = (votes||[]).length;
+            (votes||[]).forEach(v => {
+              const pick = v.votes?.[cat];
+              if (pick) tally[pick] = (tally[pick]||0) + 1;
+            });
+            const votesForCat = Object.values(tally).reduce((s,n)=>s+n,0);
+            const sorted = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+            return (
+              <div key={cat} style={{ marginBottom:18, paddingBottom:18, borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase" }}>{cat}</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>{votesForCat}/{totalVoters} voted</div>
+                </div>
+                {sorted.length === 0 ? (
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No votes yet</div>
+                ) : sorted.map(([name, count], i) => {
+                  const pct = Math.round((count / totalVoters) * 100);
+                  return (
+                    <div key={name} style={{ marginBottom:6 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                        <span style={{ fontWeight:i===0?700:400, color:i===0?"#4ade80":"rgba(255,255,255,0.6)" }}>
+                          {i===0?"🏅 ":""}{name}
+                        </span>
+                        <span style={{ color:"rgba(255,255,255,0.4)" }}>{count}/{totalVoters} · {pct}%</span>
+                      </div>
+                      <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${pct}%`, background:i===0?"#4ade80":"rgba(255,255,255,0.2)", borderRadius:3, transition:"width 0.4s" }}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Send Notification */}
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>🔔 Send Push Notification</div>
         <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>
