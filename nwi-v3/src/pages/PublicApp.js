@@ -282,6 +282,7 @@ export default function PublicApp({ onGoAdmin }) {
   const { data: holePool }     = useCollection("holepool");
   const { data: meta }         = useDocument("meta", "tournament");
   const { data: drafts }       = useCollection("drafts");
+  const { data: fcmTokens }    = useCollection("fcm_tokens");
   const { data: votes }        = useCollection("votes");
 
   // Current year draft — maps playerName → team
@@ -312,19 +313,20 @@ export default function PublicApp({ onGoAdmin }) {
     return () => clearInterval(id);
   }, [tournamentDate]);
 
-  const [notifEnabled, setNotifEnabled] = useState(null); // null=unknown, true=on, false=off
+  const [notifEnabled, setNotifEnabled] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
 
-  // Request notification permission and register token
+  // Derive bell state from fcmTokens collection — if our token is in there, we're subscribed
   useEffect(() => {
-    const savedPref = localStorage.getItem("nwi_notif");
+    if (!notifToken) return;
+    const tokenKey = notifToken.slice(-20);
+    const isIn = (fcmTokens||[]).some(t => t.id === tokenKey);
+    setNotifEnabled(isIn);
+  }, [fcmTokens, notifToken]);
 
-    // Always restore state from localStorage first, regardless of messaging availability
-    if (savedPref === "off") { setNotifEnabled(false); return; }
-    if (savedPref === "on") { setNotifEnabled(true); }
-
+  // Request notification permission and register token on load
+  useEffect(() => {
     if (!messaging) return;
-
     const register = async () => {
       try {
         const permission = await Notification.requestPermission();
@@ -339,25 +341,25 @@ export default function PublicApp({ onGoAdmin }) {
           await sw.update();
           const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
           if (token) {
+            setNotifToken(token);
+            // Check if token is already in Firestore — if so, bell stays on
+            // If not (first time or was removed), add it back
             const { firestore } = await import("../firebase/hooks");
             const tokenKey = token.slice(-20);
-            await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
-            setNotifToken(token);
-            setNotifEnabled(true);
-            localStorage.setItem("nwi_notif", "on");
-            localStorage.setItem("nwi_token_key", tokenKey);
+            const savedPref = localStorage.getItem("nwi_notif");
+            if (savedPref !== "off") {
+              await firestore.set("fcm_tokens", tokenKey, { token, updatedAt: new Date().toISOString() });
+              localStorage.setItem("nwi_token_key", tokenKey);
+            }
           }
         } else {
           setNotifEnabled(false);
-          localStorage.setItem("nwi_notif", "off");
         }
       } catch(e) {
         console.log("Notification permission:", e.message);
-        // Don't override saved pref on error
       }
     };
     register();
-
     if (onMessage) {
       onMessage(messaging, payload => {
         console.log("Foreground notification received:", payload);
@@ -367,27 +369,22 @@ export default function PublicApp({ onGoAdmin }) {
 
   const toggleNotifications = async () => {
     const { firestore } = await import("../firebase/hooks");
-    const tokenKey = localStorage.getItem("nwi_token_key");
+    const tokenKey = notifToken ? notifToken.slice(-20) : localStorage.getItem("nwi_token_key");
     if (notifEnabled) {
-      // Turn off — remove token from Firestore
       if (tokenKey) {
         try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
       }
       setNotifEnabled(false);
       localStorage.setItem("nwi_notif", "off");
     } else {
-      // Turn on — re-register token
       try {
         let sw = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js");
-        if (!sw) {
-          sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-        }
+        if (!sw) sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
         if (token) {
           const key = token.slice(-20);
           await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
           setNotifToken(token);
-          setNotifEnabled(true);
           localStorage.setItem("nwi_notif", "on");
           localStorage.setItem("nwi_token_key", key);
         }
