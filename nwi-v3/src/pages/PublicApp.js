@@ -329,6 +329,7 @@ export default function PublicApp({ onGoAdmin }) {
         setNotifToken(token);
         const key = token.slice(-20);
         setTokenKey(key);
+        setNotifEnabled(true); // Set bell on immediately — don't wait for Firestore
         const { firestore } = await import("../firebase/hooks");
         const pref = await firestore.getDoc("notif_prefs", key);
         if (pref?.enabled === false) {
@@ -343,7 +344,6 @@ export default function PublicApp({ onGoAdmin }) {
         }
       } catch(e) {
         console.log("Notification init:", e.message);
-        setNotifEnabled(false);
       }
     };
     init();
