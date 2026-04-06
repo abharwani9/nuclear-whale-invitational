@@ -317,25 +317,26 @@ export default function PublicApp({ onGoAdmin }) {
 
   // Request notification permission and register token
   useEffect(() => {
-    if (!messaging) return;
-    // Check localStorage for user's preference
     const savedPref = localStorage.getItem("nwi_notif");
+
+    // Always restore state from localStorage first, regardless of messaging availability
     if (savedPref === "off") { setNotifEnabled(false); return; }
+    if (savedPref === "on") { setNotifEnabled(true); }
+
+    if (!messaging) return;
 
     const register = async () => {
       try {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
-          // Unregister any stale service workers first
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (const reg of registrations) {
             if (!reg.active?.scriptURL?.includes("firebase-messaging-sw")) {
               await reg.unregister();
             }
           }
-          // Register the messaging service worker
           const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache: "none" });
-          await sw.update(); // force update check
+          await sw.update();
           const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
           if (token) {
             const { firestore } = await import("../firebase/hooks");
@@ -348,17 +349,17 @@ export default function PublicApp({ onGoAdmin }) {
           }
         } else {
           setNotifEnabled(false);
+          localStorage.setItem("nwi_notif", "off");
         }
       } catch(e) {
         console.log("Notification permission:", e.message);
-        setNotifEnabled(false);
+        // Don't override saved pref on error
       }
     };
     register();
 
     if (onMessage) {
       onMessage(messaging, payload => {
-        // Foreground — service worker handles display, no need to alert
         console.log("Foreground notification received:", payload);
       });
     }
