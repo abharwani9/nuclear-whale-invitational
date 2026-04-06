@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { db } from "./config";
 import {
   collection, onSnapshot, doc, updateDoc, addDoc,
-  deleteDoc, setDoc, query, orderBy
+  deleteDoc, setDoc, getDoc as fsGetDoc, query, orderBy
 } from "firebase/firestore";
 
 // Generic real-time collection hook
@@ -48,4 +48,5 @@ export const firestore = {
   update: (col, id, data) => updateDoc(doc(db, col, id), data),
   delete: (col, id) => deleteDoc(doc(db, col, id)),
   set: (col, id, data) => setDoc(doc(db, col, id), data),
+  getDoc: async (col, id) => { const snap = await fsGetDoc(doc(db, col, id)); return snap.exists() ? { id: snap.id, ...snap.data() } : null; },
 };
