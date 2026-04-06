@@ -32,24 +32,45 @@ function WeatherWidget({ location, tournamentDate }) {
     setWeather(null);
     const fetchWeather = async () => {
       try {
-        // Strip everything after comma for cleaner city search
-        const cityQuery = location.split(",")[0].trim();
-        const stateQuery = location.split(",")[1]?.trim() || "";
-        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=10&language=en&format=json`);
-        const geoData = await geoRes.json();
-        if (!geoData.results?.length) { setLoading(false); return; }
-        // Find best match: state name match first, then US, then first result
-        const results = geoData.results;
-        const stateMatch = stateQuery ? results.find(r =>
-          r.country_code === "US" &&
-          (r.admin1?.toLowerCase().includes(stateQuery.toLowerCase()) ||
-           stateQuery.toLowerCase().includes(r.admin1?.toLowerCase()))
-        ) : null;
-        const usResult = stateMatch || results.find(r => r.country_code === "US") || results[0];
-        const { latitude, longitude, name, admin1 } = usResult;
-        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
+        const parts = location.split(",").map(s => s.trim());
+        const city  = parts[0] || "";
+        const state = parts[1] || "";
+
+        let lat = null, lon = null, matchedName = location;
+
+        // Try US Census Bureau geocoder first — covers every US city/town
+        if (city) {
+          const censusUrl = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&country=US&format=json&limit=1`;
+          const censusRes = await fetch(censusUrl, { headers: { "User-Agent": "NuclearWhaleInvitational/1.0 contact@nwi.app" } });
+          const censusData = await censusRes.json();
+          if (censusData.length) {
+            lat = parseFloat(censusData[0].lat);
+            lon = parseFloat(censusData[0].lon);
+            matchedName = censusData[0].display_name.split(",").slice(0,2).join(",").trim();
+          }
+        }
+
+        // Fallback to Open-Meteo geocoding
+        if (!lat) {
+          const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=10&language=en&format=json`);
+          const geoData = await geoRes.json();
+          if (geoData.results?.length) {
+            const stateMatch = state ? geoData.results.find(r =>
+              r.country_code === "US" &&
+              r.admin1?.toLowerCase().includes(state.toLowerCase())
+            ) : null;
+            const best = stateMatch || geoData.results.find(r => r.country_code === "US") || geoData.results[0];
+            lat = best.latitude;
+            lon = best.longitude;
+            matchedName = `${best.name}, ${best.admin1}`;
+          }
+        }
+
+        if (!lat) { setLoading(false); return; }
+
+        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
         const wxData = await wxRes.json();
-        setWeather({ ...wxData, matchedCity: `${name}, ${admin1}` });
+        setWeather({ ...wxData, matchedCity: matchedName });
       } catch(e) { console.log("Weather error:", e); }
       setLoading(false);
     };
