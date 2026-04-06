@@ -322,32 +322,24 @@ export default function PublicApp({ onGoAdmin }) {
     const init = async () => {
       try {
         const permission = await Notification.requestPermission();
-        if (permission !== "granted") { setNotifEnabled(false); alert("Permission not granted: " + permission); return; }
-        let sw;
-        try {
-          sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
-        } catch(e) { alert("SW registration failed: " + e.message); setNotifEnabled(false); return; }
-        let token;
-        try {
-          token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-        } catch(e) { alert("getToken failed: " + e.message); setNotifEnabled(false); return; }
-        if (!token) { alert("getToken returned empty"); setNotifEnabled(false); return; }
+        if (permission !== "granted") { setNotifEnabled(false); return; }
+        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+        if (!token) { setNotifEnabled(false); return; }
         setNotifToken(token);
         const key = token.slice(-20);
         setTokenKey(key);
         const { firestore } = await import("../firebase/hooks");
-        const existing = await firestore.getDoc("fcm_tokens", key);
-        if (existing) {
-          setNotifEnabled(true);
+        // Check notif_prefs — user's explicit choice persisted in Firestore
+        const pref = await firestore.getDoc("notif_prefs", key);
+        if (pref?.enabled === false) {
+          // User turned off — don't add token back
+          setNotifEnabled(false);
         } else {
-          const pref = await firestore.getDoc("notif_prefs", key);
-          if (pref?.enabled === false) {
-            setNotifEnabled(false);
-          } else {
-            await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
-            await firestore.set("notif_prefs", key, { enabled: true });
-            setNotifEnabled(true);
-          }
+          // On by default or user turned on — ensure token is in Firestore
+          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
+          await firestore.set("notif_prefs", key, { enabled: true });
+          setNotifEnabled(true);
         }
       } catch(e) {
         console.log("Notification init:", e.message);
@@ -359,21 +351,31 @@ export default function PublicApp({ onGoAdmin }) {
   }, []);
 
   const toggleNotifications = async () => {
-    if (!tokenKey) {
-      alert(`Debug: tokenKey=${tokenKey}, notifToken=${notifToken ? "set" : "null"}, notifEnabled=${notifEnabled}`);
-      return;
-    }
     const { firestore } = await import("../firebase/hooks");
     if (notifEnabled) {
-      try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
-      await firestore.set("notif_prefs", tokenKey, { enabled: false });
+      if (tokenKey) {
+        try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
+        await firestore.set("notif_prefs", tokenKey, { enabled: false });
+      }
       setNotifEnabled(false);
     } else {
-      if (notifToken) {
+      if (tokenKey && notifToken) {
         await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString() });
+        await firestore.set("notif_prefs", tokenKey, { enabled: true });
+        setNotifEnabled(true);
+      } else {
+        // Token not loaded yet — re-run init
+        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
+        if (token) {
+          const key = token.slice(-20);
+          setNotifToken(token);
+          setTokenKey(key);
+          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
+          await firestore.set("notif_prefs", key, { enabled: true });
+          setNotifEnabled(true);
+        }
       }
-      await firestore.set("notif_prefs", tokenKey, { enabled: true });
-      setNotifEnabled(true);
     }
   };
 
