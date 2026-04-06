@@ -319,25 +319,38 @@ export default function PublicApp({ onGoAdmin }) {
 
   useEffect(() => {
     if (!messaging) return;
+
+    // Instantly restore bell state from cached token key before async init
+    const cachedKey = localStorage.getItem("nwi_token_key");
+    if (cachedKey) {
+      import("../firebase/hooks").then(({ firestore }) => {
+        firestore.getDoc("notif_prefs", cachedKey).then(pref => {
+          if (pref?.enabled === false) {
+            setNotifEnabled(false);
+          } else {
+            setNotifEnabled(true);
+          }
+        }).catch(() => setNotifEnabled(true));
+      });
+    }
+
     const init = async () => {
       try {
         const permission = await Notification.requestPermission();
         if (permission !== "granted") { setNotifEnabled(false); return; }
         const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-        if (!token) { setNotifEnabled(false); return; }
+        if (!token) return;
         setNotifToken(token);
         const key = token.slice(-20);
         setTokenKey(key);
-        setNotifEnabled(true); // Set bell on immediately — don't wait for Firestore
+        localStorage.setItem("nwi_token_key", key);
         const { firestore } = await import("../firebase/hooks");
         const pref = await firestore.getDoc("notif_prefs", key);
         if (pref?.enabled === false) {
-          // User explicitly turned off — respect that
           try { await firestore.delete("fcm_tokens", key); } catch(e) {}
           setNotifEnabled(false);
         } else {
-          // No preference or enabled=true — always register and turn on
           await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
           await firestore.set("notif_prefs", key, { enabled: true });
           setNotifEnabled(true);
