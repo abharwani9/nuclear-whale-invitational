@@ -874,7 +874,13 @@ export default function PublicApp({ onGoAdmin }) {
                       {(m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
                         const hasPlayers = (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0;
                         if (!hasPlayers) return null;
-                        const allowance = round.handicapAllowance || meta?.defaultHcpAllowance || 100;
+                        const allowance = (() => {
+                          // Find competition ID for this round
+                          const comp = competitions?.find(c => c.name === round.competitionName || c.name === m.competitionName);
+                          if (comp && meta?.hcpAllowances?.[comp.id] !== undefined) return meta.hcpAllowances[comp.id];
+                          if (round.handicapAllowance) return round.handicapAllowance;
+                          return 100;
+                        })();
                         const isAdj = Number(allowance) < 100;
                         const odds = calcOdds(m.nukes, m.whales, Number(allowance));
                         const nukeHcp = teamHandicap(m.nukes, Number(allowance));
@@ -921,7 +927,10 @@ export default function PublicApp({ onGoAdmin }) {
                             </div>
                             {playerStats.map(p => (
                               <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                                <span style={{ color:"rgba(255,255,255,0.7)" }}>{p.name}</span>
+                                <span style={{ color:"rgba(255,255,255,0.7)" }}>
+                                  {p.name}
+                                  <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginLeft:6 }}>HCP {getHandicap(p.name)}</span>
+                                </span>
                                 <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w} · {p.t} · {p.l}</span>
                               </div>
                             ))}
