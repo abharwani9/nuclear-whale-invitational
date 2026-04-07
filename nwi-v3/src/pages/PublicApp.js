@@ -872,7 +872,7 @@ export default function PublicApp({ onGoAdmin }) {
                         </div>
                       </div>
                       {(m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
-                        const hasPlayers = (m.nukes||[]).some(n=>n) && (m.whales||[]).some(n=>n);
+                        const hasPlayers = (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0;
                         if (!hasPlayers) return null;
                         const allowance = round.handicapAllowance || meta?.defaultHcpAllowance || 100;
                         const isAdj = Number(allowance) < 100;
@@ -893,24 +893,9 @@ export default function PublicApp({ onGoAdmin }) {
                           </div>
                         );
                       })()}
-                      {/* Head-to-head panel — shows on tap */}
-                      {selectedMatchup===`${round.id}-${mi}` && (m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
-                        // Calculate head-to-head from history
+                      {/* Player records panel — shows on tap */}
+                      {selectedMatchup===`${round.id}-${mi}` && (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0 && (() => {
                         const allPlayers = [...(m.nukes||[]), ...(m.whales||[])];
-                        const h2h = { wins:0, losses:0, ties:0 };
-                        history.forEach(yr => {
-                          (yr.matches||[]).forEach(hm => {
-                            if (hm.type==="heading" || !hm.winner) return;
-                            const nukeMatch = (m.nukes||[]).some(p=>(hm.nukes||[]).includes(p));
-                            const whaleMatch = (m.whales||[]).some(p=>(hm.whales||[]).includes(p));
-                            if (!nukeMatch || !whaleMatch) return;
-                            if (hm.winner==="nukes") h2h.wins++;
-                            else if (hm.winner==="whales") h2h.losses++;
-                            else if (hm.winner==="tie") h2h.ties++;
-                          });
-                        });
-                        const total = h2h.wins + h2h.losses + h2h.ties;
-                        // Individual records
                         const playerStats = allPlayers.map(name => {
                           let w=0,l=0,t=0;
                           history.forEach(yr => {
@@ -927,37 +912,19 @@ export default function PublicApp({ onGoAdmin }) {
                           });
                           return { name, w, l, t, total:w+l+t };
                         }).filter(p=>p.total>0);
+                        if (!playerStats.length) return <div style={{ marginTop:8, fontSize:12, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>No historical data yet</div>;
                         return (
-                          <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:8, borderTop:"1px solid rgba(255,255,255,0.08)" }}>
-                            {total > 0 ? (
-                              <div style={{ marginBottom:8 }}>
-                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>Head-to-Head ({total} matches)</div>
-                                <div style={{ fontSize:13, fontWeight:700 }}>
-                                  <span style={{ color:"#ff4500" }}>{h2h.wins}W</span>
-                                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 6px" }}>·</span>
-                                  <span style={{ color:"#ffd700" }}>{h2h.ties}T</span>
-                                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 6px" }}>·</span>
-                                  <span style={{ color:"#00aaff" }}>{h2h.losses}W</span>
-
-                                </div>
+                          <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>
+                              <span>Player</span>
+                              <span>W · T · L</span>
+                            </div>
+                            {playerStats.map(p => (
+                              <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
+                                <span style={{ color:"rgba(255,255,255,0.7)" }}>{p.name}</span>
+                                <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w} · {p.t} · {p.l}</span>
                               </div>
-                            ) : (
-                              <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>No prior head-to-head history</div>
-                            )}
-                            {playerStats.length > 0 && (
-                              <div>
-                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>
-                                  <span>Player</span>
-                                  <span>W · T · L</span>
-                                </div>
-                                {playerStats.map(p => (
-                                  <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
-                                    <span style={{ color:"rgba(255,255,255,0.7)" }}>{p.name}</span>
-                                    <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w} · {p.t} · {p.l}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            ))}
                           </div>
                         );
                       })()}
