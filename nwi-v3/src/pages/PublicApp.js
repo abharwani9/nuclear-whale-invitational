@@ -754,14 +754,16 @@ export default function PublicApp({ onGoAdmin }) {
           const getHandicap = (name) => {
             const p = roster.find(r => r.name === name);
             const h = parseFloat(p?.handicap);
-            if (!h || isNaN(h) || h <= 1) return 27; // default for scratch/plus handicap
+            if (!h || isNaN(h) || h <= 1) return 27; // scratch/plus default
+            if (h > 50) return 36; // very high handicap default
             return h;
           };
 
-          // Team handicap = 35% of lower + 15% of higher
-          const teamHandicap = (players) => {
-            if (!players?.length) return 18; // default
-            const hcaps = players.map(n => getHandicap(n)).sort((a,b)=>a-b);
+          // Team handicap = 35% of lower + 15% of higher, adjusted by allowance %
+          const teamHandicap = (players, allowancePct) => {
+            if (!players?.length) return 18;
+            const pct = (allowancePct || 100) / 100;
+            const hcaps = players.map(n => getHandicap(n) * pct).sort((a,b)=>a-b);
             if (hcaps.length === 1) return Math.round(hcaps[0] * 0.5);
             return Math.round(hcaps[0] * 0.35 + hcaps[1] * 0.15);
           };
@@ -796,9 +798,9 @@ export default function PublicApp({ onGoAdmin }) {
           };
 
           // Calculate odds for a matchup
-          const calcOdds = (nukes, whales) => {
-            const nukeHcp  = teamHandicap(nukes);
-            const whaleHcp = teamHandicap(whales);
+          const calcOdds = (nukes, whales, allowancePct) => {
+            const nukeHcp  = teamHandicap(nukes, allowancePct);
+            const whaleHcp = teamHandicap(whales, allowancePct);
             const nukeWR   = getWinRate(nukes);
             const whaleWR  = getWinRate(whales);
 
@@ -870,19 +872,23 @@ export default function PublicApp({ onGoAdmin }) {
                         </div>
                       </div>
                       {(m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
-                        const odds = calcOdds(m.nukes, m.whales);
-                        const nukeHcp = teamHandicap(m.nukes);
-                        const whaleHcp = teamHandicap(m.whales);
+                        const hasPlayers = (m.nukes||[]).some(n=>n) && (m.whales||[]).some(n=>n);
+                        if (!hasPlayers) return null;
+                        const allowance = round.handicapAllowance || meta?.defaultHcpAllowance || 100;
+                        const isAdj = Number(allowance) < 100;
+                        const odds = calcOdds(m.nukes, m.whales, Number(allowance));
+                        const nukeHcp = teamHandicap(m.nukes, Number(allowance));
+                        const whaleHcp = teamHandicap(m.whales, Number(allowance));
                         return (
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {nukeHcp}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {nukeHcp}{isAdj?` (${allowance}%)`:"" }</div>
                             </div>
                             <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS</div>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {whaleHcp}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {whaleHcp}{isAdj?` (${allowance}%)`:"" }</div>
                             </div>
                           </div>
                         );
@@ -932,7 +938,7 @@ export default function PublicApp({ onGoAdmin }) {
                                   <span style={{ color:"#ffd700" }}>{h2h.ties}T</span>
                                   <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 6px" }}>·</span>
                                   <span style={{ color:"#00aaff" }}>{h2h.losses}W</span>
-                                  <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginLeft:6 }}>(Nukes · Whales)</span>
+
                                 </div>
                               </div>
                             ) : (
@@ -940,11 +946,14 @@ export default function PublicApp({ onGoAdmin }) {
                             )}
                             {playerStats.length > 0 && (
                               <div>
-                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>Individual Records</div>
+                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>
+                                  <span>Player</span>
+                                  <span>W · T · L</span>
+                                </div>
                                 {playerStats.map(p => (
                                   <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
                                     <span style={{ color:"rgba(255,255,255,0.7)" }}>{p.name}</span>
-                                    <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.l}-{p.t} ({p.total} matches)</span>
+                                    <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w} · {p.t} · {p.l}</span>
                                   </div>
                                 ))}
                               </div>
