@@ -149,7 +149,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="media"        && <AdminMedia showToast={showToast}/>}
         {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
-        {section==="settings"     && <SettingsSection meta={meta} history={history} showToast={showToast}/>}
+        {section==="settings"     && <SettingsSection meta={meta} history={history} competitions={competitions} showToast={showToast}/>}
       </div>
     </div>
   );
@@ -1811,7 +1811,7 @@ function LocationAutocomplete({ value, onChange }) {
   );
 }
 
-function SettingsSection({ meta, history, showToast }) {
+function SettingsSection({ meta, history, competitions, showToast }) {
   const { data: votes } = useCollection("votes");
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
@@ -1820,12 +1820,25 @@ function SettingsSection({ meta, history, showToast }) {
   const [sending, setSending]       = useState(false);
   const { data: fcmTokens } = useCollection("fcm_tokens");
 
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"" }); setLoaded(true); }
+  if (meta&&!loaded) {
+    const hcpFields = {};
+    (competitions||[]).forEach(c => {
+      hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
+    });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", ...hcpFields });
+    setLoaded(true);
+  }
 
   const save = async () => {
     try {
       const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats});
+      // Build hcpAllowances map from per-competition fields
+      const hcpAllowances = {};
+      (competitions||[]).forEach(c => {
+        const val = form[`hcpAllowance_${c.id}`];
+        if (val !== "" && val !== undefined) hcpAllowances[c.id] = Number(val);
+      });
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
@@ -1873,9 +1886,29 @@ function SettingsSection({ meta, history, showToast }) {
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
         <div style={{ marginTop:10 }}>
-          <div style={s.label}>Default Handicap Allowance % (for odds model)</div>
-          <input style={s.input} type="number" step="5" value={form.defaultHcpAllowance||""} onChange={e=>setForm(f=>({...f,defaultHcpAllowance:e.target.value}))} placeholder="e.g. 70 (leave blank for 100%)"/>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Used for rounds that don't have their own allowance set</div>
+          <div style={s.label}>Handicap Allowance % by Competition</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:10 }}>Set the handicap allowance % for each competition format. Used by the odds model.</div>
+          {(competitions||[]).length === 0 ? (
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No competitions set up yet — add them in the Competitions tab</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {(competitions||[]).map(c => {
+                const key = `hcpAllowance_${c.id}`;
+                const val = form[key] ?? (meta?.hcpAllowances?.[c.id] || "");
+                return (
+                  <div key={c.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+                    <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{c.icon||"🏅"} {c.name}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <input style={{ ...s.input, width:70, textAlign:"center" }} type="number" step="5" min="0" max="100"
+                        value={val} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                        placeholder="100"/>
+                      <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>App Password (all users)</div>
