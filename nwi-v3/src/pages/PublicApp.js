@@ -314,6 +314,7 @@ export default function PublicApp({ onGoAdmin }) {
   }, [tournamentDate]);
 
   const [notifEnabled, setNotifEnabled] = useState(null);
+  const [selectedMatchup, setSelectedMatchup] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
   const [tokenKey, setTokenKey]         = useState(null);
 
@@ -753,7 +754,7 @@ export default function PublicApp({ onGoAdmin }) {
           const getHandicap = (name) => {
             const p = roster.find(r => r.name === name);
             const h = parseFloat(p?.handicap);
-            if (!h || isNaN(h) || h < 1) return 27; // default for scratch/plus
+            if (!h || isNaN(h) || h <= 1) return 27; // default for scratch/plus handicap
             return h;
           };
 
@@ -848,7 +849,8 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginLeft:"auto" }}>Win={round.pointsPerWin}pts</div>
                   </div>
                   {(round.matchups||[]).map((m,mi)=>(
-                    <div key={mi} className="card" style={{ padding:"14px", marginBottom:10 }}>
+                    <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
+                      onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
                       {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {m.pointsWorth||round.pointsPerWin}pts</div>}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
@@ -867,7 +869,7 @@ export default function PublicApp({ onGoAdmin }) {
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
                       </div>
-                      {(() => {
+                      {(m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
                         const odds = calcOdds(m.nukes, m.whales);
                         const nukeHcp = teamHandicap(m.nukes);
                         const whaleHcp = teamHandicap(m.whales);
@@ -885,7 +887,72 @@ export default function PublicApp({ onGoAdmin }) {
                           </div>
                         );
                       })()}
-                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING</div>}
+                      {/* Head-to-head panel — shows on tap */}
+                      {selectedMatchup===`${round.id}-${mi}` && (m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
+                        // Calculate head-to-head from history
+                        const allPlayers = [...(m.nukes||[]), ...(m.whales||[])];
+                        const h2h = { wins:0, losses:0, ties:0 };
+                        history.forEach(yr => {
+                          (yr.matches||[]).forEach(hm => {
+                            if (hm.type==="heading" || !hm.winner) return;
+                            const nukeMatch = (m.nukes||[]).some(p=>(hm.nukes||[]).includes(p));
+                            const whaleMatch = (m.whales||[]).some(p=>(hm.whales||[]).includes(p));
+                            if (!nukeMatch || !whaleMatch) return;
+                            if (hm.winner==="nukes") h2h.wins++;
+                            else if (hm.winner==="whales") h2h.losses++;
+                            else if (hm.winner==="tie") h2h.ties++;
+                          });
+                        });
+                        const total = h2h.wins + h2h.losses + h2h.ties;
+                        // Individual records
+                        const playerStats = allPlayers.map(name => {
+                          let w=0,l=0,t=0;
+                          history.forEach(yr => {
+                            (yr.matches||[]).forEach(hm => {
+                              if (hm.type==="heading"||!hm.winner) return;
+                              const onNukes = (hm.nukes||[]).includes(name);
+                              const onWhales = (hm.whales||[]).includes(name);
+                              if (!onNukes && !onWhales) return;
+                              const playerTeam = onNukes?"nukes":"whales";
+                              if (hm.winner===playerTeam) w++;
+                              else if (hm.winner==="tie") t++;
+                              else l++;
+                            });
+                          });
+                          return { name, w, l, t, total:w+l+t };
+                        }).filter(p=>p.total>0);
+                        return (
+                          <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:8, borderTop:"1px solid rgba(255,255,255,0.08)" }}>
+                            {total > 0 ? (
+                              <div style={{ marginBottom:8 }}>
+                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>Head-to-Head ({total} matches)</div>
+                                <div style={{ fontSize:13, fontWeight:700 }}>
+                                  <span style={{ color:"#ff4500" }}>{h2h.wins}W</span>
+                                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 6px" }}>·</span>
+                                  <span style={{ color:"#ffd700" }}>{h2h.ties}T</span>
+                                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 6px" }}>·</span>
+                                  <span style={{ color:"#00aaff" }}>{h2h.losses}W</span>
+                                  <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginLeft:6 }}>(Nukes · Whales)</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>No prior head-to-head history</div>
+                            )}
+                            {playerStats.length > 0 && (
+                              <div>
+                                <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>Individual Records</div>
+                                {playerStats.map(p => (
+                                  <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                                    <span style={{ color:"rgba(255,255,255,0.7)" }}>{p.name}</span>
+                                    <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.l}-{p.t} ({p.total} matches)</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING · tap for stats</div>}
                     </div>
                   ))}
                 </div>
