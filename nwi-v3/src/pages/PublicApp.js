@@ -747,7 +747,87 @@ export default function PublicApp({ onGoAdmin }) {
         )}
 
         {/* ── MATCHUPS ── */}
-        {tab==="matchups" && (
+        {tab==="matchups" && (() => {
+          // ── Odds Model ──────────────────────────────────────────────────────
+          // Get player handicap — default to 25-30 range if below 1
+          const getHandicap = (name) => {
+            const p = roster.find(r => r.name === name);
+            const h = parseFloat(p?.handicap);
+            if (!h || isNaN(h) || h < 1) return 27; // default for scratch/plus
+            return h;
+          };
+
+          // Team handicap = 35% of lower + 15% of higher
+          const teamHandicap = (players) => {
+            if (!players?.length) return 18; // default
+            const hcaps = players.map(n => getHandicap(n)).sort((a,b)=>a-b);
+            if (hcaps.length === 1) return Math.round(hcaps[0] * 0.5);
+            return Math.round(hcaps[0] * 0.35 + hcaps[1] * 0.15);
+          };
+
+          // Get historical win rate for a set of players
+          const getWinRate = (players) => {
+            if (!players?.length) return 0.5;
+            let wins = 0, total = 0;
+            history.forEach(yr => {
+              (yr.matches||[]).forEach(m => {
+                if (m.type === "heading" || !m.winner) return;
+                const inNukes = players.some(p => (m.nukes||[]).includes(p));
+                const inWhales = players.some(p => (m.whales||[]).includes(p));
+                if (!inNukes && !inWhales) return;
+                total++;
+                const playerTeam = inNukes ? "nukes" : "whales";
+                if (m.winner === playerTeam) wins++;
+                else if (m.winner === "tie") wins += 0.5;
+              });
+            });
+            return total >= 2 ? wins / total : 0.5; // need at least 2 matches
+          };
+
+          // Convert probability to American odds
+          const toAmericanOdds = (prob) => {
+            prob = Math.max(0.05, Math.min(0.95, prob));
+            if (prob >= 0.5) {
+              return `-${Math.round((prob / (1 - prob)) * 100)}`;
+            } else {
+              return `+${Math.round(((1 - prob) / prob) * 100)}`;
+            }
+          };
+
+          // Calculate odds for a matchup
+          const calcOdds = (nukes, whales) => {
+            const nukeHcp  = teamHandicap(nukes);
+            const whaleHcp = teamHandicap(whales);
+            const nukeWR   = getWinRate(nukes);
+            const whaleWR  = getWinRate(whales);
+
+            // Handicap probability — lower hcp = better, differential affects prob
+            const hcpDiff = whaleHcp - nukeHcp; // positive = nukes have lower hcp (better)
+            // Each stroke roughly = 3% probability shift (calibrated for golf)
+            const hcpProb = 0.5 + (hcpDiff * 0.03);
+
+            // Historical win rate probability
+            const totalWR = nukeWR + whaleWR;
+            const histProb = totalWR > 0 ? nukeWR / totalWR : 0.5;
+
+            // Blend: 60% handicap, 40% history
+            const hasHistory = (nukes||[]).some(p => getWinRate([p]) !== 0.5) ||
+                               (whales||[]).some(p => getWinRate([p]) !== 0.5);
+            const nukeProb = hasHistory
+              ? (hcpProb * 0.60 + histProb * 0.40)
+              : hcpProb;
+
+            const clampedProb = Math.max(0.1, Math.min(0.9, nukeProb));
+            return {
+              nukeProb: clampedProb,
+              whaleProb: 1 - clampedProb,
+              nukeOdds: toAmericanOdds(clampedProb),
+              whaleOdds: toAmericanOdds(1 - clampedProb),
+              nukeFav: clampedProb >= 0.5,
+            };
+          };
+
+          return (
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Round Matchups</div>
             {rounds.filter(r=>r.type!=="segment").length===0&&<div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.25)" }}>No rounds set up yet</div>}
@@ -777,7 +857,9 @@ export default function PublicApp({ onGoAdmin }) {
                           {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
-                        <div style={{ textAlign:"center", fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
+                        <div style={{ textAlign:"center" }}>
+                          <div style={{ fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
+                        </div>
                         <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
                           {(m.whales||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
@@ -785,14 +867,33 @@ export default function PublicApp({ onGoAdmin }) {
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
                       </div>
-                      {!m.winner&&<div style={{ textAlign:"center", marginTop:8, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING</div>}
+                      {(() => {
+                        const odds = calcOdds(m.nukes, m.whales);
+                        const nukeHcp = teamHandicap(m.nukes);
+                        const whaleHcp = teamHandicap(m.whales);
+                        return (
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
+                            <div style={{ textAlign:"center", flex:1 }}>
+                              <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {nukeHcp}</div>
+                            </div>
+                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS</div>
+                            <div style={{ textAlign:"center", flex:1 }}>
+                              <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {whaleHcp}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING</div>}
                     </div>
                   ))}
                 </div>
               );
             })}
           </div>
-        )}
+          );
+        })()}
 
         {/* ── COUNTDOWN ── */}
         {tab==="countdown" && (
