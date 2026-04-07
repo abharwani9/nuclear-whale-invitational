@@ -875,10 +875,8 @@ export default function PublicApp({ onGoAdmin }) {
                         const hasPlayers = (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0;
                         if (!hasPlayers) return null;
                         const allowance = (() => {
-                          // Find competition ID for this round
                           const comp = competitions?.find(c => c.name === round.competitionName || c.name === m.competitionName);
                           if (comp && meta?.hcpAllowances?.[comp.id] !== undefined) return meta.hcpAllowances[comp.id];
-                          if (round.handicapAllowance) return round.handicapAllowance;
                           return 100;
                         })();
                         const isAdj = Number(allowance) < 100;
