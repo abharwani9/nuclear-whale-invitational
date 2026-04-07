@@ -320,19 +320,16 @@ export default function PublicApp({ onGoAdmin }) {
   useEffect(() => {
     if (!messaging) return;
 
-    // Instantly restore bell state from cached token key before async init
-    const cachedKey = localStorage.getItem("nwi_token_key");
-    if (cachedKey) {
-      import("../firebase/hooks").then(({ firestore }) => {
-        firestore.getDoc("notif_prefs", cachedKey).then(pref => {
-          if (pref?.enabled === false) {
-            setNotifEnabled(false);
-          } else {
-            setNotifEnabled(true);
-          }
-        }).catch(() => setNotifEnabled(true));
-      });
-    }
+    // Stable device ID — never changes
+    let deviceId = localStorage.getItem("nwi_device_id");
+    if (!deviceId) { deviceId = Math.random().toString(36).slice(2); localStorage.setItem("nwi_device_id", deviceId); }
+
+    // Instantly restore bell state from Firestore using stable device ID
+    import("../firebase/hooks").then(({ firestore }) => {
+      firestore.getDoc("notif_prefs", deviceId).then(pref => {
+        setNotifEnabled(pref?.enabled !== false); // default true if no pref
+      }).catch(() => setNotifEnabled(true));
+    });
 
     const init = async () => {
       try {
@@ -346,13 +343,16 @@ export default function PublicApp({ onGoAdmin }) {
         setTokenKey(key);
         localStorage.setItem("nwi_token_key", key);
         const { firestore } = await import("../firebase/hooks");
-        const pref = await firestore.getDoc("notif_prefs", key);
+        // Check pref using stable device ID
+        const pref = await firestore.getDoc("notif_prefs", deviceId);
         if (pref?.enabled === false) {
+          // User turned off — remove token, don't re-add
           try { await firestore.delete("fcm_tokens", key); } catch(e) {}
           setNotifEnabled(false);
         } else {
-          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
-          await firestore.set("notif_prefs", key, { enabled: true });
+          // On — register token
+          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString(), deviceId });
+          await firestore.set("notif_prefs", deviceId, { enabled: true });
           setNotifEnabled(true);
         }
       } catch(e) {
@@ -365,30 +365,29 @@ export default function PublicApp({ onGoAdmin }) {
 
   const toggleNotifications = async () => {
     const { firestore } = await import("../firebase/hooks");
+    const deviceId = localStorage.getItem("nwi_device_id");
     if (notifEnabled) {
       if (tokenKey) {
         try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
-        await firestore.set("notif_prefs", tokenKey, { enabled: false });
       }
+      if (deviceId) await firestore.set("notif_prefs", deviceId, { enabled: false });
       setNotifEnabled(false);
     } else {
       if (tokenKey && notifToken) {
-        await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString() });
-        await firestore.set("notif_prefs", tokenKey, { enabled: true });
-        setNotifEnabled(true);
+        await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString(), deviceId });
       } else {
-        // Token not loaded yet — re-run init
         const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
         const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
         if (token) {
           const key = token.slice(-20);
           setNotifToken(token);
           setTokenKey(key);
-          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString() });
-          await firestore.set("notif_prefs", key, { enabled: true });
-          setNotifEnabled(true);
+          localStorage.setItem("nwi_token_key", key);
+          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString(), deviceId });
         }
       }
+      if (deviceId) await firestore.set("notif_prefs", deviceId, { enabled: true });
+      setNotifEnabled(true);
     }
   };
 
