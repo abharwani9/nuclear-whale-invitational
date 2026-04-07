@@ -505,7 +505,7 @@ function DraftSection({ roster, drafts, showToast }) {
 
 // ── ROUNDS ─────────────────────────────────────────────────────────────────
 function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }) {
-  const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"" };
+  const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"", handicapAllowance:"" };
   const [form, setForm]           = useState(blankRound);
   const [editingRound, setEditingRound] = useState(null);
   const [newSegment, setNewSegment] = useState("");
@@ -530,7 +530,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   const saveRound = async () => {
     if (!form.name) return showToast("Round name required", true);
-    const data = { name:form.name, day:form.day, pointsPerWin:Number(form.pointsPerWin), pointsPerTie:Number(form.pointsPerTie), competitionName:form.competitionName||"" };
+    const data = { name:form.name, day:form.day, pointsPerWin:Number(form.pointsPerWin), pointsPerTie:Number(form.pointsPerTie), competitionName:form.competitionName||"", handicapAllowance:form.handicapAllowance?Number(form.handicapAllowance):null };
     try {
       if (editingRound) { await firestore.update("rounds",editingRound,data); showToast("Updated!"); setEditingRound(null); }
       else { await firestore.add("rounds",{...data,matchups:[]}); showToast("Round added!"); }
@@ -611,6 +611,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
           </div>
           <div><div style={s.label}>Points per Win</div><input style={s.input} type="number" step="0.5" value={form.pointsPerWin} onChange={e=>setForm(f=>({...f,pointsPerWin:e.target.value}))}/></div>
           <div><div style={s.label}>Points per Tie</div><input style={s.input} type="number" step="0.5" value={form.pointsPerTie} onChange={e=>setForm(f=>({...f,pointsPerTie:e.target.value}))}/></div>
+          <div><div style={s.label}>Handicap Allowance % (optional)</div><input style={s.input} type="number" step="5" value={form.handicapAllowance||""} onChange={e=>setForm(f=>({...f,handicapAllowance:e.target.value}))} placeholder="e.g. 70 (leave blank for 100%)"/></div>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Competition (optional)</div>
@@ -661,9 +662,9 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
-              <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}</div>
+              <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}{round.handicapAllowance?` · ${round.handicapAllowance}% HCP`:""}</div>
             </div>
-            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
+            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||"",handicapAllowance:round.handicapAllowance||""});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
           {getMatchups(round).map((m,mi)=>(
@@ -1819,7 +1820,7 @@ function SettingsSection({ meta, history, showToast }) {
   const [sending, setSending]       = useState(false);
   const { data: fcmTokens } = useCollection("fcm_tokens");
 
-  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n") }); setLoaded(true); }
+  if (meta&&!loaded) { setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"" }); setLoaded(true); }
 
   const save = async () => {
     try {
