@@ -149,7 +149,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="media"        && <AdminMedia showToast={showToast}/>}
         {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
-        {section==="settings"     && <SettingsSection meta={meta} showToast={showToast}/>}
+        {section==="settings"     && <SettingsSection meta={meta} history={history} showToast={showToast}/>}
       </div>
     </div>
   );
@@ -1810,7 +1810,7 @@ function LocationAutocomplete({ value, onChange }) {
   );
 }
 
-function SettingsSection({ meta, showToast }) {
+function SettingsSection({ meta, history, showToast }) {
   const { data: votes } = useCollection("votes");
   const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
   const [loaded, setLoaded] = useState(false);
@@ -1929,11 +1929,39 @@ function SettingsSection({ meta, showToast }) {
               <div style={{ fontSize:14, fontWeight:700 }}>📊 Vote Results</div>
               <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{(votes||[]).length} submission{(votes||[]).length!==1?"s":""}</div>
             </div>
-            <button style={{ ...s.btnDanger, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
-              if(!window.confirm("Clear ALL votes? This cannot be undone.")) return;
-              for(const v of (votes||[])) await firestore.delete("votes", v.id);
-              showToast("All votes cleared!");
-            }}>Clear All Votes</button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button style={{ ...s.btnFire, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
+                // Find the current year in history
+                const currentYear = meta?.year;
+                const histYear = (history||[]).find(h => String(h.year) === String(currentYear));
+                if (!histYear) { showToast(`No history entry for ${currentYear} — add it in History tab first`, true); return; }
+                if (!window.confirm(`Import superlative winners into ${currentYear} history? This will replace existing superlatives for that year.`)) return;
+                // Calculate winners from votes
+                const cats = meta?.superlativeCategories || [];
+                const newSuperlatives = [];
+                cats.forEach(cat => {
+                  const tally = {};
+                  (votes||[]).forEach(v => { const pick = v.votes?.[cat]; if (pick) tally[pick] = (tally[pick]||0) + 1; });
+                  const sorted = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+                  if (sorted.length > 0) {
+                    const topCount = sorted[0][1];
+                    const winners = sorted.filter(([,c]) => c === topCount).map(([n]) => n);
+                    // Only import if clear winner (no tie)
+                    if (winners.length === 1) {
+                      newSuperlatives.push({ title: cat, player: winners[0] });
+                    }
+                    // Skip ties — those need manual resolution
+                  }
+                });
+                await firestore.update("history", histYear.id, { superlatives: newSuperlatives });
+                showToast(`✅ Imported ${newSuperlatives.length} superlatives into ${currentYear} history!`);
+              }}>⬆ Import to History</button>
+              <button style={{ ...s.btnDanger, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
+                if(!window.confirm("Clear ALL votes? This cannot be undone.")) return;
+                for(const v of (votes||[])) await firestore.delete("votes", v.id);
+                showToast("All votes cleared!");
+              }}>Clear All Votes</button>
+            </div>
           </div>
           {(meta.superlativeCategories||[]).map(cat => {
             const tally = {};
