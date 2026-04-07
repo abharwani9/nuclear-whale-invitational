@@ -1872,6 +1872,11 @@ function SettingsSection({ meta, history, showToast }) {
           <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Default Handicap Allowance % (for odds model)</div>
+          <input style={s.input} type="number" step="5" value={form.defaultHcpAllowance||""} onChange={e=>setForm(f=>({...f,defaultHcpAllowance:e.target.value}))} placeholder="e.g. 70 (leave blank for 100%)"/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Used for rounds that don't have their own allowance set</div>
+        </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>App Password (all users)</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Current: <strong style={{ color:"#ff4500" }}>nwi2026</strong> — to change, ask Claude to update APP_PASSWORD in PublicApp.js</div>
