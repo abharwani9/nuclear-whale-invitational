@@ -734,7 +734,14 @@ export default function PublicApp({ onGoAdmin }) {
                                 return (
                                   <tr key={p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>rp&&setSelectedPlayer({...rp,...p})}>
                                     <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                                    <td style={{ fontWeight:700 }}>{p.name}</td>
+                                    <td>
+                                      <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                                        {rp?.photoURL
+                                          ? <img src={rp.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                          : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
+                                        <div style={{ fontWeight:700 }}>{p.name}</div>
+                                      </div>
+                                    </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                     <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
                                     <td>
@@ -870,11 +877,11 @@ export default function PublicApp({ onGoAdmin }) {
                           {(m.nukes||[]).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
                             return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?4:0 }}>
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:6, marginTop:ni>0?4:0 }}>
+                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500", textAlign:"right" }}>{n}</div>
                                 {p?.photoURL
                                   ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
                                   : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(255,69,0,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#ff4500", flexShrink:0 }}>{n?.[0]}</div>}
-                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>
                               </div>
                             );
                           })}
@@ -889,11 +896,11 @@ export default function PublicApp({ onGoAdmin }) {
                           {(m.whales||[]).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
                             return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?4:0 }}>
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"flex-start", gap:6, marginTop:ni>0?4:0 }}>
                                 {p?.photoURL
                                   ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
                                   : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(0,170,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#00aaff", flexShrink:0 }}>{n?.[0]}</div>}
-                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>
+                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff", textAlign:"left" }}>{n}</div>
                               </div>
                             );
                           })}
