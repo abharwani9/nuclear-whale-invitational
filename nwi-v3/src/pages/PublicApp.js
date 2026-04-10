@@ -484,9 +484,9 @@ export default function PublicApp({ onGoAdmin }) {
   const dynamicColors = (() => {
     if (!meta?.dynamicColors) return null;
     const nPts = teamPoints.nukes, wPts = teamPoints.whales;
-    if (nPts === wPts) return { leading:"tied", accent:"rgba(255,200,0,0.6)", glow:"rgba(255,200,0,0.15)", border:"rgba(255,200,0,0.25)" };
-    if (nPts > wPts)  return { leading:"nukes", accent:"rgba(255,69,0,0.8)",  glow:"rgba(255,69,0,0.12)",  border:"rgba(255,69,0,0.3)" };
-    return               { leading:"whales", accent:"rgba(0,170,255,0.8)", glow:"rgba(0,170,255,0.12)", border:"rgba(0,170,255,0.3)" };
+    if (nPts === wPts) return { leading:"tied",   accent:"rgba(255,200,0,1)",    glow:"rgba(255,200,0,0.2)",   border:"rgba(255,200,0,0.5)",   bg:"rgba(255,200,0,0.06)" };
+    if (nPts > wPts)  return { leading:"nukes",  accent:"rgba(255,69,0,1)",     glow:"rgba(255,69,0,0.25)",   border:"rgba(255,69,0,0.6)",    bg:"rgba(255,69,0,0.08)" };
+    return                   { leading:"whales", accent:"rgba(0,170,255,1)",    glow:"rgba(0,170,255,0.25)",  border:"rgba(0,170,255,0.6)",   bg:"rgba(0,170,255,0.08)" };
   })();
 
   const css = `
@@ -519,11 +519,11 @@ export default function PublicApp({ onGoAdmin }) {
   `;
 
   return (
-    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}> color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
       <style>{css}</style>
 
       {/* Header */}
-      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, #07090e)` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"20px 16px 14px", transition:"border-color 1s ease" }}>
+      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, ${dynamicColors.bg})` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"20px 16px 14px", transition:"all 1s ease" }}>
         <div style={{ maxWidth:680, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:16 }}>
             <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
