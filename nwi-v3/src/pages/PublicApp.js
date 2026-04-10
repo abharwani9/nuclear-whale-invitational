@@ -641,7 +641,6 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
                   </div>
                 )}
-              </div>
               {/* Year in Review button */}
               {(() => {
                 const currentYear = meta?.year;
