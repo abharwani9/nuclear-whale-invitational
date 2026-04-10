@@ -315,6 +315,7 @@ export default function PublicApp({ onGoAdmin }) {
 
   const [notifEnabled, setNotifEnabled] = useState(null);
   const [selectedMatchup, setSelectedMatchup] = useState(null);
+  const [showReview, setShowReview] = useState(false);
   const [notifToken, setNotifToken]     = useState(null);
   const [tokenKey, setTokenKey]         = useState(null);
 
@@ -641,6 +642,18 @@ export default function PublicApp({ onGoAdmin }) {
                   </div>
                 )}
               </div>
+              {/* Year in Review button */}
+              {(() => {
+                const currentYear = meta?.year;
+                const histYear = history?.find(h => String(h.year) === String(currentYear));
+                if (!histYear?.reviewUnlocked && !histYear?.reviewData) return null;
+                return (
+                  <button onClick={()=>setShowReview(true)}
+                    style={{ width:"100%", marginTop:12, padding:"12px", background:"linear-gradient(135deg,rgba(255,200,0,0.15),rgba(255,140,0,0.1))", border:"1px solid rgba(255,200,0,0.3)", borderRadius:12, color:"#ffd700", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:"pointer", letterSpacing:"0.05em" }}>
+                    🏆 {currentYear} Year in Review
+                  </button>
+                );
+              })()}
             )}
 
                         {lbTab==="individual" && (
@@ -1529,6 +1542,130 @@ export default function PublicApp({ onGoAdmin }) {
           </div>
         </div>
       )}
+
+      {/* ── YEAR IN REVIEW MODAL ── */}
+      {showReview && (() => {
+        const currentYear = meta?.year;
+        const histYear = history?.find(h => String(h.year) === String(currentYear));
+        const review = histYear?.reviewData || {};
+
+        // Calculate stats from current data
+        const isNukeWin = histYear?.winner === "THE NUKES";
+        const isWhaleWin = histYear?.winner === "THE WHALES";
+        const winnerColor = isNukeWin ? "#ff4500" : isWhaleWin ? "#00aaff" : "#ffd700";
+        const winnerEmoji = isNukeWin ? "☢️" : isWhaleWin ? "🐋" : "⏳";
+
+        // Best/worst record from individual leaderboard
+        const sorted = [...individualLb].filter(p => p.matchWins + p.matchLosses + p.matchTies > 0)
+          .sort((a,b) => b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins);
+        const best = sorted[0];
+        const worst = sorted.length > 1 ? sorted[sorted.length-1] : null;
+        const getTeamEmoji = (name) => {
+          const t = teamAssign[name];
+          return t === "nukes" ? "☢️" : t === "whales" ? "🐋" : "";
+        };
+
+        // Hole in one winners this year
+        const ledger = holePool?.find(h => h.id === "ledger");
+        const holeWinners = (ledger?.winners || []).filter(w => String(w.year) === String(currentYear));
+
+        // Superlatives
+        const superlatives = histYear?.superlatives || [];
+
+        // Match counts
+        const matches = histYear?.matches || [];
+        const nukeWins = matches.filter(m => m.winner === "nukes").length;
+        const whaleWins = matches.filter(m => m.winner === "whales").length;
+        const ties = matches.filter(m => m.winner === "tie").length;
+        const totalMatches = matches.filter(m => m.winner).length;
+
+        return (
+          <div className="player-modal-backdrop" onClick={()=>setShowReview(false)}>
+            <div className="player-modal" onClick={e=>e.stopPropagation()} style={{ background:"#0a0f1a", border:"1px solid rgba(255,200,0,0.2)" }}>
+              {/* Header */}
+              <div style={{ textAlign:"center", marginBottom:20 }}>
+                <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:6 }}>Nuclear Whale Invitational</div>
+                <div style={{ fontSize:32, fontWeight:900, letterSpacing:"0.04em", background:"linear-gradient(90deg,#ff4500,#ffd700,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{currentYear} YEAR IN REVIEW</div>
+                {(histYear?.course || histYear?.location) && (
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:6 }}>
+                    {histYear.course && <span>⛳ {histYear.course}</span>}
+                    {histYear.course && histYear.location && <span style={{ margin:"0 8px", opacity:0.4 }}>·</span>}
+                    {histYear.location && <span>📍 {histYear.location}</span>}
+                  </div>
+                )}
+              </div>
+
+              {/* Winner */}
+              <div style={{ textAlign:"center", padding:"16px", background:`rgba(${isNukeWin?"255,69,0":isWhaleWin?"0,170,255":"255,200,0"},0.08)`, border:`1px solid rgba(${isNukeWin?"255,69,0":isWhaleWin?"0,170,255":"255,200,0"},0.25)`, borderRadius:12, marginBottom:12 }}>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:4 }}>🏆 Tournament Champion</div>
+                <div style={{ fontSize:24, fontWeight:900, color:winnerColor }}>{winnerEmoji} {histYear?.winner || "TBD"}</div>
+                <div style={{ fontSize:18, fontWeight:700, color:"rgba(255,255,255,0.6)", marginTop:4 }}>
+                  <span style={{ color:"#ff4500" }}>{histYear?.nukes_pts || 0}</span>
+                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 8px" }}>–</span>
+                  <span style={{ color:"#00aaff" }}>{histYear?.whales_pts || 0}</span>
+                </div>
+              </div>
+
+              {/* Match record */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+                {[["☢️ Wins", nukeWins, "#ff4500"], ["🤝 Ties", ties, "#ffd700"], ["🐋 Wins", whaleWins, "#00aaff"]].map(([l,v,c])=>(
+                  <div key={l} style={{ textAlign:"center", padding:"10px 6px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10 }}>
+                    <div style={{ fontSize:22, fontWeight:900, color:c }}>{v}</div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Best/worst player */}
+              {(best || worst) && (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                  {best && (
+                    <div style={{ padding:"10px 12px", background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:10 }}>
+                      <div style={{ fontSize:10, color:"rgba(74,222,128,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>🌟 Best Record</div>
+                      <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(best.name)} {best.name}</div>
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{best.matchWins}-{best.matchTies}-{best.matchLosses}</div>
+                    </div>
+                  )}
+                  {worst && (
+                    <div style={{ padding:"10px 12px", background:"rgba(255,85,85,0.06)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:10 }}>
+                      <div style={{ fontSize:10, color:"rgba(255,85,85,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>💀 Worst Record</div>
+                      <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(worst.name)} {worst.name}</div>
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{worst.matchWins}-{worst.matchTies}-{worst.matchLosses}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Superlatives */}
+              {superlatives.length > 0 && (
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>🏅 Superlatives</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {superlatives.map((s,i) => (
+                      <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{s.title}</div>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(s.player)} {s.player}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Hole in one */}
+              {holeWinners.length > 0 && (
+                <div style={{ marginBottom:12, padding:"12px", background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.2)", borderRadius:10 }}>
+                  <div style={{ fontSize:11, color:"rgba(255,200,0,0.7)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One</div>
+                  {holeWinners.map((w,i) => (
+                    <div key={i} style={{ fontSize:13, fontWeight:700, color:"#ffd700" }}>{w.name} · ${w.amount}</div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={()=>setShowReview(false)} style={{ width:"100%", padding:"12px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>Close</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
