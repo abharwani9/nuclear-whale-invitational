@@ -1173,8 +1173,25 @@ function ImportFromRounds({ year, rounds, showToast }) {
 
     setImporting(true);
     try {
-      await firestore.update("history", year.id, { matches: [...currentMatches, ...newMatches] });
-      showToast(`Imported ${newMatches.length} match${newMatches.length!==1?"es":""}!`);
+      const allMatches = [...currentMatches, ...newMatches];
+      // Calculate points and winner from all matches
+      let nukesPts = 0, whalesPts = 0;
+      allMatches.forEach(m => {
+        if (!m.winner) return;
+        const pts = m.pointsWorth || 0;
+        const tie = pts / 2;
+        if (m.winner === "nukes") nukesPts += pts;
+        else if (m.winner === "whales") whalesPts += pts;
+        else if (m.winner === "tie") { nukesPts += tie; whalesPts += tie; }
+      });
+      const winner = nukesPts > whalesPts ? "THE NUKES" : whalesPts > nukesPts ? "THE WHALES" : "TBD";
+      await firestore.update("history", year.id, {
+        matches: allMatches,
+        nukes_pts: Math.round(nukesPts * 10) / 10,
+        whales_pts: Math.round(whalesPts * 10) / 10,
+        winner,
+      });
+      showToast(`Imported ${newMatches.length} match${newMatches.length!==1?"es":""}! Score: Nukes ${Math.round(nukesPts*10)/10} – Whales ${Math.round(whalesPts*10)/10}`);
     } catch(e) { showToast("Error: " + e.message, true); }
     setImporting(false);
   };
