@@ -987,7 +987,7 @@ function CompetitionsSection({ competitions, showToast }) {
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
 function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
-  const blank = { year:new Date().getFullYear()-1, winner:"TBD", mvp:"", notes:"", nukes_pts:"", whales_pts:"" };
+  const blank = { year:new Date().getFullYear()-1, winner:"TBD", mvp:"", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -1020,6 +1020,10 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
           <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
           <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
           <div><div style={s.label}>MVP</div><input style={s.input} value={form.mvp} onChange={e=>setForm(f=>({...f,mvp:e.target.value}))} placeholder="Player name"/></div>
+        </div>
+        <div style={s.grid2}>
+          <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Myrtle Beach, SC"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Golf Course</div><input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Barefoot Resort"/></div>
         </div>
         <div style={{ marginTop:10 }}><div style={s.label}>Notes / Recap</div><textarea rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Memorable moments..."/></div>
         <div style={{ ...s.row, marginTop:14 }}>
@@ -1059,10 +1063,11 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                     {matchCount>0&&<span style={{ marginLeft:8, color:"rgba(255,255,255,0.3)" }}>{matchCount} match{matchCount!==1?"es":""}</span>}
                     {supCount>0&&<span style={{ marginLeft:8, color:"rgba(255,200,0,0.5)" }}>🏅 {supCount}</span>}
                   </div>
+                  {(h.location||h.course)&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>📍 {[h.course,h.location].filter(Boolean).join(" · ")}</div>}
                 </div>
                 <div style={s.row}>
                   <button style={s.btnGhost} onClick={()=>setExpanded(isExpanded?null:h.id)}>{isExpanded?"▲ Hide":"▼ Edit"}</button>
-                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,mvp:h.mvp||"",notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||""});}}>✏️</button>
+                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,mvp:h.mvp||"",notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||""});}}>✏️</button>
                   <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete this year?"))await firestore.delete("history",h.id);}}>✕</button>
                 </div>
               </div>
@@ -1824,7 +1829,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
     (competitions||[]).forEach(c => {
       hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
     });
-    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", ...hcpFields });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", ...hcpFields });
     setLoaded(true);
   }
 
@@ -1878,6 +1883,10 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Location</div>
           <input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Thornton, NH"/>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Golf Course</div>
+          <input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Whittaker Woods Golf Club"/>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Weather City</div>
