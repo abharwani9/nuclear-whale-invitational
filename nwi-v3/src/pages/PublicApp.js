@@ -646,7 +646,6 @@ export default function PublicApp({ onGoAdmin }) {
               {(() => {
                 const currentYear = meta?.year;
                 const histYear = history?.find(h => String(h.year) === String(currentYear));
-                if (!histYear?.reviewUnlocked && !histYear?.reviewData) return null;
                 if (!histYear?.reviewUnlocked) return null;
                 return (
                   <button onClick={()=>setShowReview(true)}
@@ -655,7 +654,8 @@ export default function PublicApp({ onGoAdmin }) {
                   </button>
                 );
               })()}
-            )}
+            </div>
+          )}
 
                         {lbTab==="individual" && (
               <div>
