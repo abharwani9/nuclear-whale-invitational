@@ -1541,6 +1541,8 @@ export default function PublicApp({ onGoAdmin }) {
       {/* ── YEAR IN REVIEW MODAL ── */}
       {showReview && (() => {
         const histYear = history?.find(h => h.id === showReview);
+        if (!histYear) return null;
+        const reviewYear = histYear.year;
         const review = histYear?.reviewData || {};
 
         // Calculate stats from current data
@@ -1568,15 +1570,17 @@ export default function PublicApp({ onGoAdmin }) {
         const bestPct = yearPlayers[0]?.pct;
         const worstPct = yearPlayers[yearPlayers.length-1]?.pct;
         const bestPlayers = yearPlayers.filter(p=>p.pct===bestPct);
-        const worstPlayers = yearPlayers.filter(p=>p.pct===worstPct && p!==bestPlayers[0]);
+        const worstPlayers = bestPct !== worstPct ? yearPlayers.filter(p=>p.pct===worstPct) : [];
         const getTeamEmoji = (name) => {
-          const t = teamAssign[name];
+          // Look up team from the year's draft
+          const yearDraft = drafts?.find(d => String(d.year) === String(reviewYear));
+          const t = yearDraft?.assignments?.[name] || teamAssign[name];
           return t === "nukes" ? "☢️" : t === "whales" ? "🐋" : "";
         };
 
         // Hole in one winners this year
         const ledger = holePool?.find(h => h.id === "ledger");
-        const holeWinners = (ledger?.winners || []).filter(w => String(w.year) === String(currentYear));
+        const holeWinners = (ledger?.winners || []).filter(w => String(w.year) === String(reviewYear));
 
         // Superlatives
         const superlatives = histYear?.superlatives || [];
@@ -1594,7 +1598,7 @@ export default function PublicApp({ onGoAdmin }) {
               {/* Header */}
               <div style={{ textAlign:"center", marginBottom:20 }}>
                 <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:6 }}>Nuclear Whale Invitational</div>
-                <div style={{ fontSize:32, fontWeight:900, letterSpacing:"0.04em", background:"linear-gradient(90deg,#ff4500,#ffd700,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{currentYear} YEAR IN REVIEW</div>
+                <div style={{ fontSize:32, fontWeight:900, letterSpacing:"0.04em", background:"linear-gradient(90deg,#ff4500,#ffd700,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{reviewYear} YEAR IN REVIEW</div>
                 {(histYear?.course || histYear?.location) && (
                   <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:6 }}>
                     {histYear.course && <span>⛳ {histYear.course}</span>}
