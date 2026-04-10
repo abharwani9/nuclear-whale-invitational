@@ -1828,7 +1828,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
     (competitions||[]).forEach(c => {
       hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
     });
-    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", ...hcpFields });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", dynamicColors:meta.dynamicColors||false, ...hcpFields });
     setLoaded(true);
   }
 
@@ -1886,6 +1886,16 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Golf Course</div>
           <input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Whittaker Woods Golf Club"/>
+        </div>
+        <div style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600 }}>Dynamic Team Colors</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>App accent colors shift based on which team is winning</div>
+          </div>
+          <button style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${form.dynamicColors?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:form.dynamicColors?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:form.dynamicColors?"#4ade80":"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}
+            onClick={()=>setForm(f=>({...f,dynamicColors:!f.dynamicColors}))}>
+            {form.dynamicColors?"✓ On":"Off"}
+          </button>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Weather City</div>
