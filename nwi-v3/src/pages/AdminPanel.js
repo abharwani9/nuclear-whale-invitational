@@ -1096,8 +1096,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                 )}
 
                 {/* Year in Review admin controls */}
-                {String(h.year)===String(meta?.year||2026)&&(
-                  <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,200,0,0.1)" }}>
+                <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,200,0,0.1)" }}>
                     <div style={{ fontSize:12, fontWeight:700, color:"#ffd700", marginBottom:10 }}>🏆 Year in Review</div>
                     <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                       <button style={{ padding:"7px 14px", background:"rgba(255,200,0,0.15)", border:"1px solid rgba(255,200,0,0.3)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
@@ -1122,7 +1121,6 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                       {h.reviewData ? `Generated ${new Date(h.reviewData.generated).toLocaleDateString()}` : "Not generated yet"} · {h.reviewUnlocked ? "Visible to players" : "Hidden from players"}
                     </div>
                   </div>
-                )}
 
                 {/* Matches subsection */}
                 <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
