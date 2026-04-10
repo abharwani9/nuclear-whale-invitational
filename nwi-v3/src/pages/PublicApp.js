@@ -315,7 +315,7 @@ export default function PublicApp({ onGoAdmin }) {
 
   const [notifEnabled, setNotifEnabled] = useState(null);
   const [selectedMatchup, setSelectedMatchup] = useState(null);
-  const [showReview, setShowReview] = useState(false);
+  const [showReview, setShowReview] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
   const [tokenKey, setTokenKey]         = useState(null);
 
@@ -612,7 +612,7 @@ export default function PublicApp({ onGoAdmin }) {
                             ) : (
                               <div>
                                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:5 }}>
-                                  <span>{t.pts} out of {magicNumber} pts to clinch · won {Math.round((t.pts/totalPtsAvail)*100)}% of available points</span>
+                                  <span style={{ fontSize:12, fontWeight:600 }}>{t.pts} pts · Need {magicNumber} to clinch · {Math.round((t.pts/totalPtsAvail)*100)}% of pts won</span>
                                 </div>
                                 <div style={{ height:8, background:"rgba(255,255,255,0.07)", borderRadius:4, overflow:"hidden" }}>
                                   <div style={{ height:"100%", borderRadius:4, transition:"width 0.5s",
@@ -631,7 +631,7 @@ export default function PublicApp({ onGoAdmin }) {
                 {totalPtsAvail>0&&(
                   <div className="card" style={{ padding:"12px 16px" }}>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
-                      {[["Total",totalPtsAvail,"#ffd700"],["Played",playedPts,"#4ade80"],["Left",remainingPts,"#00aaff"]].map(([l,v,c])=>(
+                      {[["Total Pts",totalPtsAvail,"#ffd700"],["Pts Played",playedPts,"#4ade80"],["Pts Left",remainingPts,"#00aaff"]].map(([l,v,c])=>(
                         <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 4px" }}>
                           <div style={{ fontSize:20, fontWeight:900, color:c }}>{v}</div>
                           <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{l}</div>
@@ -642,10 +642,10 @@ export default function PublicApp({ onGoAdmin }) {
                   </div>
                 )}
               {/* Year in Review button */}
-              {history?.find(h=>String(h.year)===String(meta?.year))?.reviewUnlocked && (
+              {!!(history||[]).find(h=>String(h.year)===String(meta&&meta.year) && h.reviewUnlocked) && (
                 <button onClick={()=>setShowReview(true)}
                   style={{ width:"100%", marginTop:12, padding:"12px", background:"linear-gradient(135deg,rgba(255,200,0,0.15),rgba(255,140,0,0.1))", border:"1px solid rgba(255,200,0,0.3)", borderRadius:12, color:"#ffd700", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:"pointer", letterSpacing:"0.05em" }}>
-                  🏆 {meta?.year} Year in Review
+                  {"\uD83C\uDFC6"} {meta && meta.year} Year in Review
                 </button>
               )}
             </div>
@@ -1540,8 +1540,7 @@ export default function PublicApp({ onGoAdmin }) {
 
       {/* ── YEAR IN REVIEW MODAL ── */}
       {showReview && (() => {
-        const currentYear = meta?.year;
-        const histYear = history?.find(h => String(h.year) === String(currentYear));
+        const histYear = history?.find(h => h.id === showReview);
         const review = histYear?.reviewData || {};
 
         // Calculate stats from current data
@@ -1550,11 +1549,26 @@ export default function PublicApp({ onGoAdmin }) {
         const winnerColor = isNukeWin ? "#ff4500" : isWhaleWin ? "#00aaff" : "#ffd700";
         const winnerEmoji = isNukeWin ? "☢️" : isWhaleWin ? "🐋" : "⏳";
 
-        // Best/worst record from individual leaderboard
-        const sorted = [...individualLb].filter(p => p.matchWins + p.matchLosses + p.matchTies > 0)
-          .sort((a,b) => b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins);
-        const best = sorted[0];
-        const worst = sorted.length > 1 ? sorted[sorted.length-1] : null;
+        // Best/worst record from individual leaderboard for this specific year
+        const yearMatches = histYear?.matches || [];
+        const yearStats = {};
+        yearMatches.forEach(m => {
+          if (!m.winner) return;
+          [...(m.nukes||[]), ...(m.whales||[])].filter(Boolean).forEach(name => {
+            if (!yearStats[name]) yearStats[name] = { w:0, t:0, l:0 };
+            const onNukes = (m.nukes||[]).includes(name);
+            const playerTeam = onNukes ? "nukes" : "whales";
+            if (m.winner === playerTeam) yearStats[name].w++;
+            else if (m.winner === "tie") yearStats[name].t++;
+            else yearStats[name].l++;
+          });
+        });
+        const yearPlayers = Object.entries(yearStats).map(([name,s])=>({ name, ...s, total:s.w+s.t+s.l, pct: s.total>0?((s.w+s.t*0.5)/s.total):0 }))
+          .filter(p=>p.total>0).sort((a,b)=>b.pct-a.pct||b.w-a.w);
+        const bestPct = yearPlayers[0]?.pct;
+        const worstPct = yearPlayers[yearPlayers.length-1]?.pct;
+        const bestPlayers = yearPlayers.filter(p=>p.pct===bestPct);
+        const worstPlayers = yearPlayers.filter(p=>p.pct===worstPct && p!==bestPlayers[0]);
         const getTeamEmoji = (name) => {
           const t = teamAssign[name];
           return t === "nukes" ? "☢️" : t === "whales" ? "🐋" : "";
@@ -1575,7 +1589,7 @@ export default function PublicApp({ onGoAdmin }) {
         const totalMatches = matches.filter(m => m.winner).length;
 
         return (
-          <div className="player-modal-backdrop" onClick={()=>setShowReview(false)}>
+          <div className="player-modal-backdrop" onClick={()=>setShowReview(null)}>
             <div className="player-modal" onClick={e=>e.stopPropagation()} style={{ background:"#0a0f1a", border:"1px solid rgba(255,200,0,0.2)" }}>
               {/* Header */}
               <div style={{ textAlign:"center", marginBottom:20 }}>
@@ -1612,20 +1626,26 @@ export default function PublicApp({ onGoAdmin }) {
               </div>
 
               {/* Best/worst player */}
-              {(best || worst) && (
+              {yearPlayers.length > 0 && (
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
-                  {best && (
-                    <div style={{ padding:"10px 12px", background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:10 }}>
-                      <div style={{ fontSize:10, color:"rgba(74,222,128,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>🌟 Best Record</div>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(best.name)} {best.name}</div>
-                      <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{best.matchWins}-{best.matchTies}-{best.matchLosses}</div>
-                    </div>
-                  )}
-                  {worst && (
+                  <div style={{ padding:"10px 12px", background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:10 }}>
+                    <div style={{ fontSize:10, color:"rgba(74,222,128,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>🌟 Best Record</div>
+                    {bestPlayers.map(p=>(
+                      <div key={p.name} style={{ marginBottom:3 }}>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(p.name)} {p.name}</div>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {worstPlayers.length > 0 && (
                     <div style={{ padding:"10px 12px", background:"rgba(255,85,85,0.06)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:10 }}>
-                      <div style={{ fontSize:10, color:"rgba(255,85,85,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>💀 Worst Record</div>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(worst.name)} {worst.name}</div>
-                      <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{worst.matchWins}-{worst.matchTies}-{worst.matchLosses}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,85,85,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>💀 Worst Record</div>
+                      {worstPlayers.map(p=>(
+                        <div key={p.name} style={{ marginBottom:3 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(p.name)} {p.name}</div>
+                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1656,7 +1676,7 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>
               )}
 
-              <button onClick={()=>setShowReview(false)} style={{ width:"100%", padding:"12px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>Close</button>
+              <button onClick={()=>setShowReview(null)} style={{ width:"100%", padding:"12px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>Close</button>
             </div>
           </div>
         );
