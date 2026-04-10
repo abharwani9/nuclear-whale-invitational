@@ -641,13 +641,6 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
                   </div>
                 )}
-              {/* Year in Review button */}
-              {!!(history||[]).find(h=>String(h.year)===String(meta&&meta.year) && h.reviewUnlocked) && (
-                <button onClick={()=>setShowReview(true)}
-                  style={{ width:"100%", marginTop:12, padding:"12px", background:"linear-gradient(135deg,rgba(255,200,0,0.15),rgba(255,140,0,0.1))", border:"1px solid rgba(255,200,0,0.3)", borderRadius:12, color:"#ffd700", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:"pointer", letterSpacing:"0.05em" }}>
-                  {"\uD83C\uDFC6"} {meta && meta.year} Year in Review
-                </button>
-              )}
             </div>
           )}
 
@@ -1165,6 +1158,14 @@ export default function PublicApp({ onGoAdmin }) {
                       </div>
                       <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)" }}>{isExp?"▲":"▼"}</div>
                     </div>
+                    {h.reviewUnlocked && (
+                      <div style={{ marginTop:10 }} onClick={e=>e.stopPropagation()}>
+                        <button onClick={()=>setShowReview(h.id)}
+                          style={{ width:"100%", padding:"8px", background:"linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,140,0,0.08))", border:"1px solid rgba(255,200,0,0.25)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:800, cursor:"pointer" }}>
+                          🏆 {h.year} Year in Review
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Expanded content */}
