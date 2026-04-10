@@ -874,14 +874,14 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
-                          {(m.nukes||[]).map((n,ni)=>{
+                          {(m.nukes||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
                             return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:6, marginTop:ni>0?4:0 }}>
-                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500", textAlign:"right" }}>{n}</div>
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?6:0 }}>
                                 {p?.photoURL
-                                  ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                  : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(255,69,0,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#ff4500", flexShrink:0 }}>{n?.[0]}</div>}
+                                  ? <img src={p.photoURL} alt={n} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                  : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,69,0,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#ff4500", flexShrink:0 }}>{n?.[0]}</div>}
+                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>
                               </div>
                             );
                           })}
@@ -893,14 +893,14 @@ export default function PublicApp({ onGoAdmin }) {
                         </div>
                         <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
-                          {(m.whales||[]).map((n,ni)=>{
+                          {(m.whales||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
                             return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"flex-start", gap:6, marginTop:ni>0?4:0 }}>
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?6:0 }}>
                                 {p?.photoURL
-                                  ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                  : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(0,170,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#00aaff", flexShrink:0 }}>{n?.[0]}</div>}
-                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff", textAlign:"left" }}>{n}</div>
+                                  ? <img src={p.photoURL} alt={n} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                  : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(0,170,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#00aaff", flexShrink:0 }}>{n?.[0]}</div>}
+                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>
                               </div>
                             );
                           })}
