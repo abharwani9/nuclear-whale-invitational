@@ -1095,8 +1095,6 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)" }}>{isNuke?"☢️ ":isWhale?"🐋 ":"⏳ "}{isTBD?"In Progress":h.winner}</div>
                         <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
-                          {h.mvp&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>MVP: {h.mvp}</span>}
-                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>·</span>
                           <span style={{ fontSize:12, color:"rgba(255,69,0,0.7)" }}>{nukePts}</span>
                           <span style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>–</span>
                           <span style={{ fontSize:12, color:"rgba(0,170,255,0.7)" }}>{whalePts}</span>
