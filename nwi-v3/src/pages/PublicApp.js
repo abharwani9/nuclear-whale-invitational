@@ -1630,29 +1630,36 @@ export default function PublicApp({ onGoAdmin }) {
                 ))}
               </div>
 
-              {/* Best/worst player */}
+              {/* Player Records */}
               {yearPlayers.length > 0 && (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
-                  <div style={{ padding:"10px 12px", background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:10 }}>
-                    <div style={{ fontSize:10, color:"rgba(74,222,128,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>🌟 Best Record</div>
-                    {bestPlayers.map(p=>(
-                      <div key={p.name} style={{ marginBottom:3 }}>
-                        <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(p.name)} {p.name}</div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {worstPlayers.length > 0 && (
-                    <div style={{ padding:"10px 12px", background:"rgba(255,85,85,0.06)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:10 }}>
-                      <div style={{ fontSize:10, color:"rgba(255,85,85,0.7)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>💀 Worst Record</div>
-                      {worstPlayers.map(p=>(
-                        <div key={p.name} style={{ marginBottom:3 }}>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(p.name)} {p.name}</div>
-                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</div>
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>👤 Player Records</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    <div style={{ padding:"10px 12px", background:"rgba(255,69,0,0.06)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:10 }}>
+                      <div style={{ fontSize:10, color:"#ff4500", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>☢️ Nukes</div>
+                      {yearPlayers.filter(p => {
+                        const d = drafts?.find(d=>String(d.year)===String(reviewYear));
+                        return d?.assignments?.[p.name] === "nukes";
+                      }).map(p=>(
+                        <div key={p.name} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontSize:12, fontWeight:600 }}>{p.name}</span>
+                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</span>
                         </div>
                       ))}
                     </div>
-                  )}
+                    <div style={{ padding:"10px 12px", background:"rgba(0,170,255,0.06)", border:"1px solid rgba(0,170,255,0.2)", borderRadius:10 }}>
+                      <div style={{ fontSize:10, color:"#00aaff", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>🐋 Whales</div>
+                      {yearPlayers.filter(p => {
+                        const d = drafts?.find(d=>String(d.year)===String(reviewYear));
+                        return d?.assignments?.[p.name] === "whales";
+                      }).map(p=>(
+                        <div key={p.name} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                          <span style={{ fontSize:12, fontWeight:600 }}>{p.name}</span>
+                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
