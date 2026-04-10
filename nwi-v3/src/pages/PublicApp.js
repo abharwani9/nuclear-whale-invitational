@@ -949,7 +949,13 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="countdown" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
             <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:40 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
+            {(meta?.course || meta?.location) && (
+              <div style={{ marginBottom:28, fontSize:13, color:"rgba(255,255,255,0.45)" }}>
+                {meta?.course && <div style={{ fontWeight:700, color:"rgba(255,255,255,0.65)" }}>⛳ {meta.course}</div>}
+                {meta?.location && <div style={{ marginTop:2 }}>📍 {meta.location}</div>}
+              </div>
+            )}
             {countdown.over
               ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
               : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
@@ -1096,6 +1102,13 @@ export default function PublicApp({ onGoAdmin }) {
                           <span style={{ fontSize:12, color:"rgba(0,170,255,0.7)" }}>{whalePts}</span>
                           {matchCount>0&&<span style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>· {matchCount} matches</span>}
                         </div>
+                        {(h.course||h.location)&&(
+                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>
+                            {h.course&&<span>⛳ {h.course}</span>}
+                            {h.course&&h.location&&<span style={{ margin:"0 6px", opacity:0.4 }}>·</span>}
+                            {h.location&&<span>📍 {h.location}</span>}
+                          </div>
+                        )}
                       </div>
                       <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)" }}>{isExp?"▲":"▼"}</div>
                     </div>
