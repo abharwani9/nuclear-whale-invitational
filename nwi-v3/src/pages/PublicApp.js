@@ -670,7 +670,17 @@ export default function PublicApp({ onGoAdmin }) {
                               return (
                                 <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
                                   <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                                  <td><div style={{ fontWeight:700 }}>{p.name}</div><div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div></td>
+                                  <td>
+                                    <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                                      {p.photoURL
+                                        ? <img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                        : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
+                                      <div>
+                                        <div style={{ fontWeight:700 }}>{p.name}</div>
+                                        <div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div>
+                                      </div>
+                                    </div>
+                                  </td>
                                   <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
                                   <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
                                   <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
@@ -857,7 +867,17 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
-                          {(m.nukes||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
+                          {(m.nukes||[]).map((n,ni)=>{
+                            const p = roster.find(r=>r.name===n);
+                            return (
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?4:0 }}>
+                                {p?.photoURL
+                                  ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                  : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(255,69,0,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#ff4500", flexShrink:0 }}>{n?.[0]}</div>}
+                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>
+                              </div>
+                            );
+                          })}
                           {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
@@ -866,7 +886,17 @@ export default function PublicApp({ onGoAdmin }) {
                         </div>
                         <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
-                          {(m.whales||[]).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
+                          {(m.whales||[]).map((n,ni)=>{
+                            const p = roster.find(r=>r.name===n);
+                            return (
+                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?4:0 }}>
+                                {p?.photoURL
+                                  ? <img src={p.photoURL} alt={n} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                                  : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(0,170,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#00aaff", flexShrink:0 }}>{n?.[0]}</div>}
+                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>
+                              </div>
+                            );
+                          })}
                           {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
