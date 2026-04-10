@@ -1097,30 +1097,30 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
 
                 {/* Year in Review admin controls */}
                 <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,200,0,0.1)" }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:"#ffd700", marginBottom:10 }}>🏆 Year in Review</div>
-                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                      <button style={{ padding:"7px 14px", background:"rgba(255,200,0,0.15)", border:"1px solid rgba(255,200,0,0.3)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
-                        onClick={async()=>{
-                          if(!window.confirm("Generate Year in Review? This saves it to this year's history entry.")) return;
-                          await firestore.update("history", h.id, { reviewData: { generated: new Date().toISOString() } });
-                          showToast("Year in Review generated!");
-                        }}>⚡ Generate</button>
-                      <button style={{ padding:"7px 14px", background:h.reviewUnlocked?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", border:`1px solid ${h.reviewUnlocked?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.15)"}`, borderRadius:8, color:h.reviewUnlocked?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
-                        onClick={async()=>{
-                          await firestore.update("history", h.id, { reviewUnlocked: !h.reviewUnlocked });
-                          showToast(h.reviewUnlocked?"Review hidden from players":"Review unlocked for players!");
-                        }}>{h.reviewUnlocked?"✓ Unlocked":"🔒 Locked"}</button>
-                      {h.reviewData&&<button style={{ padding:"7px 14px", background:"rgba(255,85,85,0.1)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
-                        onClick={async()=>{
-                          if(!window.confirm("Delete the Year in Review card?")) return;
-                          await firestore.update("history", h.id, { reviewData: null, reviewUnlocked: false });
-                          showToast("Year in Review deleted.");
-                        }}>🗑 Delete</button>}
-                    </div>
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8 }}>
-                      {h.reviewData ? `Generated ${new Date(h.reviewData.generated).toLocaleDateString()}` : "Not generated yet"} · {h.reviewUnlocked ? "Visible to players" : "Hidden from players"}
-                    </div>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#ffd700", marginBottom:10 }}>🏆 Year in Review</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <button style={{ padding:"7px 14px", background:"rgba(255,200,0,0.15)", border:"1px solid rgba(255,200,0,0.3)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        if(!window.confirm("Generate Year in Review? This saves it to this year's history entry.")) return;
+                        await firestore.update("history", h.id, { reviewData: { generated: new Date().toISOString() } });
+                        showToast("Year in Review generated!");
+                      }}>⚡ Generate</button>
+                    <button style={{ padding:"7px 14px", background:h.reviewUnlocked?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", border:`1px solid ${h.reviewUnlocked?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.15)"}`, borderRadius:8, color:h.reviewUnlocked?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        await firestore.update("history", h.id, { reviewUnlocked: !h.reviewUnlocked });
+                        showToast(h.reviewUnlocked?"Review hidden from players":"Review unlocked for players!");
+                      }}>{h.reviewUnlocked?"✓ Unlocked":"🔒 Locked"}</button>
+                    {h.reviewData&&<button style={{ padding:"7px 14px", background:"rgba(255,85,85,0.1)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        if(!window.confirm("Delete the Year in Review card?")) return;
+                        await firestore.update("history", h.id, { reviewData: null, reviewUnlocked: false });
+                        showToast("Year in Review deleted.");
+                      }}>🗑 Delete</button>}
                   </div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8 }}>
+                    {h.reviewData ? `Generated ${new Date(h.reviewData.generated).toLocaleDateString()}` : "Not generated yet"} · {h.reviewUnlocked ? "Visible to players" : "Hidden from players"}
+                  </div>
+                </div>
 
                 {/* Matches subsection */}
                 <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
