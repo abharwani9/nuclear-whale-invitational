@@ -987,7 +987,7 @@ function CompetitionsSection({ competitions, showToast }) {
 
 // ── HISTORY ─────────────────────────────────────────────────────────────────
 function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
-  const blank = { year:new Date().getFullYear()-1, winner:"TBD", mvp:"", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
+  const blank = { year:new Date().getFullYear()-1, winner:"TBD", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
   const [form, setForm]       = useState(blank);
   const [editing, setEditing] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -1019,7 +1019,6 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
           </div>
           <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
           <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
-          <div><div style={s.label}>MVP</div><input style={s.input} value={form.mvp} onChange={e=>setForm(f=>({...f,mvp:e.target.value}))} placeholder="Player name"/></div>
         </div>
         <div style={s.grid2}>
           <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Myrtle Beach, SC"/></div>
@@ -1067,7 +1066,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                 </div>
                 <div style={s.row}>
                   <button style={s.btnGhost} onClick={()=>setExpanded(isExpanded?null:h.id)}>{isExpanded?"▲ Hide":"▼ Edit"}</button>
-                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,mvp:h.mvp||"",notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||""});}}>✏️</button>
+                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||""});}}>✏️</button>
                   <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete this year?"))await firestore.delete("history",h.id);}}>✕</button>
                 </div>
               </div>
