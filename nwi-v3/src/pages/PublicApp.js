@@ -477,6 +477,18 @@ export default function PublicApp({ onGoAdmin }) {
   const whaleWins = history.filter(h => h.winner === "THE WHALES").length;
 
   // ── Styles ──────────────────────────────────────────────────────────────────
+
+  // ── Password screen ──────────────────────────────────────────────────────────
+
+  // ── Dynamic team colors ────────────────────────────────────────────────────
+  const dynamicColors = (() => {
+    if (!meta?.dynamicColors) return null;
+    const nPts = teamPoints.nukes, wPts = teamPoints.whales;
+    if (nPts === wPts) return { leading:"tied", accent:"rgba(255,200,0,0.6)", glow:"rgba(255,200,0,0.15)", border:"rgba(255,200,0,0.25)" };
+    if (nPts > wPts)  return { leading:"nukes", accent:"rgba(255,69,0,0.8)",  glow:"rgba(255,69,0,0.12)",  border:"rgba(255,69,0,0.3)" };
+    return               { leading:"whales", accent:"rgba(0,170,255,0.8)", glow:"rgba(0,170,255,0.12)", border:"rgba(0,170,255,0.3)" };
+  })();
+
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
@@ -484,7 +496,7 @@ export default function PublicApp({ onGoAdmin }) {
     .tab-bar::-webkit-scrollbar{display:none;}
     @media(min-width:600px){.tab-bar{justify-content:center;flex-wrap:wrap;}}
     .tab-btn{flex-shrink:0;padding:7px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:rgba(255,255,255,0.45);font-family:inherit;font-size:12px;font-weight:600;letter-spacing:0.04em;cursor:pointer;transition:all 0.15s;white-space:nowrap;touch-action:manipulation;}
-    .tab-btn.active{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);color:#fff;}
+    .tab-btn.active{background:${dynamicColors ? dynamicColors.glow : 'rgba(255,255,255,0.12)'};border-color:${dynamicColors ? dynamicColors.accent : 'rgba(255,255,255,0.25)'};color:#fff;}
     .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;}
     .nuke-card{border-color:rgba(255,69,0,0.3)!important;box-shadow:0 0 20px rgba(255,69,0,0.1);}
     .whale-card{border-color:rgba(0,170,255,0.25)!important;box-shadow:0 0 20px rgba(0,170,255,0.08);}
@@ -492,10 +504,10 @@ export default function PublicApp({ onGoAdmin }) {
     @keyframes wave{0%,100%{text-shadow:0 0 6px rgba(0,170,255,0.4);}50%{text-shadow:0 0 3px rgba(0,204,255,0.3);}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
     @keyframes slideIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-    .live-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;animation:pulse 1.5s infinite;display:inline-block;margin-right:6px;}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:${dynamicColors ? dynamicColors.accent : '#4ade80'};animation:pulse 1.5s infinite;display:inline-block;margin-right:6px;}
     .ghost-btn{padding:7px 14px;background:none;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:rgba(255,255,255,0.5);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;}
     .lb-tab{padding:6px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
-    .lb-tab.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;}
+    .lb-tab.active{background:${dynamicColors ? dynamicColors.glow : 'rgba(255,255,255,0.1)'};border-color:${dynamicColors ? dynamicColors.accent : 'rgba(255,255,255,0.2)'};color:#fff;}
     table{width:100%;border-collapse:collapse;}
     th{font-size:10px;color:rgba(255,255,255,0.35);letter-spacing:0.1em;text-transform:uppercase;padding:8px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.07);}
     td{font-size:13px;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,0.05);}
@@ -506,14 +518,12 @@ export default function PublicApp({ onGoAdmin }) {
     @media(min-width:500px){.player-modal{border-radius:16px;}}
   `;
 
-  // ── Password screen ──────────────────────────────────────────────────────────
-
   return (
-    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}> color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
       <style>{css}</style>
 
       {/* Header */}
-      <div style={{ background:"linear-gradient(180deg,#0d1520,#07090e)", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"20px 16px 14px" }}>
+      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, #07090e)` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"20px 16px 14px", transition:"border-color 1s ease" }}>
         <div style={{ maxWidth:680, margin:"0 auto" }}>
           <div style={{ textAlign:"center", marginBottom:16 }}>
             <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
@@ -530,13 +540,13 @@ export default function PublicApp({ onGoAdmin }) {
             </h1>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
-            <div className="card nuke-card" style={{ padding:"10px", textAlign:"center" }}>
+            <div className="card nuke-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="nukes" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>☢️ NUKES</div>
               <div style={{ fontSize:32, fontWeight:900, color:"#ff4500", lineHeight:1, animation:"flicker 3s infinite" }}>{teamPoints.nukes}</div>
               <div style={{ fontSize:10, color:"rgba(255,80,0,0.5)", marginTop:1 }}>POINTS</div>
             </div>
             <div style={{ textAlign:"center", fontSize:14, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
-            <div className="card whale-card" style={{ padding:"10px", textAlign:"center" }}>
+            <div className="card whale-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="whales" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>🐋 WHALES</div>
               <div style={{ fontSize:32, fontWeight:900, color:"#00aaff", lineHeight:1, animation:"wave 3s infinite" }}>{teamPoints.whales}</div>
               <div style={{ fontSize:10, color:"rgba(0,150,255,0.5)", marginTop:1 }}>POINTS</div>
