@@ -647,6 +647,7 @@ export default function PublicApp({ onGoAdmin }) {
                 const currentYear = meta?.year;
                 const histYear = history?.find(h => String(h.year) === String(currentYear));
                 if (!histYear?.reviewUnlocked && !histYear?.reviewData) return null;
+                if (!histYear?.reviewUnlocked) return null;
                 return (
                   <button onClick={()=>setShowReview(true)}
                     style={{ width:"100%", marginTop:12, padding:"12px", background:"linear-gradient(135deg,rgba(255,200,0,0.15),rgba(255,140,0,0.1))", border:"1px solid rgba(255,200,0,0.3)", borderRadius:12, color:"#ffd700", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:"pointer", letterSpacing:"0.05em" }}>
