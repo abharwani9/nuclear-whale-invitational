@@ -267,10 +267,13 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     const nukeStamp = matchups[0];
     matchups.sort((a,b)=>a.prob-b.prob);
     const whaleStamp = matchups[0];
+    // Dynamic labels — only call it a "stomp" if that team is actually favored
+    const nukeLabel = nukeStamp.prob >= 0.6 ? "Nuke Stomp" : nukeStamp.prob >= 0.5 ? "Most Nuke-Favored" : "Least Whale-Favored";
+    const whaleLabel = whaleStamp.prob <= 0.4 ? "Whale Stomp" : whaleStamp.prob <= 0.5 ? "Most Whale-Favored" : "Least Nuke-Favored";
     setSuggestions([
       { label:"Most Competitive", emoji:"⚖️", np:mostComp.nPair, wp:mostComp.wPair, prob:mostComp.prob, nHcp:mostComp.nHcp, wHcp:mostComp.wHcp, color:"rgba(74,222,128,0.8)", bg:"rgba(74,222,128,0.04)", border:"rgba(74,222,128,0.2)" },
-      { label:"Nuke Stomp", emoji:"☢️", np:nukeStamp.nPair, wp:nukeStamp.wPair, prob:nukeStamp.prob, nHcp:nukeStamp.nHcp, wHcp:nukeStamp.wHcp, color:"rgba(255,69,0,0.8)", bg:"rgba(255,69,0,0.04)", border:"rgba(255,69,0,0.2)" },
-      { label:"Whale Stomp", emoji:"🐋", np:whaleStamp.nPair, wp:whaleStamp.wPair, prob:whaleStamp.prob, nHcp:whaleStamp.nHcp, wHcp:whaleStamp.wHcp, color:"rgba(0,170,255,0.8)", bg:"rgba(0,170,255,0.04)", border:"rgba(0,170,255,0.2)" },
+      { label:nukeLabel, emoji:"☢️", np:nukeStamp.nPair, wp:nukeStamp.wPair, prob:nukeStamp.prob, nHcp:nukeStamp.nHcp, wHcp:nukeStamp.wHcp, color:"rgba(255,69,0,0.8)", bg:"rgba(255,69,0,0.04)", border:"rgba(255,69,0,0.2)" },
+      { label:whaleLabel, emoji:"🐋", np:whaleStamp.nPair, wp:whaleStamp.wPair, prob:whaleStamp.prob, nHcp:whaleStamp.nHcp, wHcp:whaleStamp.wHcp, color:"rgba(0,170,255,0.8)", bg:"rgba(0,170,255,0.04)", border:"rgba(0,170,255,0.2)" },
     ]);
   };
 
@@ -460,8 +463,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
 
       {/* Modal picker overlay */}
       {modalPicker&&(
-        <div style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={()=>setModalPicker(null)}>
-          <div style={{ background:"#0d1520", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"70vh", overflow:"hidden", display:"flex", flexDirection:"column" }} onClick={e=>e.stopPropagation()}>
+        <div style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }} onClick={()=>setModalPicker(null)}>
+          <div style={{ background:"#0d1520", borderRadius:"16px", width:"100%", maxWidth:480, maxHeight:"75vh", overflow:"hidden", display:"flex", flexDirection:"column" }} onClick={e=>e.stopPropagation()}>
             <div style={{ padding:"16px 16px 10px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
               <div style={{ fontSize:14, fontWeight:700, color:modalPicker.color||"#e8edf3" }}>{modalPicker.label}</div>
               <button onClick={()=>setModalPicker(null)} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"0 4px" }}>✕</button>
@@ -525,14 +528,15 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
       {Object.keys(savedMatchups).some(k=>(savedMatchups[k]||[]).length>0)&&(()=>{
         const allSaved = Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
         if(!allSaved.length) return null;
-        let nukeWinProb=0, whaleWinProb=0, total=0;
+        let nukeExpected=0, whaleExpected=0, totalPts=0;
         allSaved.forEach(m=>{
-          nukeWinProb += m.prob;
-          whaleWinProb += (1-m.prob);
-          total++;
+          const pts = m.comp?.pointsPerWin || 3;
+          nukeExpected += m.prob * pts;
+          whaleExpected += (1-m.prob) * pts;
+          totalPts += pts;
         });
-        const nukePct = Math.round((nukeWinProb/total)*100);
-        const whalePct = Math.round((whaleWinProb/total)*100);
+        const nukePct = totalPts>0 ? Math.round((nukeExpected/totalPts)*100) : 50;
+        const whalePct = 100-nukePct;
         return (
           <div style={{ marginTop:16 }}>
             <div style={{ fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10 }}>📊 Projected Outcome</div>
