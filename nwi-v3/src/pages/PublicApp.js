@@ -418,29 +418,40 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
         const alreadySaved = (savedMatchups[selComp?.id]||[]).some(m=>JSON.stringify([...m.np].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...m.wp].sort())===JSON.stringify([...s.wp].sort()));
         const compSlots = (savedMatchups[selComp?.id]||[]).length;
         const repeat = checkRepeat(s.np,s.wp,selComp?.id||"");
+        // Check if any player in this suggestion is already used in a saved matchup for this comp
+        const usedInComp = (savedMatchups[selComp?.id]||[]).flatMap(m=>[...m.np,...m.wp]);
+        const isScrambleComp = scrambleIds.includes(selComp?.id||"");
+        // For scramble comps, find the partner scramble and check if same players are used there
+        const partnerScrambleId = isScrambleComp ? scrambleIds.find(id=>id!==selComp?.id) : null;
+        const usedInPartnerScramble = partnerScrambleId ? (savedMatchups[partnerScrambleId]||[]).flatMap(m=>[...m.np,...m.wp]) : [];
+        const playerConflict = !alreadySaved && !isScrambleComp && [...s.np,...s.wp].some(p=>usedInComp.includes(p));
+        // For scramble: allow same players but warn if different from partner scramble's saved
+        const scrambleConflict = isScrambleComp && usedInPartnerScramble.length > 0 && !([...s.np,...s.wp].every(p=>usedInPartnerScramble.includes(p)));
         return (
           <div key={si} style={{ padding:"12px",background:s.bg,border:`1px solid ${repeat?"rgba(255,200,0,0.5)":s.border}`,borderRadius:10,marginBottom:8 }}>
             {repeat&&<div style={{ fontSize:10,color:"#ffd700",marginBottom:4 }}>⚠️ Repeat pairing detected</div>}
+            {playerConflict&&<div style={{ fontSize:10,color:"#ff5555",marginBottom:4 }}>🚫 Player already used in this competition</div>}
+            {scrambleConflict&&<div style={{ fontSize:10,color:"#ffd700",marginBottom:4 }}>⚠️ Scramble matchups should use same players as partner scramble</div>}
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
               <div style={{ fontSize:10,color:s.color,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:700 }}>{s.emoji} {s.label}</div>
-              <button onClick={()=>saveMatchup(s)} disabled={alreadySaved||compSlots>=3}
-                style={{ padding:"3px 10px",background:alreadySaved?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.08)",border:`1px solid ${alreadySaved?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.15)"}`,borderRadius:6,color:alreadySaved?"#4ade80":"rgba(255,255,255,0.6)",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:alreadySaved||compSlots>=3?"default":"pointer" }}>
-                {alreadySaved?"✓ Saved":compSlots>=3?"Full":"Save"}
+              <button onClick={()=>!alreadySaved&&!playerConflict&&compSlots<3&&saveMatchup(s)}
+                style={{ padding:"3px 10px",background:alreadySaved?"rgba(74,222,128,0.15)":playerConflict?"rgba(255,85,85,0.1)":"rgba(255,255,255,0.08)",border:`1px solid ${alreadySaved?"rgba(74,222,128,0.3)":playerConflict?"rgba(255,85,85,0.3)":"rgba(255,255,255,0.15)"}`,borderRadius:6,color:alreadySaved?"#4ade80":playerConflict?"#ff5555":"rgba(255,255,255,0.6)",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:alreadySaved||playerConflict||compSlots>=3?"default":"pointer" }}>
+                {alreadySaved?"✓ Saved":playerConflict?"Player used":compSlots>=3?"Full":"Save"}
               </button>
             </div>
             <div style={{ display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center" }}>
               <div style={{ textAlign:"center" }}>
-                {s.np.map(n=><div key={n} style={{ fontSize:12,fontWeight:700,color:"#ff4500" }}>{n}</div>)}
-                <div style={{ fontSize:11,fontWeight:800,color:"#ff4500",marginTop:3 }}>{toOdds(s.prob)}</div>
-                <div style={{ fontSize:9,color:"rgba(255,255,255,0.25)" }}>Team HCP {s.nHcp}</div>
-                <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round(s.prob*100)}% win</div>
+                {s.np.map(n=><div key={n} style={{ fontSize:13,fontWeight:700,color:"#ff4500" }}>{n}</div>)}
+                <div style={{ fontSize:18,fontWeight:900,color:"#ff4500",marginTop:6,lineHeight:1 }}>{toOdds(s.prob)}</div>
+                <div style={{ fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:3 }}>{Math.round(s.prob*100)}% win</div>
+                <div style={{ fontSize:10,color:"rgba(255,255,255,0.3)" }}>Team HCP {s.nHcp}</div>
               </div>
-              <div style={{ fontSize:10,fontWeight:900,color:"rgba(255,255,255,0.2)" }}>VS</div>
+              <div style={{ fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.2)" }}>VS</div>
               <div style={{ textAlign:"center" }}>
-                {s.wp.map(n=><div key={n} style={{ fontSize:12,fontWeight:700,color:"#00aaff" }}>{n}</div>)}
-                <div style={{ fontSize:11,fontWeight:800,color:"#00aaff",marginTop:3 }}>{toOdds(1-s.prob)}</div>
-                <div style={{ fontSize:9,color:"rgba(255,255,255,0.25)" }}>Team HCP {s.wHcp}</div>
-                <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round((1-s.prob)*100)}% win</div>
+                {s.wp.map(n=><div key={n} style={{ fontSize:13,fontWeight:700,color:"#00aaff" }}>{n}</div>)}
+                <div style={{ fontSize:18,fontWeight:900,color:"#00aaff",marginTop:6,lineHeight:1 }}>{toOdds(1-s.prob)}</div>
+                <div style={{ fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:3 }}>{Math.round((1-s.prob)*100)}% win</div>
+                <div style={{ fontSize:10,color:"rgba(255,255,255,0.3)" }}>Team HCP {s.wHcp}</div>
               </div>
             </div>
           </div>
@@ -509,6 +520,42 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
           })}
         </div>
       )}
+
+      {/* Team cumulative probability boxes */}
+      {Object.keys(savedMatchups).some(k=>(savedMatchups[k]||[]).length>0)&&(()=>{
+        const allSaved = Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
+        if(!allSaved.length) return null;
+        let nukeWinProb=0, whaleWinProb=0, total=0;
+        allSaved.forEach(m=>{
+          nukeWinProb += m.prob;
+          whaleWinProb += (1-m.prob);
+          total++;
+        });
+        const nukePct = Math.round((nukeWinProb/total)*100);
+        const whalePct = Math.round((whaleWinProb/total)*100);
+        return (
+          <div style={{ marginTop:16 }}>
+            <div style={{ fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10 }}>📊 Projected Outcome</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10 }}>
+              <div style={{ padding:"14px",background:"rgba(255,69,0,0.08)",border:"1px solid rgba(255,69,0,0.25)",borderRadius:12,textAlign:"center" }}>
+                <div style={{ fontSize:11,color:"#ff4500",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6 }}>☢️ Nukes</div>
+                <div style={{ fontSize:32,fontWeight:900,color:"#ff4500",lineHeight:1 }}>{nukePct}%</div>
+                <div style={{ fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4 }}>avg win prob</div>
+              </div>
+              <div style={{ padding:"14px",background:"rgba(0,170,255,0.08)",border:"1px solid rgba(0,170,255,0.25)",borderRadius:12,textAlign:"center" }}>
+                <div style={{ fontSize:11,color:"#00aaff",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6 }}>🐋 Whales</div>
+                <div style={{ fontSize:32,fontWeight:900,color:"#00aaff",lineHeight:1 }}>{whalePct}%</div>
+                <div style={{ fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4 }}>avg win prob</div>
+              </div>
+            </div>
+            <div style={{ height:10,background:"rgba(255,255,255,0.06)",borderRadius:5,overflow:"hidden",display:"flex" }}>
+              <div style={{ width:`${nukePct}%`,background:"#ff4500",transition:"width 0.5s" }}/>
+              <div style={{ flex:1,background:"#00aaff" }}/>
+            </div>
+            <div style={{ fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center" }}>Based on {total} saved matchup{total!==1?"s":""}</div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
