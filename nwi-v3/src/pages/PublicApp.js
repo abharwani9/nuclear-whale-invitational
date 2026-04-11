@@ -131,28 +131,42 @@ function SuperlativesTab({ meta, roster, votes, drafts }) {
 
 function MockDraftTab({ roster, competitions, meta, getHandicap }) {
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+  const teamFormats = meta?.teamFormats || {};
+  const hcpAllowances = meta?.hcpAllowances || {};
+
+  // Scramble competition IDs (exempt from unique partner rule)
+  const scrambleIds = competitions.filter(c => c.name?.toLowerCase().includes("scramble")).map(c=>c.id);
+
+  // Sort team comps — scrambles last
+  const teamComps = competitions
+    .filter(c => teamFormats[c.id])
+    .sort((a,b) => {
+      const aScr = scrambleIds.includes(a.id);
+      const bScr = scrambleIds.includes(b.id);
+      const a9 = a.name?.toLowerCase().includes("9");
+      const b9 = b.name?.toLowerCase().includes("9");
+      if (aScr && bScr) return a9 ? 1 : -1; // 18-hole first among scrambles, 9-hole last
+      if (aScr) return 1;
+      if (bScr) return -1;
+      return 0;
+    });
+
+  // ── FEATURE 1: Full Mock Draft ────────────────────────────────────────
   const [nukes, setNukes] = useState([]);
   const [whales, setWhales] = useState([]);
   const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
   const [projections, setProjections] = useState(null);
-  const teamFormats = meta?.teamFormats || {};
-  const hcpAllowances = meta?.hcpAllowances || {};
-  const teamComps = competitions.filter(c => teamFormats[c.id]);
+  const [uniquePartner, setUniquePartner] = useState(false);
 
-  const assign = (name, team) => {
-    setUnassigned(u => u.filter(n=>n!==name));
-    setNukes(n => n.filter(n2=>n2!==name));
-    setWhales(w => w.filter(n=>n!==name));
-    if (team==="nukes") setNukes(n=>[...n,name]);
-    if (team==="whales") setWhales(w=>[...w,name]);
-    if (team==="none") setUnassigned(u=>[...u,name]);
-    setProjections(null);
-  };
+  // ── FEATURE 2: Optimal Matchup Finder ────────────────────────────────
+  const [fSideA, setFSideA] = useState(["",""]);
+  const [fSideB, setFSideB] = useState(["",""]);
+  const [fResults, setFResults] = useState(null);
 
   const teamHcp = (players, allowPct=100) => {
     const pct = allowPct/100;
-    const hcps = players.map(n=>getHandicap(n)*pct).sort((a,b)=>a-b);
-    if (hcps.length===0) return 18;
+    const hcps = players.filter(Boolean).map(n=>getHandicap(n)*pct).sort((a,b)=>a-b);
+    if (!hcps.length) return 18;
     if (hcps.length===1) return Math.round(hcps[0]*0.5);
     return Math.round(hcps[0]*0.35+hcps[1]*0.15);
   };
@@ -166,25 +180,49 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
   const calcProb = (nPair, wPair, allowPct) => {
     const nHcp = teamHcp(nPair, allowPct);
     const wHcp = teamHcp(wPair, allowPct);
-    const diff = wHcp - nHcp;
-    return Math.max(0.1, Math.min(0.9, 0.5 + diff*0.03));
+    return Math.max(0.1, Math.min(0.9, 0.5 + (wHcp-nHcp)*0.03));
+  };
+
+  const getPairs = (players) => {
+    const pairs = [];
+    for (let i=0;i<players.length;i++) for (let j=i+1;j<players.length;j++) pairs.push([players[i],players[j]]);
+    return pairs;
+  };
+
+  // Track used pairings per comp (respecting scramble exemption)
+  const getUsedPairings = (compId) => {
+    if (!uniquePartner || !projections) return [];
+    return projections
+      .filter(p => !scrambleIds.includes(p.comp.id) || !scrambleIds.includes(compId))
+      .flatMap(p => [p.chosenNuke, p.chosenWhale].filter(Boolean))
+      .map(pair => pair.slice().sort().join("|"));
+  };
+
+  const isPairingUsed = (pair, compId) => {
+    const key = [...pair].sort().join("|");
+    return getUsedPairings(compId).includes(key);
+  };
+
+  const assign = (name, team) => {
+    setUnassigned(u=>u.filter(n=>n!==name));
+    setNukes(n=>n.filter(n2=>n2!==name));
+    setWhales(w=>w.filter(n=>n!==name));
+    if (team==="nukes") setNukes(n=>[...n,name]);
+    if (team==="whales") setWhales(w=>[...w,name]);
+    if (team==="none") setUnassigned(u=>[...u,name]);
+    setProjections(null);
   };
 
   const runProjections = () => {
-    if (nukes.length < 2 || whales.length < 2) return;
+    if (nukes.length<2||whales.length<2) return;
     const results = teamComps.map(comp => {
-      const allow = hcpAllowances[comp.id] || 100;
-      // Generate all possible 2-player pairings for each team
-      const nukePairs = [];
-      for (let i=0;i<nukes.length;i++) for (let j=i+1;j<nukes.length;j++) nukePairs.push([nukes[i],nukes[j]]);
-      const whalePairs = [];
-      for (let i=0;i<whales.length;i++) for (let j=i+1;j<whales.length;j++) whalePairs.push([whales[i],whales[j]]);
-      // Score all combinations
+      const allow = hcpAllowances[comp.id]||100;
+      const nukePairs = getPairs(nukes);
+      const whalePairs = getPairs(whales);
       const matchups = [];
       nukePairs.forEach(np => whalePairs.forEach(wp => {
         const prob = calcProb(np, wp, allow);
-        const diff = Math.abs(prob - 0.5);
-        matchups.push({ np, wp, prob, diff, nHcp:teamHcp(np,allow), wHcp:teamHcp(wp,allow) });
+        matchups.push({ np, wp, prob, diff:Math.abs(prob-0.5), nHcp:teamHcp(np,allow), wHcp:teamHcp(wp,allow) });
       }));
       if (!matchups.length) return null;
       matchups.sort((a,b)=>a.diff-b.diff);
@@ -198,8 +236,40 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
     setProjections(results);
   };
 
-  const MatchupCard = ({label, emoji, color, bg, border, m}) => (
-    <div style={{ padding:"10px 12px", background:bg, border:`1px solid ${border}`, borderRadius:10, marginBottom:8 }}>
+  // Feature 2: run optimal finder
+  const runFinder = () => {
+    const sideA = fSideA.filter(Boolean);
+    const sideB = fSideB.filter(Boolean);
+    if (sideA.length < 2) return;
+    const results = teamComps.map(comp => {
+      const allow = hcpAllowances[comp.id]||100;
+      if (sideB.filter(Boolean).length >= 2) {
+        // Both sides selected — show single projection
+        const prob = calcProb(sideA, sideB.filter(Boolean), allow);
+        return { comp, single:{ np:sideA, wp:sideB.filter(Boolean), prob, nHcp:teamHcp(sideA,allow), wHcp:teamHcp(sideB.filter(Boolean),allow) } };
+      }
+      // Auto-find best B pairings from all other players
+      const allNames = sortedRoster.map(p=>p.name).filter(n=>!sideA.includes(n));
+      const bPairs = getPairs(allNames);
+      const matchups = bPairs.map(wp => {
+        const prob = calcProb(sideA, wp, allow);
+        return { np:sideA, wp, prob, diff:Math.abs(prob-0.5), nHcp:teamHcp(sideA,allow), wHcp:teamHcp(wp,allow) };
+      });
+      if (!matchups.length) return null;
+      matchups.sort((a,b)=>a.diff-b.diff);
+      const mostComp = matchups[0];
+      matchups.sort((a,b)=>b.prob-a.prob);
+      const aStamp = matchups[0];
+      matchups.sort((a,b)=>a.prob-b.prob);
+      const bStamp = matchups[0];
+      return { comp, mostComp, aStamp, bStamp };
+    }).filter(Boolean);
+    setFResults(results);
+  };
+
+  const MatchupCard = ({label, emoji, color, bg, border, m, warn}) => (
+    <div style={{ padding:"10px 12px", background:bg, border:`1px solid ${warn?"rgba(255,200,0,0.5)":border}`, borderRadius:10, marginBottom:8 }}>
+      {warn && <div style={{ fontSize:10, color:"#ffd700", marginBottom:4 }}>⚠️ Duplicate pairing — these two have been paired before</div>}
       <div style={{ fontSize:10, color:color, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>{emoji} {label}</div>
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:6, alignItems:"center" }}>
         <div style={{ textAlign:"center" }}>
@@ -215,24 +285,54 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
     </div>
   );
 
+  // Collect all used pairings from projections for display
+  const allUsedPairings = projections ? projections.flatMap(p => {
+    const pairs = [];
+    if (p.mostComp) pairs.push({ pair:p.mostComp.np, comp:p.comp.name, team:"nukes" }, { pair:p.mostComp.wp, comp:p.comp.name, team:"whales" });
+    return pairs;
+  }) : [];
+
+  const PlayerSelect = ({value, onChange, exclude=[]}) => (
+    <select style={{ ...{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:12,padding:"6px 8px",width:"100%"} }} value={value} onChange={e=>onChange(e.target.value)}>
+      <option value="">— Pick player —</option>
+      {sortedRoster.filter(p=>!exclude.includes(p.name)||(value&&p.name===value)).map(p=>(
+        <option key={p.name} value={p.name}>{p.name} (HCP {getHandicap(p.name)})</option>
+      ))}
+    </select>
+  );
+
   return (
     <div>
-      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🃏 Mock Draft</div>
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>Assign players to teams and see projected matchups. This is just for fun — nothing is saved.</div>
+      {/* ── FEATURE 1: Full Mock Draft ── */}
+      <div style={{ marginBottom:8 }}>
+        <div style={{ fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>🃏 Mock Draft</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:4, marginBottom:16 }}>Assign all players to teams and run projections across every team competition. Nothing is saved.</div>
+      </div>
+
+      {/* Unique partner toggle */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8, marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:12, fontWeight:600 }}>Unique Partner Rule</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Warn when two players are paired more than once (scrambles exempt)</div>
+        </div>
+        <button onClick={()=>setUniquePartner(u=>!u)} style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${uniquePartner?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:uniquePartner?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:uniquePartner?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+          {uniquePartner?"✓ On":"Off"}
+        </button>
+      </div>
 
       {/* Unassigned */}
       {unassigned.length > 0 && (
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Unassigned Players</div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Unassigned</div>
           <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
             {unassigned.map(name => {
               const p = roster.find(r=>r.name===name);
               return (
-                <div key={name} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
-                  {p?.photoURL ? <img src={p.photoURL} alt={name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/> : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800 }}>{name[0]}</div>}
-                  <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{name} <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>HCP {getHandicap(name)}</span></div>
-                  <button onClick={()=>assign(name,"nukes")} style={{ padding:"4px 10px", background:"rgba(255,69,0,0.15)", border:"1px solid rgba(255,69,0,0.3)", borderRadius:6, color:"#ff4500", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>☢️</button>
-                  <button onClick={()=>assign(name,"whales")} style={{ padding:"4px 10px", background:"rgba(0,170,255,0.15)", border:"1px solid rgba(0,170,255,0.3)", borderRadius:6, color:"#00aaff", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>🐋</button>
+                <div key={name} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+                  {p?.photoURL ? <img src={p.photoURL} alt={name} style={{ width:26, height:26, borderRadius:"50%", objectFit:"cover" }}/> : <div style={{ width:26, height:26, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800 }}>{name[0]}</div>}
+                  <div style={{ flex:1, fontSize:12, fontWeight:600 }}>{name} <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>HCP {getHandicap(name)}</span></div>
+                  <button onClick={()=>assign(name,"nukes")} style={{ padding:"3px 8px", background:"rgba(255,69,0,0.15)", border:"1px solid rgba(255,69,0,0.3)", borderRadius:5, color:"#ff4500", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>☢️</button>
+                  <button onClick={()=>assign(name,"whales")} style={{ padding:"3px 8px", background:"rgba(0,170,255,0.15)", border:"1px solid rgba(0,170,255,0.3)", borderRadius:5, color:"#00aaff", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>🐋</button>
                 </div>
               );
             })}
@@ -241,14 +341,14 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
       )}
 
       {/* Teams */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
         {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
           <div key={team} style={{ padding:"10px 12px", background:bg, border:`1px solid ${border}`, borderRadius:10 }}>
             <div style={{ fontSize:11, color:color, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>{label}</div>
-            {players.length===0 ? <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)" }}>No players yet</div> : players.map(name=>(
-              <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+            {players.length===0 ? <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)" }}>None yet</div> : players.map(name=>(
+              <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
                 <span style={{ fontSize:12, fontWeight:600 }}>{name}</span>
-                <button onClick={()=>assign(name,"none")} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.3)", cursor:"pointer", fontSize:12 }}>✕</button>
+                <button onClick={()=>assign(name,"none")} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.3)", cursor:"pointer", fontSize:11 }}>✕</button>
               </div>
             ))}
           </div>
@@ -257,28 +357,94 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
 
       {/* Run projections */}
       {teamComps.length === 0 ? (
-        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", textAlign:"center", padding:"12px" }}>No team format competitions set up — admin can flag them in Settings</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", textAlign:"center", padding:"12px" }}>No team format competitions flagged — admin can set them in Settings</div>
       ) : (
         <button onClick={runProjections} disabled={nukes.length<2||whales.length<2}
-          style={{ width:"100%", padding:"12px", background: nukes.length>=2&&whales.length>=2 ? "linear-gradient(135deg,#ff8c00,#ff4500)" : "rgba(255,255,255,0.06)", border:"none", borderRadius:12, color: nukes.length>=2&&whales.length>=2 ? "#fff" : "rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:15, fontWeight:800, cursor: nukes.length>=2&&whales.length>=2 ? "pointer" : "default", marginBottom:16 }}>
-          {nukes.length<2||whales.length<2 ? `Assign at least 2 players per team to run projections` : "🎯 Run Projections"}
+          style={{ width:"100%", padding:"11px", background:nukes.length>=2&&whales.length>=2?"linear-gradient(135deg,#ff8c00,#ff4500)":"rgba(255,255,255,0.06)", border:"none", borderRadius:12, color:nukes.length>=2&&whales.length>=2?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:nukes.length>=2&&whales.length>=2?"pointer":"default", marginBottom:14 }}>
+          {nukes.length<2||whales.length<2 ? "Assign 2+ players per team to run" : "🎯 Run Projections"}
         </button>
       )}
 
       {/* Projections results */}
-      {projections && projections.map(({comp, mostComp, nukeStamp, whaleStamp})=>(
-        <div key={comp.id} style={{ marginBottom:20 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:10 }}>{comp.icon||"🏅"} {comp.name}</div>
-          <MatchupCard label="Most Competitive" emoji="⚖️" color="rgba(74,222,128,0.8)" bg="rgba(74,222,128,0.04)" border="rgba(74,222,128,0.2)" m={mostComp}/>
-          <MatchupCard label="Nuke Stomp" emoji="☢️" color="rgba(255,69,0,0.8)" bg="rgba(255,69,0,0.04)" border="rgba(255,69,0,0.2)" m={nukeStamp}/>
-          <MatchupCard label="Whale Stomp" emoji="🐋" color="rgba(0,170,255,0.8)" bg="rgba(0,170,255,0.04)" border="rgba(0,170,255,0.2)" m={whaleStamp}/>
-        </div>
-      ))}
+      {projections && projections.map(({comp, mostComp, nukeStamp, whaleStamp})=>{
+        const isScramble = scrambleIds.includes(comp.id);
+        return (
+          <div key={comp.id} style={{ marginBottom:20 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>{comp.icon||"🏅"} {comp.name}</div>
+            {uniquePartner && !isScramble && (() => {
+              const prevPairs = projections.filter(p=>p.comp.id!==comp.id&&!scrambleIds.includes(p.comp.id)).flatMap(p=>[p.mostComp?.np,p.mostComp?.wp,p.nukeStamp?.np,p.nukeStamp?.wp,p.whaleStamp?.np,p.whaleStamp?.wp].filter(Boolean));
+              const usedKeys = prevPairs.map(pair=>[...pair].sort().join("|"));
+              if (usedKeys.length>0) return <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Previously used pairings: {[...new Set(usedKeys)].map(k=>k.replace("|"," & ")).join(" · ")}</div>;
+            })()}
+            <MatchupCard label="Most Competitive" emoji="⚖️" color="rgba(74,222,128,0.8)" bg="rgba(74,222,128,0.04)" border="rgba(74,222,128,0.2)" m={mostComp}
+              warn={uniquePartner&&!isScramble&&([...mostComp.np].sort().join("|")||[...mostComp.wp].sort().join("|"))&&false}/>
+            <MatchupCard label="Nuke Stomp" emoji="☢️" color="rgba(255,69,0,0.8)" bg="rgba(255,69,0,0.04)" border="rgba(255,69,0,0.2)" m={nukeStamp} warn={false}/>
+            <MatchupCard label="Whale Stomp" emoji="🐋" color="rgba(0,170,255,0.8)" bg="rgba(0,170,255,0.04)" border="rgba(0,170,255,0.2)" m={whaleStamp} warn={false}/>
+          </div>
+        );
+      })}
 
       {/* Reset */}
       <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setProjections(null);}}
-        style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:8 }}>
-        Reset
+        style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>
+        Reset Draft
+      </button>
+
+      {/* ── DIVIDER ── */}
+      <div style={{ display:"flex", alignItems:"center", gap:12, margin:"32px 0 24px" }}>
+        <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", letterSpacing:"0.12em", textTransform:"uppercase" }}>Optimal Matchup Finder</div>
+        <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
+      </div>
+
+      {/* ── FEATURE 2: Optimal Matchup Finder ── */}
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>🔍 Optimal Matchup Finder</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:4, marginBottom:16 }}>Pick 2 players for Side A. Optionally pick Side B — or leave it blank to auto-find the best opposing pairings.</div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+        {/* Side A */}
+        <div style={{ padding:"10px 12px", background:"rgba(255,69,0,0.06)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:10 }}>
+          <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Side A</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            <PlayerSelect value={fSideA[0]} onChange={v=>{ setFSideA([v,fSideA[1]]); setFResults(null); }} exclude={[fSideA[1],...fSideB].filter(Boolean)}/>
+            <PlayerSelect value={fSideA[1]} onChange={v=>{ setFSideA([fSideA[0],v]); setFResults(null); }} exclude={[fSideA[0],...fSideB].filter(Boolean)}/>
+          </div>
+        </div>
+        {/* Side B */}
+        <div style={{ padding:"10px 12px", background:"rgba(0,170,255,0.06)", border:"1px solid rgba(0,170,255,0.2)", borderRadius:10 }}>
+          <div style={{ fontSize:11, color:"#00aaff", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Side B <span style={{ color:"rgba(255,255,255,0.25)", fontSize:10, fontWeight:400 }}>(optional)</span></div>
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            <PlayerSelect value={fSideB[0]} onChange={v=>{ setFSideB([v,fSideB[1]]); setFResults(null); }} exclude={[...fSideA,fSideB[1]].filter(Boolean)}/>
+            <PlayerSelect value={fSideB[1]} onChange={v=>{ setFSideB([fSideB[0],v]); setFResults(null); }} exclude={[...fSideA,fSideB[0]].filter(Boolean)}/>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={runFinder} disabled={fSideA.filter(Boolean).length<2}
+        style={{ width:"100%", padding:"11px", background:fSideA.filter(Boolean).length>=2?"linear-gradient(135deg,#0066cc,#00aaff)":"rgba(255,255,255,0.06)", border:"none", borderRadius:12, color:fSideA.filter(Boolean).length>=2?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:fSideA.filter(Boolean).length>=2?"pointer":"default", marginBottom:16 }}>
+        {fSideA.filter(Boolean).length<2 ? "Select 2 players for Side A" : fSideB.filter(Boolean).length>=2 ? "🔍 Show Projection" : "🔍 Find Optimal Pairings"}
+      </button>
+
+      {fResults && fResults.map(({comp, single, mostComp, aStamp, bStamp})=>(
+        <div key={comp.id} style={{ marginBottom:20 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>{comp.icon||"🏅"} {comp.name}</div>
+          {single ? (
+            <MatchupCard label="Projected Matchup" emoji="🎯" color="rgba(255,200,0,0.8)" bg="rgba(255,200,0,0.04)" border="rgba(255,200,0,0.2)" m={single} warn={false}/>
+          ) : (
+            <>
+              <MatchupCard label="Most Competitive" emoji="⚖️" color="rgba(74,222,128,0.8)" bg="rgba(74,222,128,0.04)" border="rgba(74,222,128,0.2)" m={mostComp} warn={false}/>
+              <MatchupCard label="Side A Favored" emoji="🔴" color="rgba(255,69,0,0.8)" bg="rgba(255,69,0,0.04)" border="rgba(255,69,0,0.2)" m={aStamp} warn={false}/>
+              <MatchupCard label="Side B Favored" emoji="🔵" color="rgba(0,170,255,0.8)" bg="rgba(0,170,255,0.04)" border="rgba(0,170,255,0.2)" m={bStamp} warn={false}/>
+            </>
+          )}
+        </div>
+      ))}
+
+      <button onClick={()=>{setFSideA(["",""]);setFSideB(["",""]);setFResults(null);}}
+        style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>
+        Reset Finder
       </button>
     </div>
   );
