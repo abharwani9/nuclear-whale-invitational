@@ -21,8 +21,7 @@ const TABS = [
   { id: "history",      label: "History",       icon: "📜" },
   { id: "media",        label: "Media",         icon: "🎬" },
   { id: "rules",        label: "Rules",         icon: "📋" },
-  { id: "mockdraft",    label: "Mock Draft",    icon: "🎲" },
-  { id: "mockdraft",    label: "Mock Draft",    icon: "🎲" },
+  { id: "mockdraft",    label: "Mock Draft",    icon: "🃏" },
 ];
 
 function SuperlativesTab({ meta, roster, votes, drafts }) {
@@ -218,7 +217,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
 
   return (
     <div>
-      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🎲 Mock Draft</div>
+      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🃏 Mock Draft</div>
       <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>Assign players to teams and see projected matchups. This is just for fun — nothing is saved.</div>
 
       {/* Unassigned */}
