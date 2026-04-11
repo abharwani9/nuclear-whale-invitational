@@ -129,6 +129,18 @@ function SuperlativesTab({ meta, roster, votes, drafts }) {
   );
 }
 
+function CustomPicker({ label, value, options, onSelect, setModalPicker, color="rgba(255,255,255,0.5)" }) {
+  return (
+    <div style={{ marginBottom:6 }}>
+      <button onClick={()=>setModalPicker({label, options, onSelect, color, current:value})}
+        style={{ width:"100%", padding:"8px 10px", background:"rgba(255,255,255,0.06)", border:`1px solid ${value?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:8, color:value?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:value?700:400, cursor:"pointer", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>{value ? (options.find(o=>o.value===value)?.label||value) : label}</span>
+        <span style={{ fontSize:10, opacity:0.5 }}>▼</span>
+      </button>
+    </div>
+  );
+}
+
 function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
@@ -300,17 +312,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     );
   };
 
-  // Full-screen modal picker — works reliably on iOS PWA
-
-  const CustomPicker = ({label, value, options, onSelect, color="rgba(255,255,255,0.5)"}) => (
-    <div style={{ marginBottom:6 }}>
-      <button onClick={()=>setModalPicker({label, options, onSelect, color, current:value})}
-        style={{ width:"100%", padding:"8px 10px", background:"rgba(255,255,255,0.06)", border:`1px solid ${value?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:8, color:value?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:value?700:400, cursor:"pointer", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span>{value ? options.find(o=>o.value===value)?.label||value : label}</span>
-        <span style={{ fontSize:10, opacity:0.5 }}>▼</span>
-      </button>
-    </div>
-  );
+  // CustomPicker is defined outside this component (top-level) to avoid remount issues
 
   const nukeOptions = (nukes.length>=1?nukes:sortedRoster.map(p=>p.name)).map(n=>({value:n,label:`${n} (HCP ${getHandicap(n)})`}));
   const whaleOptions = (whales.length>=1?whales:sortedRoster.map(p=>p.name)).map(n=>({value:n,label:`${n} (HCP ${getHandicap(n)})`}));
@@ -376,6 +378,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:6 }}>Competition</div>
           <CustomPicker
+            setModalPicker={setModalPicker}
             label="— Select competition —"
             value={selComp?.name||""}
             options={teamComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name}`}))}
@@ -391,13 +394,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
       <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12 }}>
         <div style={{ padding:"10px",background:"rgba(255,69,0,0.06)",border:"1px solid rgba(255,69,0,0.15)",borderRadius:10 }}>
           <div style={{ fontSize:10,color:"#ff4500",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8 }}>☢️ Nukes <span style={{ color:"rgba(255,255,255,0.25)",fontSize:9,fontWeight:400 }}>(optional)</span></div>
-          <CustomPicker label="Player 1" value={selNuke1} options={nukeOptions.filter(o=>o.value!==selNuke2)} onSelect={v=>{setSelNuke1(v);setSuggestions(null);}} color="#ff4500"/>
-          <CustomPicker label="Player 2" value={selNuke2} options={nukeOptions.filter(o=>o.value!==selNuke1)} onSelect={v=>{setSelNuke2(v);setSuggestions(null);}} color="#ff4500"/>
+          <CustomPicker
+            setModalPicker={setModalPicker} label="Player 1" value={selNuke1} options={nukeOptions.filter(o=>o.value!==selNuke2)} onSelect={v=>{setSelNuke1(v);setSuggestions(null);}} color="#ff4500"/>
+          <CustomPicker
+            setModalPicker={setModalPicker} label="Player 2" value={selNuke2} options={nukeOptions.filter(o=>o.value!==selNuke1)} onSelect={v=>{setSelNuke2(v);setSuggestions(null);}} color="#ff4500"/>
         </div>
         <div style={{ padding:"10px",background:"rgba(0,170,255,0.06)",border:"1px solid rgba(0,170,255,0.15)",borderRadius:10 }}>
           <div style={{ fontSize:10,color:"#00aaff",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8 }}>🐋 Whales <span style={{ color:"rgba(255,255,255,0.25)",fontSize:9,fontWeight:400 }}>(optional)</span></div>
-          <CustomPicker label="Player 1" value={selWhale1} options={whaleOptions.filter(o=>o.value!==selWhale2)} onSelect={v=>{setSelWhale1(v);setSuggestions(null);}} color="#00aaff"/>
-          <CustomPicker label="Player 2" value={selWhale2} options={whaleOptions.filter(o=>o.value!==selWhale1)} onSelect={v=>{setSelWhale2(v);setSuggestions(null);}} color="#00aaff"/>
+          <CustomPicker
+            setModalPicker={setModalPicker} label="Player 1" value={selWhale1} options={whaleOptions.filter(o=>o.value!==selWhale2)} onSelect={v=>{setSelWhale1(v);setSuggestions(null);}} color="#00aaff"/>
+          <CustomPicker
+            setModalPicker={setModalPicker} label="Player 2" value={selWhale2} options={whaleOptions.filter(o=>o.value!==selWhale1)} onSelect={v=>{setSelWhale2(v);setSuggestions(null);}} color="#00aaff"/>
         </div>
       </div>
 
