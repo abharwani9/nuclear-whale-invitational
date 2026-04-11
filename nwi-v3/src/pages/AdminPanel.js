@@ -1960,16 +1960,22 @@ function SettingsSection({ meta, history, competitions, showToast }) {
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               {(competitions||[]).map(c => {
                 const key = `hcpAllowance_${c.id}`;
+                const teamKey = `teamFormat_${c.id}`;
                 const val = form[key] ?? (meta?.hcpAllowances?.[c.id] || "");
+                const isTeam = form[teamKey] ?? (meta?.teamFormats?.[c.id] || false);
                 return (
                   <div key={c.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
                     <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{c.icon||"🏅"} {c.name}</div>
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <input style={{ ...s.input, width:70, textAlign:"center" }} type="number" step="5" min="0" max="100"
+                    <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                      <input style={{ ...s.input, width:55, textAlign:"center" }} type="number" step="5" min="0" max="100"
                         value={val} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
                         placeholder="100"/>
-                      <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>%</span>
+                      <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>%</span>
                     </div>
+                    <button style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${isTeam?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:isTeam?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:isTeam?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+                      onClick={()=>setForm(f=>({...f,[teamKey]:!isTeam}))}>
+                      {isTeam?"✓ Team":"Team?"}
+                    </button>
                   </div>
                 );
               })}
