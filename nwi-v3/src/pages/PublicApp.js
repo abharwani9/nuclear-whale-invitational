@@ -21,6 +21,8 @@ const TABS = [
   { id: "history",      label: "History",       icon: "📜" },
   { id: "media",        label: "Media",         icon: "🎬" },
   { id: "rules",        label: "Rules",         icon: "📋" },
+  { id: "mockdraft",    label: "Mock Draft",    icon: "🎲" },
+  { id: "mockdraft",    label: "Mock Draft",    icon: "🎲" },
 ];
 
 function SuperlativesTab({ meta, roster, votes, drafts }) {
@@ -123,6 +125,161 @@ function SuperlativesTab({ meta, roster, votes, drafts }) {
       <button onClick={handleSubmit} disabled={submitting}
         style={{ width:"100%", padding:"14px", background:"linear-gradient(135deg,#ff8c00,#ff4500)", border:"none", borderRadius:12, color:"#fff", fontSize:16, fontWeight:800, cursor:"pointer", marginTop:8 }}>
         {submitting ? "Submitting..." : "🏅 Submit My Votes"}
+      </button>
+    </div>
+  );
+}
+
+function MockDraftTab({ roster, competitions, meta, getHandicap }) {
+  const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+  const [nukes, setNukes] = useState([]);
+  const [whales, setWhales] = useState([]);
+  const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
+  const [projections, setProjections] = useState(null);
+  const teamFormats = meta?.teamFormats || {};
+  const hcpAllowances = meta?.hcpAllowances || {};
+  const teamComps = competitions.filter(c => teamFormats[c.id]);
+
+  const assign = (name, team) => {
+    setUnassigned(u => u.filter(n=>n!==name));
+    setNukes(n => n.filter(n2=>n2!==name));
+    setWhales(w => w.filter(n=>n!==name));
+    if (team==="nukes") setNukes(n=>[...n,name]);
+    if (team==="whales") setWhales(w=>[...w,name]);
+    if (team==="none") setUnassigned(u=>[...u,name]);
+    setProjections(null);
+  };
+
+  const teamHcp = (players, allowPct=100) => {
+    const pct = allowPct/100;
+    const hcps = players.map(n=>getHandicap(n)*pct).sort((a,b)=>a-b);
+    if (hcps.length===0) return 18;
+    if (hcps.length===1) return Math.round(hcps[0]*0.5);
+    return Math.round(hcps[0]*0.35+hcps[1]*0.15);
+  };
+
+  const toOdds = (prob) => {
+    prob = Math.max(0.1,Math.min(0.9,prob));
+    if (prob>=0.5) return `-${Math.round((prob/(1-prob))*100)}`;
+    return `+${Math.round(((1-prob)/prob)*100)}`;
+  };
+
+  const calcProb = (nPair, wPair, allowPct) => {
+    const nHcp = teamHcp(nPair, allowPct);
+    const wHcp = teamHcp(wPair, allowPct);
+    const diff = wHcp - nHcp;
+    return Math.max(0.1, Math.min(0.9, 0.5 + diff*0.03));
+  };
+
+  const runProjections = () => {
+    if (nukes.length < 2 || whales.length < 2) return;
+    const results = teamComps.map(comp => {
+      const allow = hcpAllowances[comp.id] || 100;
+      // Generate all possible 2-player pairings for each team
+      const nukePairs = [];
+      for (let i=0;i<nukes.length;i++) for (let j=i+1;j<nukes.length;j++) nukePairs.push([nukes[i],nukes[j]]);
+      const whalePairs = [];
+      for (let i=0;i<whales.length;i++) for (let j=i+1;j<whales.length;j++) whalePairs.push([whales[i],whales[j]]);
+      // Score all combinations
+      const matchups = [];
+      nukePairs.forEach(np => whalePairs.forEach(wp => {
+        const prob = calcProb(np, wp, allow);
+        const diff = Math.abs(prob - 0.5);
+        matchups.push({ np, wp, prob, diff, nHcp:teamHcp(np,allow), wHcp:teamHcp(wp,allow) });
+      }));
+      if (!matchups.length) return null;
+      matchups.sort((a,b)=>a.diff-b.diff);
+      const mostComp = matchups[0];
+      matchups.sort((a,b)=>b.prob-a.prob);
+      const nukeStamp = matchups[0];
+      matchups.sort((a,b)=>a.prob-b.prob);
+      const whaleStamp = matchups[0];
+      return { comp, mostComp, nukeStamp, whaleStamp };
+    }).filter(Boolean);
+    setProjections(results);
+  };
+
+  const MatchupCard = ({label, emoji, color, bg, border, m}) => (
+    <div style={{ padding:"10px 12px", background:bg, border:`1px solid ${border}`, borderRadius:10, marginBottom:8 }}>
+      <div style={{ fontSize:10, color:color, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>{emoji} {label}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:6, alignItems:"center" }}>
+        <div style={{ textAlign:"center" }}>
+          {m.np.map(n=><div key={n} style={{ fontSize:12, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {m.nHcp} · {toOdds(m.prob)}</div>
+        </div>
+        <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
+        <div style={{ textAlign:"center" }}>
+          {m.wp.map(n=><div key={n} style={{ fontSize:12, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {m.wHcp} · {toOdds(1-m.prob)}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🎲 Mock Draft</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>Assign players to teams and see projected matchups. This is just for fun — nothing is saved.</div>
+
+      {/* Unassigned */}
+      {unassigned.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Unassigned Players</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+            {unassigned.map(name => {
+              const p = roster.find(r=>r.name===name);
+              return (
+                <div key={name} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+                  {p?.photoURL ? <img src={p.photoURL} alt={name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/> : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800 }}>{name[0]}</div>}
+                  <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{name} <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>HCP {getHandicap(name)}</span></div>
+                  <button onClick={()=>assign(name,"nukes")} style={{ padding:"4px 10px", background:"rgba(255,69,0,0.15)", border:"1px solid rgba(255,69,0,0.3)", borderRadius:6, color:"#ff4500", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>☢️</button>
+                  <button onClick={()=>assign(name,"whales")} style={{ padding:"4px 10px", background:"rgba(0,170,255,0.15)", border:"1px solid rgba(0,170,255,0.3)", borderRadius:6, color:"#00aaff", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer" }}>🐋</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Teams */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+        {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
+          <div key={team} style={{ padding:"10px 12px", background:bg, border:`1px solid ${border}`, borderRadius:10 }}>
+            <div style={{ fontSize:11, color:color, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>{label}</div>
+            {players.length===0 ? <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)" }}>No players yet</div> : players.map(name=>(
+              <div key={name} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                <span style={{ fontSize:12, fontWeight:600 }}>{name}</span>
+                <button onClick={()=>assign(name,"none")} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.3)", cursor:"pointer", fontSize:12 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Run projections */}
+      {teamComps.length === 0 ? (
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", textAlign:"center", padding:"12px" }}>No team format competitions set up — admin can flag them in Settings</div>
+      ) : (
+        <button onClick={runProjections} disabled={nukes.length<2||whales.length<2}
+          style={{ width:"100%", padding:"12px", background: nukes.length>=2&&whales.length>=2 ? "linear-gradient(135deg,#ff8c00,#ff4500)" : "rgba(255,255,255,0.06)", border:"none", borderRadius:12, color: nukes.length>=2&&whales.length>=2 ? "#fff" : "rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:15, fontWeight:800, cursor: nukes.length>=2&&whales.length>=2 ? "pointer" : "default", marginBottom:16 }}>
+          {nukes.length<2||whales.length<2 ? `Assign at least 2 players per team to run projections` : "🎯 Run Projections"}
+        </button>
+      )}
+
+      {/* Projections results */}
+      {projections && projections.map(({comp, mostComp, nukeStamp, whaleStamp})=>(
+        <div key={comp.id} style={{ marginBottom:20 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:10 }}>{comp.icon||"🏅"} {comp.name}</div>
+          <MatchupCard label="Most Competitive" emoji="⚖️" color="rgba(74,222,128,0.8)" bg="rgba(74,222,128,0.04)" border="rgba(74,222,128,0.2)" m={mostComp}/>
+          <MatchupCard label="Nuke Stomp" emoji="☢️" color="rgba(255,69,0,0.8)" bg="rgba(255,69,0,0.04)" border="rgba(255,69,0,0.2)" m={nukeStamp}/>
+          <MatchupCard label="Whale Stomp" emoji="🐋" color="rgba(0,170,255,0.8)" bg="rgba(0,170,255,0.04)" border="rgba(0,170,255,0.2)" m={whaleStamp}/>
+        </div>
+      ))}
+
+      {/* Reset */}
+      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setProjections(null);}}
+        style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:8 }}>
+        Reset
       </button>
     </div>
   );
@@ -1361,6 +1518,10 @@ export default function PublicApp({ onGoAdmin }) {
             ))}
           </div>
         )}
+
+        {tab==="mockdraft" && (
+          <MockDraftTab roster={roster} competitions={competitions} meta={meta} getHandicap={n=>{const p=roster.find(r=>r.name===n);const h=parseFloat(p?.handicap);if(!h||isNaN(h)||h<=1)return 27;if(h>50)return 36;return h;}}/>
+        )}
       </div>
 
       {/* Player profile modal */}
@@ -1567,7 +1728,7 @@ export default function PublicApp({ onGoAdmin }) {
           });
         });
         const yearPlayers = Object.entries(yearStats).map(([name,s])=>({ name, ...s, total:s.w+s.t+s.l, pct: s.total>0?((s.w+s.t*0.5)/s.total):0 }))
-          .filter(p=>p.total>0).sort((a,b)=>b.pct-a.pct||b.w-a.w);
+          .filter(p=>p.total>0).sort((a,b)=>b.w-a.w||b.t-a.t||a.l-b.l);
         const bestPct = yearPlayers[0]?.pct;
         const worstPct = yearPlayers[yearPlayers.length-1]?.pct;
         const bestPlayers = yearPlayers.filter(p=>p.pct===bestPct);
