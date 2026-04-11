@@ -1871,6 +1871,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
     const hcpFields = {};
     (competitions||[]).forEach(c => {
       hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
+      hcpFields[`teamFormat_${c.id}`] = meta?.teamFormats?.[c.id] ?? false;
     });
     setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", dynamicColors:meta.dynamicColors||false, ...hcpFields });
     setLoaded(true);
@@ -1885,7 +1886,11 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         const val = form[`hcpAllowance_${c.id}`];
         if (val !== "" && val !== undefined) hcpAllowances[c.id] = Number(val);
       });
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances});
+      const teamFormats = {};
+      (competitions||[]).forEach(c => {
+        if (form[`teamFormat_${c.id}`]) teamFormats[c.id] = true;
+      });
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
