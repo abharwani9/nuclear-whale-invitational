@@ -240,20 +240,23 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
   const runFinder = () => {
     const sideA = fSideA.filter(Boolean);
     const sideB = fSideB.filter(Boolean);
-    if (sideA.length < 2) return;
+    if (sideA.length < 2 && sideB.length < 2) return;
+    // If only one side has 2, use it as the "known" side
+    const knownSide = sideA.length >= 2 ? sideA : sideB;
+    const otherSide = sideA.length >= 2 ? sideB : sideA;
     const results = teamComps.map(comp => {
       const allow = hcpAllowances[comp.id]||100;
-      if (sideB.filter(Boolean).length >= 2) {
+      if (otherSide.length >= 2) {
         // Both sides selected — show single projection
-        const prob = calcProb(sideA, sideB.filter(Boolean), allow);
-        return { comp, single:{ np:sideA, wp:sideB.filter(Boolean), prob, nHcp:teamHcp(sideA,allow), wHcp:teamHcp(sideB.filter(Boolean),allow) } };
+        const prob = calcProb(knownSide, otherSide, allow);
+        return { comp, single:{ np:knownSide, wp:otherSide, prob, nHcp:teamHcp(knownSide,allow), wHcp:teamHcp(otherSide,allow) } };
       }
-      // Auto-find best B pairings from all other players
-      const allNames = sortedRoster.map(p=>p.name).filter(n=>!sideA.includes(n));
+      // Auto-find best pairings from all other players
+      const allNames = sortedRoster.map(p=>p.name).filter(n=>!knownSide.includes(n));
       const bPairs = getPairs(allNames);
       const matchups = bPairs.map(wp => {
-        const prob = calcProb(sideA, wp, allow);
-        return { np:sideA, wp, prob, diff:Math.abs(prob-0.5), nHcp:teamHcp(sideA,allow), wHcp:teamHcp(wp,allow) };
+        const prob = calcProb(knownSide, wp, allow);
+        return { np:knownSide, wp, prob, diff:Math.abs(prob-0.5), nHcp:teamHcp(knownSide,allow), wHcp:teamHcp(wp,allow) };
       });
       if (!matchups.length) return null;
       matchups.sort((a,b)=>a.diff-b.diff);
@@ -274,12 +277,14 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:6, alignItems:"center" }}>
         <div style={{ textAlign:"center" }}>
           {m.np.map(n=><div key={n} style={{ fontSize:12, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {m.nHcp} · {toOdds(m.prob)}</div>
+          <div style={{ fontSize:11, fontWeight:800, color:"#ff4500", marginTop:3 }}>{toOdds(m.prob)}</div>
+          <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)" }}>HCP {m.nHcp}</div>
         </div>
         <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
         <div style={{ textAlign:"center" }}>
           {m.wp.map(n=><div key={n} style={{ fontSize:12, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
-          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {m.wHcp} · {toOdds(1-m.prob)}</div>
+          <div style={{ fontSize:11, fontWeight:800, color:"#00aaff", marginTop:3 }}>{toOdds(1-m.prob)}</div>
+          <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)" }}>HCP {m.wHcp}</div>
         </div>
       </div>
     </div>
@@ -293,7 +298,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
   }) : [];
 
   const PlayerSelect = ({value, onChange, exclude=[]}) => (
-    <select style={{ ...{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:12,padding:"6px 8px",width:"100%"} }} value={value} onChange={e=>onChange(e.target.value)}>
+    <select style={{ background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:12,padding:"6px 8px",width:"100%",WebkitAppearance:"menulist" }} value={value} onChange={e=>onChange(e.target.value)}>
       <option value="">— Pick player —</option>
       {sortedRoster.filter(p=>!exclude.includes(p.name)||(value&&p.name===value)).map(p=>(
         <option key={p.name} value={p.name}>{p.name} (HCP {getHandicap(p.name)})</option>
@@ -371,11 +376,11 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
         return (
           <div key={comp.id} style={{ marginBottom:20 }}>
             <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>{comp.icon||"🏅"} {comp.name}</div>
-            {uniquePartner && !isScramble && (() => {
-              const prevPairs = projections.filter(p=>p.comp.id!==comp.id&&!scrambleIds.includes(p.comp.id)).flatMap(p=>[p.mostComp?.np,p.mostComp?.wp,p.nukeStamp?.np,p.nukeStamp?.wp,p.whaleStamp?.np,p.whaleStamp?.wp].filter(Boolean));
-              const usedKeys = prevPairs.map(pair=>[...pair].sort().join("|"));
-              if (usedKeys.length>0) return <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>Previously used pairings: {[...new Set(usedKeys)].map(k=>k.replace("|"," & ")).join(" · ")}</div>;
-            })()}
+            {uniquePartner && !isScramble && projections.filter(p=>p.comp.id!==comp.id&&!scrambleIds.includes(p.comp.id)).length > 0 && (
+              <div style={{ fontSize:11, color:"rgba(255,200,0,0.5)", marginBottom:8, padding:"4px 8px", background:"rgba(255,200,0,0.05)", borderRadius:6 }}>
+                ⚠️ Unique partner rule on — check for repeated pairings above
+              </div>
+            )}
             <MatchupCard label="Most Competitive" emoji="⚖️" color="rgba(74,222,128,0.8)" bg="rgba(74,222,128,0.04)" border="rgba(74,222,128,0.2)" m={mostComp}
               warn={uniquePartner&&!isScramble&&([...mostComp.np].sort().join("|")||[...mostComp.wp].sort().join("|"))&&false}/>
             <MatchupCard label="Nuke Stomp" emoji="☢️" color="rgba(255,69,0,0.8)" bg="rgba(255,69,0,0.04)" border="rgba(255,69,0,0.2)" m={nukeStamp} warn={false}/>
@@ -391,10 +396,10 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
       </button>
 
       {/* ── DIVIDER ── */}
-      <div style={{ display:"flex", alignItems:"center", gap:12, margin:"32px 0 24px" }}>
-        <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
-        <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", letterSpacing:"0.12em", textTransform:"uppercase" }}>Optimal Matchup Finder</div>
-        <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
+      <div style={{ margin:"32px 0 24px", padding:"16px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, textAlign:"center" }}>
+        <div style={{ fontSize:22, marginBottom:4 }}>🔍</div>
+        <div style={{ fontSize:16, fontWeight:800, color:"#e8edf3", letterSpacing:"0.06em", textTransform:"uppercase" }}>Optimal Matchup Finder</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:4 }}>Find the best opposing pairings for any two players</div>
       </div>
 
       {/* ── FEATURE 2: Optimal Matchup Finder ── */}
@@ -406,7 +411,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
         {/* Side A */}
         <div style={{ padding:"10px 12px", background:"rgba(255,69,0,0.06)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:10 }}>
-          <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Side A</div>
+          <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Side A <span style={{ color:"rgba(255,255,255,0.25)", fontSize:10, fontWeight:400 }}>(optional)</span></div>
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             <PlayerSelect value={fSideA[0]} onChange={v=>{ setFSideA([v,fSideA[1]]); setFResults(null); }} exclude={[fSideA[1],...fSideB].filter(Boolean)}/>
             <PlayerSelect value={fSideA[1]} onChange={v=>{ setFSideA([fSideA[0],v]); setFResults(null); }} exclude={[fSideA[0],...fSideB].filter(Boolean)}/>
@@ -422,10 +427,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap }) {
         </div>
       </div>
 
-      <button onClick={runFinder} disabled={fSideA.filter(Boolean).length<2}
-        style={{ width:"100%", padding:"11px", background:fSideA.filter(Boolean).length>=2?"linear-gradient(135deg,#0066cc,#00aaff)":"rgba(255,255,255,0.06)", border:"none", borderRadius:12, color:fSideA.filter(Boolean).length>=2?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:fSideA.filter(Boolean).length>=2?"pointer":"default", marginBottom:16 }}>
-        {fSideA.filter(Boolean).length<2 ? "Select 2 players for Side A" : fSideB.filter(Boolean).length>=2 ? "🔍 Show Projection" : "🔍 Find Optimal Pairings"}
-      </button>
+      {(() => {
+        const aCount = fSideA.filter(Boolean).length;
+        const bCount = fSideB.filter(Boolean).length;
+        const canRun = aCount>=2 || bCount>=2;
+        return (
+          <button onClick={runFinder} disabled={!canRun}
+            style={{ width:"100%", padding:"11px", background:canRun?"linear-gradient(135deg,#0066cc,#00aaff)":"rgba(255,255,255,0.06)", border:"none", borderRadius:12, color:canRun?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:14, fontWeight:800, cursor:canRun?"pointer":"default", marginBottom:16 }}>
+            {!canRun ? "Select at least 2 players on one side" : aCount>=2&&bCount>=2 ? "🔍 Show Projection" : "🔍 Find Optimal Pairings"}
+          </button>
+        );
+      })()}
 
       {fResults && fResults.map(({comp, single, mostComp, aStamp, bStamp})=>(
         <div key={comp.id} style={{ marginBottom:20 }}>
