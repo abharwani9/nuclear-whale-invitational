@@ -141,7 +141,7 @@ function CustomPicker({ label, value, options, onSelect, setModalPicker, color="
   );
 }
 
-function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
+function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds }) {
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
   const hcpAllowances = meta?.hcpAllowances || {};
@@ -267,9 +267,9 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     const nukeStamp = matchups[0];
     matchups.sort((a,b)=>a.prob-b.prob);
     const whaleStamp = matchups[0];
-    // Dynamic labels — only call it a "stomp" if that team is actually favored
-    const nukeLabel = nukeStamp.prob >= 0.6 ? "Nuke Stomp" : nukeStamp.prob >= 0.5 ? "Most Nuke-Favored" : "Least Whale-Favored";
-    const whaleLabel = whaleStamp.prob <= 0.4 ? "Whale Stomp" : whaleStamp.prob <= 0.5 ? "Most Whale-Favored" : "Least Nuke-Favored";
+    // Dynamic labels — based on how favored each team actually is
+    const nukeLabel = nukeStamp.prob >= 0.6 ? "☢️ Nuke Stomp" : "Most Nuke-Favored";
+    const whaleLabel = whaleStamp.prob <= 0.4 ? "🐋 Whale Stomp" : "Most Whale-Favored";
     setSuggestions([
       { label:"Most Competitive", emoji:"⚖️", np:mostComp.nPair, wp:mostComp.wPair, prob:mostComp.prob, nHcp:mostComp.nHcp, wHcp:mostComp.wHcp, color:"rgba(74,222,128,0.8)", bg:"rgba(74,222,128,0.04)", border:"rgba(74,222,128,0.2)" },
       { label:nukeLabel, emoji:"☢️", np:nukeStamp.nPair, wp:nukeStamp.wPair, prob:nukeStamp.prob, nHcp:nukeStamp.nHcp, wHcp:nukeStamp.wHcp, color:"rgba(255,69,0,0.8)", bg:"rgba(255,69,0,0.04)", border:"rgba(255,69,0,0.2)" },
@@ -282,7 +282,10 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     const cid = selComp.id;
     const current = savedMatchups[cid]||[];
     if(current.length>=3) return;
-    setSavedMatchups(s=>({...s,[cid]:[...current,{...m,comp:selComp,pointsWorth:selComp.pointsWorth||3}]}));
+    // Find points for this competition from rounds
+    const compRound = (rounds||[]).find(r=>r.competitionName===selComp.name||(r.matchups||[]).some(mu=>mu.competitionName===selComp.name));
+    const pts = compRound?.pointsPerWin || 3;
+    setSavedMatchups(s=>({...s,[cid]:[...current,{...m,comp:selComp,pointsWorth:pts}]}));
   };
 
   const deleteMatchup = (cid, idx) => {
@@ -304,15 +307,19 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     return false;
   };
 
-  const allSavedPairKeys = Object.entries(savedMatchups).flatMap(([cid,ms])=>
-    ms.flatMap(m=>[{key:[...m.np].sort().join("|"),cid},{key:[...m.wp].sort().join("|"),cid}])
-  );
-  const checkRepeat = (np,wp,cid) => {
-    const nKey=[...np].sort().join("|");
-    const wKey=[...wp].sort().join("|");
-    return allSavedPairKeys.some(({key,cid:ocid})=>
-      (key===nKey||key===wKey)&&ocid!==cid&&!(scrambleIds.includes(cid)&&scrambleIds.includes(ocid))
-    );
+  const checkRepeat = (np, wp, cid) => {
+    if (!np?.length || !wp?.length) return false;
+    try {
+      const nKey = [...np].sort().join("|");
+      const wKey = [...wp].sort().join("|");
+      const pairKeys = Object.entries(savedMatchups).flatMap(([ocid,ms])=>
+        ms.flatMap(m=>[{key:[...m.np].sort().join("|"),cid:ocid},{key:[...m.wp].sort().join("|"),cid:ocid}])
+      );
+      return pairKeys.some(({key,cid:ocid})=>
+        (key===nKey||key===wKey)&&ocid!==cid&&
+        !(scrambleIds.includes(cid)&&scrambleIds.includes(ocid))
+      );
+    } catch(e) { return false; }
   };
 
   // CustomPicker is defined outside this component (top-level) to avoid remount issues
@@ -530,7 +537,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
         if(!allSaved.length) return null;
         let nukeExpected=0, whaleExpected=0, totalPts=0;
         allSaved.forEach(m=>{
-          const pts = m.comp?.pointsPerWin || 3;
+          const pts = m.pointsWorth || 3;
           nukeExpected += m.prob * pts;
           whaleExpected += (1-m.prob) * pts;
           totalPts += pts;
@@ -1799,7 +1806,7 @@ export default function PublicApp({ onGoAdmin }) {
         )}
 
         {tab==="mockdraft" && (
-          <MockDraftTab roster={roster} competitions={competitions} meta={meta} history={history} getHandicap={n=>{const p=roster.find(r=>r.name===n);const h=parseFloat(p?.handicap);if(!h||isNaN(h)||h<=1)return 27;if(h>50)return 36;return h;}}/>
+          <MockDraftTab roster={roster} competitions={competitions} meta={meta} history={history} rounds={rounds} getHandicap={n=>{const p=roster.find(r=>r.name===n);const h=parseFloat(p?.handicap);if(!h||isNaN(h)||h<=1)return 27;if(h>50)return 36;return h;}}/>
         )}
       </div>
 
