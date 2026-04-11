@@ -153,8 +153,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
   const [selWhale2, setSelWhale2] = useState("");
   const [suggestions, setSuggestions] = useState(null);
   const [savedMatchups, setSavedMatchups] = useState({}); // { compId: [{np,wp,label}] }
-  const [compPickerOpen, setCompPickerOpen] = useState(false);
-  const [playerPickerOpen, setPlayerPickerOpen] = useState(null); // which slot is open
+  const [modalPicker, setModalPicker] = useState(null);
 
   const teamHcp = (players, allowPct=100) => {
     const pct = allowPct/100;
@@ -301,39 +300,15 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
     );
   };
 
-  // iOS-safe custom picker
-  const handlePickerSelect = (onSelect, val, onToggle) => {
-    onSelect(val);
-    onToggle();
-  };
+  // Full-screen modal picker — works reliably on iOS PWA
 
-  const CustomPicker = ({label, value, options, onSelect, isOpen, onToggle, color="rgba(255,255,255,0.5)"}) => (
-    <div style={{ position:"relative", marginBottom:6 }}>
-      <button
-        onTouchEnd={e=>{e.preventDefault();onToggle();}}
-        onClick={onToggle}
+  const CustomPicker = ({label, value, options, onSelect, color="rgba(255,255,255,0.5)"}) => (
+    <div style={{ marginBottom:6 }}>
+      <button onClick={()=>setModalPicker({label, options, onSelect, color, current:value})}
         style={{ width:"100%", padding:"8px 10px", background:"rgba(255,255,255,0.06)", border:`1px solid ${value?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:8, color:value?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:value?700:400, cursor:"pointer", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span>{value||label}</span>
-        <span style={{ fontSize:10, opacity:0.5 }}>{isOpen?"▲":"▼"}</span>
+        <span>{value ? options.find(o=>o.value===value)?.label||value : label}</span>
+        <span style={{ fontSize:10, opacity:0.5 }}>▼</span>
       </button>
-      {isOpen&&(
-        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:200, background:"#1a2235", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, marginTop:2, maxHeight:220, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,0.5)" }}>
-          {value&&(
-            <div
-              onTouchEnd={e=>{e.preventDefault();handlePickerSelect(onSelect,"",onToggle);}}
-              onClick={()=>handlePickerSelect(onSelect,"",onToggle)}
-              style={{ padding:"10px 12px", fontSize:12, color:"rgba(255,255,255,0.4)", borderBottom:"1px solid rgba(255,255,255,0.06)", cursor:"pointer" }}>— Clear —</div>
-          )}
-          {options.map(opt=>(
-            <div key={opt.value}
-              onTouchEnd={e=>{e.preventDefault();handlePickerSelect(onSelect,opt.value,onToggle);}}
-              onClick={()=>handlePickerSelect(onSelect,opt.value,onToggle)}
-              style={{ padding:"10px 12px", fontSize:12, fontWeight:600, color:opt.value===value?"#ffd700":"rgba(255,255,255,0.8)", background:opt.value===value?"rgba(255,200,0,0.08)":"transparent", cursor:"pointer", borderBottom:"1px solid rgba(255,255,255,0.04)" }}>
-              {opt.label}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 
@@ -405,8 +380,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
             value={selComp?.name||""}
             options={teamComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name}`}))}
             onSelect={v=>{setSelComp(teamComps.find(c=>c.id===v)||null);setSuggestions(null);}}
-            isOpen={compPickerOpen}
-            onToggle={()=>setCompPickerOpen(o=>!o)}
+           
+           
             color="#ffd700"
           />
         </div>
@@ -416,13 +391,13 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
       <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12 }}>
         <div style={{ padding:"10px",background:"rgba(255,69,0,0.06)",border:"1px solid rgba(255,69,0,0.15)",borderRadius:10 }}>
           <div style={{ fontSize:10,color:"#ff4500",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8 }}>☢️ Nukes <span style={{ color:"rgba(255,255,255,0.25)",fontSize:9,fontWeight:400 }}>(optional)</span></div>
-          <CustomPicker label="Player 1" value={selNuke1} options={nukeOptions.filter(o=>o.value!==selNuke2)} onSelect={v=>{setSelNuke1(v);setSuggestions(null);}} isOpen={playerPickerOpen==="n1"} onToggle={()=>setPlayerPickerOpen(o=>o==="n1"?null:"n1")} color="#ff4500"/>
-          <CustomPicker label="Player 2" value={selNuke2} options={nukeOptions.filter(o=>o.value!==selNuke1)} onSelect={v=>{setSelNuke2(v);setSuggestions(null);}} isOpen={playerPickerOpen==="n2"} onToggle={()=>setPlayerPickerOpen(o=>o==="n2"?null:"n2")} color="#ff4500"/>
+          <CustomPicker label="Player 1" value={selNuke1} options={nukeOptions.filter(o=>o.value!==selNuke2)} onSelect={v=>{setSelNuke1(v);setSuggestions(null);}} color="#ff4500"/>
+          <CustomPicker label="Player 2" value={selNuke2} options={nukeOptions.filter(o=>o.value!==selNuke1)} onSelect={v=>{setSelNuke2(v);setSuggestions(null);}} color="#ff4500"/>
         </div>
         <div style={{ padding:"10px",background:"rgba(0,170,255,0.06)",border:"1px solid rgba(0,170,255,0.15)",borderRadius:10 }}>
           <div style={{ fontSize:10,color:"#00aaff",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8 }}>🐋 Whales <span style={{ color:"rgba(255,255,255,0.25)",fontSize:9,fontWeight:400 }}>(optional)</span></div>
-          <CustomPicker label="Player 1" value={selWhale1} options={whaleOptions.filter(o=>o.value!==selWhale2)} onSelect={v=>{setSelWhale1(v);setSuggestions(null);}} isOpen={playerPickerOpen==="w1"} onToggle={()=>setPlayerPickerOpen(o=>o==="w1"?null:"w1")} color="#00aaff"/>
-          <CustomPicker label="Player 2" value={selWhale2} options={whaleOptions.filter(o=>o.value!==selWhale1)} onSelect={v=>{setSelWhale2(v);setSuggestions(null);}} isOpen={playerPickerOpen==="w2"} onToggle={()=>setPlayerPickerOpen(o=>o==="w2"?null:"w2")} color="#00aaff"/>
+          <CustomPicker label="Player 1" value={selWhale1} options={whaleOptions.filter(o=>o.value!==selWhale2)} onSelect={v=>{setSelWhale1(v);setSuggestions(null);}} color="#00aaff"/>
+          <CustomPicker label="Player 2" value={selWhale2} options={whaleOptions.filter(o=>o.value!==selWhale1)} onSelect={v=>{setSelWhale2(v);setSuggestions(null);}} color="#00aaff"/>
         </div>
       </div>
 
@@ -464,6 +439,30 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history }) {
           </div>
         );
       })}
+
+      {/* Modal picker overlay */}
+      {modalPicker&&(
+        <div style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.85)", display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={()=>setModalPicker(null)}>
+          <div style={{ background:"#0d1520", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, maxHeight:"70vh", overflow:"hidden", display:"flex", flexDirection:"column" }} onClick={e=>e.stopPropagation()}>
+            <div style={{ padding:"16px 16px 10px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div style={{ fontSize:14, fontWeight:700, color:modalPicker.color||"#e8edf3" }}>{modalPicker.label}</div>
+              <button onClick={()=>setModalPicker(null)} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", fontSize:18, cursor:"pointer", padding:"0 4px" }}>✕</button>
+            </div>
+            <div style={{ overflowY:"auto", flex:1 }}>
+              {modalPicker.current&&(
+                <div onClick={()=>{modalPicker.onSelect("");setModalPicker(null);}}
+                  style={{ padding:"14px 16px", fontSize:13, color:"rgba(255,255,255,0.4)", borderBottom:"1px solid rgba(255,255,255,0.06)", cursor:"pointer" }}>— Clear selection —</div>
+              )}
+              {modalPicker.options.map(opt=>(
+                <div key={opt.value} onClick={()=>{modalPicker.onSelect(opt.value);setModalPicker(null);}}
+                  style={{ padding:"14px 16px", fontSize:13, fontWeight:600, color:opt.value===modalPicker.current?"#ffd700":"rgba(255,255,255,0.85)", background:opt.value===modalPicker.current?"rgba(255,200,0,0.08)":"transparent", borderBottom:"1px solid rgba(255,255,255,0.04)", cursor:"pointer" }}>
+                  {opt.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Saved matchups board */}
       {Object.keys(savedMatchups).some(k=>(savedMatchups[k]||[]).length>0)&&(
