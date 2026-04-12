@@ -142,18 +142,10 @@ function CustomPicker({ label, value, options, onSelect, setModalPicker, color="
 }
 
 function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds }) {
-  useEffect(() => {
-    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
-  }, []);
-  // Clear any corrupted localStorage from previous versions
-  useEffect(() => {
-    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
-  }, []);
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
   const hcpAllowances = meta?.hcpAllowances || {};
   const scrambleIds = competitions.filter(c=>c.name?.toLowerCase().includes("scramble")).map(c=>c.id);
-  // Sort competitions: non-scrambles by their order in competitions list, scrambles last
   const compOrder = competitions.reduce((acc,c,i)=>({...acc,[c.id]:i}),{});
   const teamComps = competitions.filter(c=>teamFormats[c.id]).sort((a,b)=>{
     const aS=scrambleIds.includes(a.id), bS=scrambleIds.includes(b.id);
@@ -162,36 +154,43 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return (compOrder[a.id]||0)-(compOrder[b.id]||0);
   });
 
-  // Player assignment
-  const nukes = mockNukes;
-  const setNukes = setMockNukes;
-  const whales = mockWhales;
-  const setWhales = setMockWhales;
-  const [unassigned, setUnassigned] = useState(()=>sortedRoster.map(p=>p.name).filter(n=>![...mockNukes,...mockWhales].includes(n)));
-
-  // Matchup Explorer state
+  // All state declared first
+  const [nukes, setNukes_] = useState([]);
+  const [whales, setWhales_] = useState([]);
+  const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
   const [selComp, setSelComp] = useState(null);
   const [selNuke1, setSelNuke1] = useState("");
   const [selNuke2, setSelNuke2] = useState("");
   const [selWhale1, setSelWhale1] = useState("");
   const [selWhale2, setSelWhale2] = useState("");
   const [suggestions, setSuggestions] = useState(null);
-  const [savedMatchups, setSavedMatchups] = useState(()=>{
-    try{return JSON.parse(sessionStorage.getItem("nwi_mock_saved")||"{}");}catch(e){return{};}
-  });
-  const [ptsOverride, setPtsOverride] = useState(()=>{
-    try{return JSON.parse(sessionStorage.getItem("nwi_mock_pts")||"{}");}catch(e){return{};}
-  });
-  const [mockNukes, setMockNukes_] = useState(()=>{
-    try{return JSON.parse(sessionStorage.getItem("nwi_mock_nukes")||"[]");}catch(e){return[];}
-  });
-  const [mockWhales, setMockWhales_] = useState(()=>{
-    try{return JSON.parse(sessionStorage.getItem("nwi_mock_whales")||"[]");}catch(e){return[];}
-  });
-  const setMockNukes = (v) => { const val=typeof v==="function"?v(mockNukes):v; setMockNukes_(val); try{sessionStorage.setItem("nwi_mock_nukes",JSON.stringify(val));}catch(e){} };
-  const setMockWhales = (v) => { const val=typeof v==="function"?v(mockWhales):v; setMockWhales_(val); try{sessionStorage.setItem("nwi_mock_whales",JSON.stringify(val));}catch(e){} };
+  const [savedMatchups, setSavedMatchups] = useState({});
+  const [ptsOverride, setPtsOverride] = useState({});
   const [assignSort, setAssignSort] = useState("hcp");
   const [modalPicker, setModalPicker] = useState(null);
+
+  // Wrap setNukes/setWhales to persist to sessionStorage
+  const setNukes = (v) => { const val=typeof v==="function"?v(nukes):v; setNukes_(val); try{sessionStorage.setItem("nwi_mock_nukes",JSON.stringify(val));}catch(e){} };
+  const setWhales = (v) => { const val=typeof v==="function"?v(whales):v; setWhales_(val); try{sessionStorage.setItem("nwi_mock_whales",JSON.stringify(val));}catch(e){} };
+
+  // Load sessionStorage on mount
+  useEffect(()=>{
+    try {
+      const sn = JSON.parse(sessionStorage.getItem("nwi_mock_nukes")||"[]");
+      const sw = JSON.parse(sessionStorage.getItem("nwi_mock_whales")||"[]");
+      const ss = JSON.parse(sessionStorage.getItem("nwi_mock_saved")||"{}");
+      const sp = JSON.parse(sessionStorage.getItem("nwi_mock_pts")||"{}");
+      if(sn.length) setNukes_(sn);
+      if(sw.length) setWhales_(sw);
+      if(Object.keys(ss).length) setSavedMatchups(ss);
+      if(Object.keys(sp).length) setPtsOverride(sp);
+      // Remove from unassigned any already-assigned players
+      if(sn.length||sw.length) setUnassigned(sortedRoster.map(p=>p.name).filter(n=>![...sn,...sw].includes(n)));
+    } catch(e) {}
+    // Clear old localStorage keys from previous versions
+    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const teamHcp = (players, allowPct=100) => {
     const pct = allowPct/100;
