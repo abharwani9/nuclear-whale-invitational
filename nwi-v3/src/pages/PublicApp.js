@@ -163,9 +163,11 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   });
 
   // Player assignment
-  const [nukes, setNukes] = useState([]);
-  const [whales, setWhales] = useState([]);
-  const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
+  const nukes = mockNukes;
+  const setNukes = setMockNukes;
+  const whales = mockWhales;
+  const setWhales = setMockWhales;
+  const [unassigned, setUnassigned] = useState(()=>sortedRoster.map(p=>p.name).filter(n=>![...mockNukes,...mockWhales].includes(n)));
 
   // Matchup Explorer state
   const [selComp, setSelComp] = useState(null);
@@ -174,8 +176,20 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [selWhale1, setSelWhale1] = useState("");
   const [selWhale2, setSelWhale2] = useState("");
   const [suggestions, setSuggestions] = useState(null);
-  const [savedMatchups, setSavedMatchups] = useState({});
-  const [ptsOverride, setPtsOverride] = useState({});
+  const [savedMatchups, setSavedMatchups] = useState(()=>{
+    try{return JSON.parse(sessionStorage.getItem("nwi_mock_saved")||"{}");}catch(e){return{};}
+  });
+  const [ptsOverride, setPtsOverride] = useState(()=>{
+    try{return JSON.parse(sessionStorage.getItem("nwi_mock_pts")||"{}");}catch(e){return{};}
+  });
+  const [mockNukes, setMockNukes_] = useState(()=>{
+    try{return JSON.parse(sessionStorage.getItem("nwi_mock_nukes")||"[]");}catch(e){return[];}
+  });
+  const [mockWhales, setMockWhales_] = useState(()=>{
+    try{return JSON.parse(sessionStorage.getItem("nwi_mock_whales")||"[]");}catch(e){return[];}
+  });
+  const setMockNukes = (v) => { const val=typeof v==="function"?v(mockNukes):v; setMockNukes_(val); try{sessionStorage.setItem("nwi_mock_nukes",JSON.stringify(val));}catch(e){} };
+  const setMockWhales = (v) => { const val=typeof v==="function"?v(mockWhales):v; setMockWhales_(val); try{sessionStorage.setItem("nwi_mock_whales",JSON.stringify(val));}catch(e){} };
   const [assignSort, setAssignSort] = useState("hcp");
   const [modalPicker, setModalPicker] = useState(null);
 
@@ -291,11 +305,12 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     ]);
   };
 
+  const defaultPts = Number(meta?.defaultMatchPts)||2;
   const getCompPts = (comp) => {
-    if(!comp) return 3;
+    if(!comp) return defaultPts;
     if(ptsOverride[comp.id]) return Number(ptsOverride[comp.id]);
     const compRound = (rounds||[]).find(r=>r.competitionName===comp.name||(r.matchups||[]).some(mu=>mu.competitionName===comp.name));
-    return compRound?.pointsPerWin || 3;
+    return compRound?.pointsPerWin || defaultPts;
   };
 
   const saveMatchup = (m) => {
@@ -306,12 +321,12 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       if(current.length>=3) return;
       const pts = getCompPts(selComp);
       const entry = { np:m.np, wp:m.wp, prob:m.prob, nHcp:m.nHcp, wHcp:m.wHcp, label:m.label, emoji:m.emoji, compId:selComp.id, compName:selComp.name, pointsWorth:pts };
-    setSavedMatchups(s=>({...s,[cid]:[...current, entry]}));
+    setSavedMatchups(s=>{const next={...s,[cid]:[...current,entry]};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
     } catch(e) { console.log("saveMatchup error:", e); }
   };
 
   const deleteMatchup = (cid, idx) => {
-    setSavedMatchups(s=>({...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)}));
+    setSavedMatchups(s=>{const next={...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
   };
 
   const checkRepeat = (np, wp, cid) => {
@@ -410,9 +425,9 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         ))}
       </div>
 
-      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSuggestions(null);setSelNuke1("");setSelNuke2("");setSelWhale1("");setSelWhale2("");setSavedMatchups({});setPtsOverride({});}}
-        style={{ width:"100%",padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,color:"rgba(255,255,255,0.35)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:20 }}>
-        Reset All
+      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSuggestions(null);setSelNuke1("");setSelNuke2("");setSelWhale1("");setSelWhale2("");setSavedMatchups({});setPtsOverride({});try{sessionStorage.removeItem("nwi_mock_saved");sessionStorage.removeItem("nwi_mock_nukes");sessionStorage.removeItem("nwi_mock_whales");sessionStorage.removeItem("nwi_mock_pts");}catch(e){}}}
+        style={{ width:"100%",padding:"8px",background:"rgba(255,140,0,0.12)",border:"1px solid rgba(255,140,0,0.35)",borderRadius:8,color:"#ff8c00",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:20 }}>
+        🔄 Reset All Players
       </button>
 
       {/* ── Matchup Explorer ── */}
@@ -593,7 +608,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         if(!allSaved.length) return null;
         let nukeExpected=0, whaleExpected=0, totalPts=0;
         allSaved.forEach(m=>{
-          const pts = Number(ptsOverride[m.cid]||"") || Number(m.pointsWorth) || 3;
+          const pts = Number(ptsOverride[m.cid]||"") || Number(m.pointsWorth) || defaultPts;
           nukeExpected += m.prob * pts;
           whaleExpected += (1-m.prob) * pts;
           totalPts += pts;
