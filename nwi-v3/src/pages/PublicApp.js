@@ -153,10 +153,13 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const teamFormats = meta?.teamFormats || {};
   const hcpAllowances = meta?.hcpAllowances || {};
   const scrambleIds = competitions.filter(c=>c.name?.toLowerCase().includes("scramble")).map(c=>c.id);
+  // Sort competitions: non-scrambles by their order in competitions list, scrambles last
+  const compOrder = competitions.reduce((acc,c,i)=>({...acc,[c.id]:i}),{});
   const teamComps = competitions.filter(c=>teamFormats[c.id]).sort((a,b)=>{
     const aS=scrambleIds.includes(a.id), bS=scrambleIds.includes(b.id);
     if(aS&&bS) return a.name?.toLowerCase().includes("9")?1:-1;
-    if(aS) return 1; if(bS) return -1; return 0;
+    if(aS) return 1; if(bS) return -1;
+    return (compOrder[a.id]||0)-(compOrder[b.id]||0);
   });
 
   // Player assignment
@@ -173,7 +176,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [suggestions, setSuggestions] = useState(null);
   const [savedMatchups, setSavedMatchups] = useState({});
   const [ptsOverride, setPtsOverride] = useState({});
-  const [assignSort, setAssignSort] = useState("alpha");
+  const [assignSort, setAssignSort] = useState("hcp");
   const [modalPicker, setModalPicker] = useState(null);
 
   const teamHcp = (players, allowPct=100) => {
@@ -344,7 +347,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
         <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase" }}>Step 1 — Assign Players</div>
         <select value={assignSort} onChange={e=>setAssignSort(e.target.value)}
-          style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:6, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:11, padding:"4px 6px" }}>
+          style={{ background:"#1a2235", border:"1px solid rgba(255,255,255,0.2)", borderRadius:6, color:"#e8edf3", fontFamily:"inherit", fontSize:11, padding:"4px 6px" }}>
           <option value="alpha">A–Z</option>
           <option value="hcp">By HCP</option>
           <option value="record">By Record</option>
@@ -454,6 +457,12 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         </div>
       </div>
 
+      {selComp && (
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10,fontSize:12,color:"rgba(255,255,255,0.4)" }}>
+          <span>{selComp.icon||"🏅"} {selComp.name}</span>
+          <span style={{ color:"#ffd700",fontWeight:700 }}>· {getCompPts(selComp)} pts per win</span>
+        </div>
+      )}
       <button onClick={runExplorer} disabled={!canRun}
         style={{ width:"100%",padding:"11px",background:canRun?"linear-gradient(135deg,#ff8c00,#ff4500)":"rgba(255,255,255,0.06)",border:"none",borderRadius:12,color:canRun?"#fff":"rgba(255,255,255,0.3)",fontFamily:"inherit",fontSize:14,fontWeight:800,cursor:canRun?"pointer":"default",marginBottom:14 }}>
         {!selComp?"Select a competition first":!canRun?"Select 2 players on at least one side":"🎯 Run Explorer"}
