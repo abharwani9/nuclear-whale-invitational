@@ -173,6 +173,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [suggestions, setSuggestions] = useState(null);
   const [savedMatchups, setSavedMatchups] = useState({});
   const [ptsOverride, setPtsOverride] = useState({});
+  const [assignSort, setAssignSort] = useState("alpha");
   const [modalPicker, setModalPicker] = useState(null);
 
   const teamHcp = (players, allowPct=100) => {
@@ -340,12 +341,44 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>Assign players to teams, then use the Matchup Explorer to find optimal pairings. Nothing is saved to the app.</div>
 
       {/* ── Player Assignment ── */}
-      <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>Step 1 — Assign Players</div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase" }}>Step 1 — Assign Players</div>
+        <select value={assignSort} onChange={e=>setAssignSort(e.target.value)}
+          style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:6, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:11, padding:"4px 6px" }}>
+          <option value="alpha">A–Z</option>
+          <option value="hcp">By HCP</option>
+          <option value="record">By Record</option>
+          <option value="ptsWinRate">By Pts%</option>
+          <option value="matchWinRate">By Win%</option>
+        </select>
+      </div>
 
       {unassigned.length > 0 && (
         <div style={{ marginBottom:12 }}>
           <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-            {unassigned.map(name=>{
+            {[...unassigned].sort((a,b)=>{
+              if(assignSort==="alpha") return a.localeCompare(b);
+              if(assignSort==="hcp") return getHandicap(a)-getHandicap(b);
+              // Get stats from individualLb-style calculation from history
+              const getStat = (name) => {
+                let w=0,l=0,t=0,pts=0,ptsAvail=0;
+                (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
+                  if(!m.winner) return;
+                  const onN=(m.nukes||[]).includes(name),onW=(m.whales||[]).includes(name);
+                  if(!onN&&!onW) return;
+                  const pt=onN?"nukes":"whales";
+                  const p=m.pointsWorth||3,tie=p/2;
+                  if(m.winner===pt){w++;pts+=p;}else if(m.winner==="tie"){t++;pts+=tie;}else{l++;}
+                  ptsAvail+=p;
+                }));
+                return {w,l,t,pts,ptsAvail,total:w+l+t};
+              };
+              const sa=getStat(a),sb=getStat(b);
+              if(assignSort==="record") return sb.w-sa.w||sb.t-sa.t||sa.l-sb.l;
+              if(assignSort==="ptsWinRate") return (sb.ptsAvail?sb.pts/sb.ptsAvail:0)-(sa.ptsAvail?sa.pts/sa.ptsAvail:0);
+              if(assignSort==="matchWinRate") return (sb.total?(sb.w+sb.t*0.5)/sb.total:0)-(sa.total?(sa.w+sa.t*0.5)/sa.total:0);
+              return 0;
+            }).map(name=>{
               const p=roster.find(r=>r.name===name);
               return (
                 <div key={name} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
@@ -579,7 +612,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               <div style={{ width:`${nukePct}%`,background:"#ff4500",transition:"width 0.5s" }}/>
               <div style={{ flex:1,background:"#00aaff" }}/>
             </div>
-            <div style={{ fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center" }}>Based on {total} saved matchup{total!==1?"s":""}</div>
+            <div style={{ fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center" }}>Based on {allSaved.length} saved matchup{allSaved.length!==1?"s":""}</div>
           </div>
         );
       })()}
