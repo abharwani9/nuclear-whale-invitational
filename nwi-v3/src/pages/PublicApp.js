@@ -142,6 +142,13 @@ function CustomPicker({ label, value, options, onSelect, setModalPicker, color="
 }
 
 function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds }) {
+  useEffect(() => {
+    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
+  }, []);
+  // Clear any corrupted localStorage from previous versions
+  useEffect(() => {
+    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
+  }, []);
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
   const hcpAllowances = meta?.hcpAllowances || {};
@@ -164,12 +171,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [selWhale1, setSelWhale1] = useState("");
   const [selWhale2, setSelWhale2] = useState("");
   const [suggestions, setSuggestions] = useState(null);
-  const [savedMatchups, setSavedMatchups] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nwi_mock_matchups")||"{}"); } catch(e) { return {}; }
-  });
-  const [ptsOverride, setPtsOverride] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("nwi_mock_pts")||"{}"); } catch(e) { return {}; }
-  });
+  const [savedMatchups, setSavedMatchups] = useState({});
+  const [ptsOverride, setPtsOverride] = useState({});
   const [modalPicker, setModalPicker] = useState(null);
 
   const teamHcp = (players, allowPct=100) => {
@@ -296,20 +299,13 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       const current = savedMatchups[cid]||[];
       if(current.length>=3) return;
       const pts = getCompPts(selComp);
-      setSavedMatchups(s=>{
-      const next = {...s,[cid]:[...current,{...m,comp:{...selComp},pointsWorth:pts}]};
-      try { localStorage.setItem("nwi_mock_matchups", JSON.stringify(next)); } catch(e) {}
-      return next;
-    });
+      const entry = { np:m.np, wp:m.wp, prob:m.prob, nHcp:m.nHcp, wHcp:m.wHcp, label:m.label, emoji:m.emoji, compId:selComp.id, compName:selComp.name, pointsWorth:pts };
+    setSavedMatchups(s=>({...s,[cid]:[...current, entry]}));
     } catch(e) { console.log("saveMatchup error:", e); }
   };
 
   const deleteMatchup = (cid, idx) => {
-    setSavedMatchups(s=>{
-      const next = {...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)};
-      try { localStorage.setItem("nwi_mock_matchups", JSON.stringify(next)); } catch(e) {}
-      return next;
-    });
+    setSavedMatchups(s=>({...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)}));
   };
 
   const checkRepeat = (np, wp, cid) => {
@@ -376,7 +372,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         ))}
       </div>
 
-      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSuggestions(null);setSelNuke1("");setSelNuke2("");setSelWhale1("");setSelWhale2("");setSavedMatchups({});setPtsOverride({});try{localStorage.removeItem("nwi_mock_matchups");localStorage.removeItem("nwi_mock_pts");}catch(e){}}}
+      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSuggestions(null);setSelNuke1("");setSelNuke2("");setSelWhale1("");setSelWhale2("");setSavedMatchups({});setPtsOverride({});}}
         style={{ width:"100%",padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,color:"rgba(255,255,255,0.35)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:20 }}>
         Reset All
       </button>
@@ -513,11 +509,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     <span style={{ fontSize:10,color:"rgba(255,255,255,0.3)" }}>pts/win:</span>
                     <input type="number" min="0" step="0.5"
                       value={ptsOverride[comp.id]!==undefined?ptsOverride[comp.id]:getCompPts(comp)}
-                      onChange={e=>setPtsOverride(p=>{
-                      const next={...p,[comp.id]:e.target.value};
-                      try{localStorage.setItem("nwi_mock_pts",JSON.stringify(next));}catch(e2){}
-                      return next;
-                    })}
+                      onChange={e=>setPtsOverride(p=>({...p,[comp.id]:e.target.value}))}
                       style={{ width:44,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px" }}/>
                   </div>
                 </div>
@@ -531,13 +523,13 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                           <div style={{ textAlign:"center" }}>
                             {m.np.map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#ff4500" }}>{n}</div>)}
                             <div style={{ fontSize:12,fontWeight:800,color:"#ff4500",marginTop:2 }}>{toOdds(m.prob)}</div>
-                            <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round(m.prob*100)}% · {(m.prob*(ptsOverride[comp.id]||m.pointsWorth||3)).toFixed(1)}pts exp</div>
+                            <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round(m.prob*100)}% · {(m.prob*(Number(ptsOverride[comp.id])||m.pointsWorth||3)).toFixed(1)}pts exp</div>
                           </div>
                           <div style={{ fontSize:9,color:"rgba(255,255,255,0.2)" }}>VS</div>
                           <div style={{ textAlign:"center" }}>
                             {m.wp.map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#00aaff" }}>{n}</div>)}
                             <div style={{ fontSize:12,fontWeight:800,color:"#00aaff",marginTop:2 }}>{toOdds(1-m.prob)}</div>
-                            <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round((1-m.prob)*100)}% · {((1-m.prob)*(ptsOverride[comp.id]||m.pointsWorth||3)).toFixed(1)}pts exp</div>
+                            <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round((1-m.prob)*100)}% · {((1-m.prob)*(Number(ptsOverride[comp.id])||m.pointsWorth||3)).toFixed(1)}pts exp</div>
                           </div>
                         </div>
                         <button onClick={()=>deleteMatchup(comp.id,i)} style={{ background:"none",border:"none",color:"rgba(255,85,85,0.6)",cursor:"pointer",fontSize:14,marginLeft:8 }}>✕</button>
@@ -557,7 +549,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         if(!allSaved.length) return null;
         let nukeExpected=0, whaleExpected=0, totalPts=0;
         allSaved.forEach(m=>{
-          const pts = Number(ptsOverride[m.cid] || m.pointsWorth || 3);
+          const pts = Number(ptsOverride[m.cid]||"") || Number(m.pointsWorth) || 3;
           nukeExpected += m.prob * pts;
           whaleExpected += (1-m.prob) * pts;
           totalPts += pts;
