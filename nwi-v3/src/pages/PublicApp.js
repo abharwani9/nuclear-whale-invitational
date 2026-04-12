@@ -189,27 +189,29 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return `+${Math.round(((1-prob)/prob)*100)}`;
   };
 
-  const getHistWinRate = (playerNames, compName) => {
+  const getHistWinRate = (playerNames, opponentNames, compName) => {
     if(!history||!compName) return null;
-    let w=0,l=0,t=0;
+    let weightedWins=0, totalWeight=0;
     history.forEach(yr=>{
       (yr.matches||[]).forEach(m=>{
         if(!m.winner) return;
         const matchComp = (m.roundName||"").toLowerCase();
         if(!matchComp.includes(compName.toLowerCase().split(" ")[0])) return;
-        playerNames.forEach(name=>{
-          const onNukes=(m.nukes||[]).includes(name);
-          const onWhales=(m.whales||[]).includes(name);
-          if(!onNukes&&!onWhales) return;
-          const pt=onNukes?"nukes":"whales";
-          if(m.winner===pt) w++;
-          else if(m.winner==="tie") t+=0.5;
-          else l++;
-        });
+        const onNukes = playerNames.some(n=>(m.nukes||[]).includes(n));
+        const onWhales = playerNames.some(n=>(m.whales||[]).includes(n));
+        if(!onNukes&&!onWhales) return;
+        const playerTeam = onNukes?"nukes":"whales";
+        const oppTeam = onNukes?"whales":"nukes";
+        // Weight by opponent's combined HCP — beating a tough opponent counts more
+        const oppPlayers = m[oppTeam]||[];
+        const oppHcp = oppPlayers.map(n=>getHandicap(n)).reduce((s,h)=>s+h,0)/Math.max(1,oppPlayers.length);
+        const weight = Math.max(0.5, 1 + (oppHcp-18)/18); // normalized around avg hcp 18
+        const won = m.winner===playerTeam ? 1 : m.winner==="tie" ? 0.5 : 0;
+        weightedWins += won * weight;
+        totalWeight += weight;
       });
     });
-    const total=w+l+t;
-    return total>=2 ? (w+t)/total : null;
+    return totalWeight>=2 ? weightedWins/totalWeight : null;
   };
 
   const calcProb = (nPair, wPair, comp) => {
@@ -218,8 +220,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     const nHcp = teamHcp(nPair, allow);
     const wHcp = teamHcp(wPair, allow);
     const hcpProb = Math.max(0.1,Math.min(0.9, 0.5+(wHcp-nHcp)*0.03));
-    const nHist = getHistWinRate(nPair, comp.name);
-    const wHist = getHistWinRate(wPair, comp.name);
+    const nHist = getHistWinRate(nPair, wPair, comp.name);
+    const wHist = getHistWinRate(wPair, nPair, comp.name);
     if(nHist!==null&&wHist!==null) {
       const total=nHist+wHist;
       const histProb=total>0?nHist/total:0.5;
@@ -514,20 +516,20 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                   </div>
                 </div>
                 {ms.map((m,i)=>{
-                  const repeat=checkRepeat(m.np,m.wp,comp.id);
+                  const repeat=checkRepeat(m.np||[],m.wp||[],comp.id);
                   return (
                     <div key={i} style={{ padding:"10px 12px",background:"rgba(255,255,255,0.03)",border:`1px solid ${repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,marginBottom:6 }}>
                       {repeat&&<div style={{ fontSize:10,color:"#ffd700",marginBottom:4 }}>⚠️ Repeat pairing</div>}
                       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
                         <div style={{ display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,flex:1,alignItems:"center" }}>
                           <div style={{ textAlign:"center" }}>
-                            {m.np.map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#ff4500" }}>{n}</div>)}
+                            {(m.np||[]).map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#ff4500" }}>{n}</div>)}
                             <div style={{ fontSize:12,fontWeight:800,color:"#ff4500",marginTop:2 }}>{toOdds(m.prob)}</div>
                             <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round(m.prob*100)}% · {(m.prob*(Number(ptsOverride[comp.id])||m.pointsWorth||3)).toFixed(1)}pts exp</div>
                           </div>
                           <div style={{ fontSize:9,color:"rgba(255,255,255,0.2)" }}>VS</div>
                           <div style={{ textAlign:"center" }}>
-                            {m.wp.map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#00aaff" }}>{n}</div>)}
+                            {(m.wp||[]).map(n=><div key={n} style={{ fontSize:11,fontWeight:700,color:"#00aaff" }}>{n}</div>)}
                             <div style={{ fontSize:12,fontWeight:800,color:"#00aaff",marginTop:2 }}>{toOdds(1-m.prob)}</div>
                             <div style={{ fontSize:9,color:"rgba(255,255,255,0.3)" }}>{Math.round((1-m.prob)*100)}% · {((1-m.prob)*(Number(ptsOverride[comp.id])||m.pointsWorth||3)).toFixed(1)}pts exp</div>
                           </div>
