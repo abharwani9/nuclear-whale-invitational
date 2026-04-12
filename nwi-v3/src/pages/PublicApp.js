@@ -189,7 +189,6 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     } catch(e) {}
     // Clear old localStorage keys from previous versions
     try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const teamHcp = (players, allowPct=100) => {
