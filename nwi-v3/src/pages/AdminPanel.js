@@ -1873,7 +1873,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
       hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
       hcpFields[`teamFormat_${c.id}`] = meta?.teamFormats?.[c.id] ?? false;
     });
-    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", dynamicColors:meta.dynamicColors||false, ...hcpFields });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", defaultMatchPts:meta.defaultMatchPts||"2", dynamicColors:meta.dynamicColors||false, ...hcpFields });
     setLoaded(true);
   }
 
@@ -1890,7 +1890,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
       (competitions||[]).forEach(c => {
         if (form[`teamFormat_${c.id}`]) teamFormats[c.id] = true;
       });
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats});
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,defaultMatchPts:Number(form.defaultMatchPts)||2});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
@@ -1950,6 +1950,14 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={s.label}>Weather City</div>
           <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Default Points Per Match</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:6 }}>Used when a competition isn't assigned to a round (e.g. Stableford)</div>
+          <input style={{ ...s.input, width:80 }} type="number" min="0" step="0.5"
+            value={form.defaultMatchPts||"2"}
+            onChange={e=>setForm(f=>({...f,defaultMatchPts:e.target.value}))}
+            placeholder="2"/>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Handicap Allowance % by Competition</div>
