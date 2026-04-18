@@ -623,10 +623,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
             return (
               <div key="scramble" style={{marginBottom:14}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div>
-                    <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>F9 {defaultPts}pts · B9 {defaultPts}pts · Full 18 {defaultPts*2}pts · {defaultPts*4}pts total</div>
-                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>Front 9 {defaultPts}pts · Back 9 {defaultPts}pts · 18-Holes {defaultPts*2}pts</div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
                   {Array.from({length:slots}).map((_,i)=>{
@@ -636,27 +634,26 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                         <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
                       </div>
                     );
+                    const totalPts=defaultPts*4;
+                    const nExp=(m.prob*totalPts).toFixed(1);
+                    const wExp=((1-m.prob)*totalPts).toFixed(1);
                     return (
-                      <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,position:"relative"}}>
+                      <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,position:"relative"}}>
                         <button onClick={()=>deleteMatchup(SCRAMBLE_KEY,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
-                        <div style={{textAlign:"center",marginBottom:4}}>
-                          <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                          {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",lineHeight:1.2}}>{n}</div>)}
-                        </div>
-                        {[["F9",defaultPts],["B9",defaultPts],["18",defaultPts*2]].map(([lbl,pts])=>(
-                          <div key={lbl} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                            <span style={{fontSize:8,color:"rgba(255,255,255,0.4)"}}>{lbl}</span>
-                            <span style={{fontSize:9,fontWeight:800,color:"#ffd700"}}>{pts}pts</span>
+                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                        {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                        <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
+                        <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
+                        {[["Front 9",defaultPts],["Back 9",defaultPts],["18-Holes",defaultPts*2]].map(([lbl,pts])=>(
+                          <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.35)",marginBottom:1}}>
+                            <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{pts}pts</span>
                           </div>
                         ))}
-                        <div style={{textAlign:"center",marginTop:4}}>
-                          <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                          {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",lineHeight:1.2}}>{n}</div>)}
-                        </div>
-                        <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
-                          <span style={{fontSize:10,fontWeight:800,color:"#ff4500"}}>{toOdds(m.prob)}</span>
-                          <span style={{fontSize:10,fontWeight:800,color:"#00aaff"}}>{toOdds(1-m.prob)}</span>
-                        </div>
+                        <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"2px 0"}}>vs</div>
+                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                        <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
+                        <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
                       </div>
                     );
                   })}
@@ -695,13 +692,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${conflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
                       {conflict&&<div style={{fontSize:8,color:"#ff8c00",marginBottom:2}}>⚠️ Conflict</div>}
                       {repeat&&!conflict&&<div style={{fontSize:8,color:"#ffd700",marginBottom:2}}>⚠️ Repeat</div>}
-                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                      {(()=>{const pts=Number(ptsOverride[comp.id]||"")||getCompPts(comp);const nExp=(m.prob*pts).toFixed(1);const wExp=((1-m.prob)*pts).toFixed(1);return(<>
+                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                       {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                       <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
+                      <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
                       <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
                       <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                       {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                       <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
+                      <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
+                      </>);})()}
                       <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
                     </div>
                   );
