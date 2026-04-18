@@ -388,16 +388,21 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
 
   // PhotoAvatar and SortSelect defined at top level (outside component)
 
-  // Sort non-scramble comps by order they appear in rounds/matchups
-  const roundsCompOrder = (rounds||[]).reduce((acc,r,ri)=>{
-    const name = r.competitionName||r.name||"";
-    if(!acc[name]) acc[name]=ri;
-    (r.matchups||[]).forEach(m=>{ if(m.competitionName&&!acc[m.competitionName]) acc[m.competitionName]=ri*100+(r.matchups||[]).indexOf(m); });
-    return acc;
-  },{});
+  // Sort non-scramble comps by order they appear in rounds/matchups tab
+  const roundsCompNames = [];
+  (rounds||[]).forEach(r=>{
+    const n=r.competitionName||"";
+    if(n&&!roundsCompNames.includes(n)) roundsCompNames.push(n);
+    (r.matchups||[]).forEach(m=>{
+      const mn=m.competitionName||"";
+      if(mn&&!roundsCompNames.includes(mn)) roundsCompNames.push(mn);
+    });
+  });
   const sortedNonScramble = [...nonScrambleTeamComps].sort((a,b)=>{
-    const ao = roundsCompOrder[a.name]??compOrder[a.id]??999;
-    const bo = roundsCompOrder[b.name]??compOrder[b.id]??999;
+    const ai=roundsCompNames.indexOf(a.name);
+    const bi=roundsCompNames.indexOf(b.name);
+    const ao=ai>=0?ai:(compOrder[a.id]??999);
+    const bo=bi>=0?bi:(compOrder[b.id]??999);
     return ao-bo;
   });
   // Explorer competition options (non-scramble + single "Scramble" entry)
@@ -433,7 +438,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                   <PhotoAvatar roster={roster} name={name} size={26}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:600}}>{name}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W · {s.t}T · {s.l}L</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W{s.t>0?` · ${s.t}T`:""} · {s.l}L</div>
                   </div>
                   <button onClick={()=>assign(name,"nukes")} style={{padding:"3px 8px",background:"rgba(255,69,0,0.15)",border:"1px solid rgba(255,69,0,0.3)",borderRadius:5,color:"#ff4500",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>☢️</button>
                   <button onClick={()=>assign(name,"whales")} style={{padding:"3px 8px",background:"rgba(0,170,255,0.15)",border:"1px solid rgba(0,170,255,0.3)",borderRadius:5,color:"#00aaff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>🐋</button>
@@ -446,7 +451,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
           {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
             <div key={team} style={{padding:"8px 10px",background:bg,border:`1px solid ${border}`,borderRadius:10}}>
-              <div style={{fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</div><div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{players.length} players</div></div>
               {players.length===0?<div style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>None yet</div>:players.map(name=>(
                 <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -533,7 +538,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:11,fontWeight:700,color:isSelected?color:"#e8edf3",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
                             <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>
-                              HCP {getHandicap(name)}&nbsp;<span style={{opacity:0.4}}>|</span>&nbsp;{s.w}W·{s.t}T·{s.l}L
+                              HCP {getHandicap(name)}&nbsp;<span style={{opacity:0.4}}>|</span>&nbsp;{s.w}W{s.t>0?` · ${s.t}T`:""} · {s.l}L
                             </div>
                           </div>
                           {isSelected&&<div style={{fontSize:13,color,flexShrink:0}}>✓</div>}
@@ -614,45 +619,48 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         {boardEntries.map(entry=>{
           if(entry.type==="scramble"){
             const ms=savedMatchups[SCRAMBLE_KEY]||[];
-            const m=ms[0]; // only 1 pairing for scramble
+            const slots=Math.max(maxSlots,ms.length);
             return (
               <div key="scramble" style={{marginBottom:14}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>F9 {defaultPts}pts · B9 {defaultPts}pts · Full 18 {defaultPts*2}pts · {defaultPts*4}pts total</div>
+                  </div>
                 </div>
-                {m?(
-                  <div style={{padding:"10px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,position:"relative"}}>
-                    <button onClick={()=>deleteMatchup(SCRAMBLE_KEY,0)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:11}}>✕</button>
-                    {/* Player row */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center",marginBottom:10}}>
-                      <div style={{textAlign:"center"}}>
-                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={22}/>)}</div>
-                        {(m.np||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
+                <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
+                  {Array.from({length:slots}).map((_,i)=>{
+                    const m=ms[i];
+                    if(!m) return (
+                      <div key={i} style={{padding:"10px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",minHeight:80}}>
+                        <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
                       </div>
-                      <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>VS</div>
-                      <div style={{textAlign:"center"}}>
-                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={22}/>)}</div>
-                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
-                      </div>
-                    </div>
-                    {/* Sub-match rows */}
-                    {[["Front 9",defaultPts],["Back 9",defaultPts],["Full 18",defaultPts*2]].map(([label,pts])=>(
-                      <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:"rgba(255,255,255,0.03)",borderRadius:6,marginBottom:4}}>
-                        <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600}}>{label}</span>
-                        <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                          <span style={{fontSize:11,fontWeight:800,color:"#ff4500"}}>{toOdds(m.prob)}</span>
-                          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>vs</span>
-                          <span style={{fontSize:11,fontWeight:800,color:"#00aaff"}}>{toOdds(1-m.prob)}</span>
-                          <span style={{fontSize:10,color:"#ffd700",fontWeight:700}}>{pts}pts</span>
+                    );
+                    return (
+                      <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,position:"relative"}}>
+                        <button onClick={()=>deleteMatchup(SCRAMBLE_KEY,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
+                        <div style={{textAlign:"center",marginBottom:4}}>
+                          <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                          {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",lineHeight:1.2}}>{n}</div>)}
+                        </div>
+                        {[["F9",defaultPts],["B9",defaultPts],["18",defaultPts*2]].map(([lbl,pts])=>(
+                          <div key={lbl} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                            <span style={{fontSize:8,color:"rgba(255,255,255,0.4)"}}>{lbl}</span>
+                            <span style={{fontSize:9,fontWeight:800,color:"#ffd700"}}>{pts}pts</span>
+                          </div>
+                        ))}
+                        <div style={{textAlign:"center",marginTop:4}}>
+                          <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                          {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",lineHeight:1.2}}>{n}</div>)}
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                          <span style={{fontSize:10,fontWeight:800,color:"#ff4500"}}>{toOdds(m.prob)}</span>
+                          <span style={{fontSize:10,fontWeight:800,color:"#00aaff"}}>{toOdds(1-m.prob)}</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ):(
-                  <div style={{padding:"16px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontSize:13,color:"rgba(255,255,255,0.15)"}}>+ Save a scramble pairing</span>
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
               </div>
             );
           }
