@@ -1991,10 +1991,6 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           )}
         </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
-          <div style={s.label}>App Password (all users)</div>
-          <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Current: <strong style={{ color:"#ff4500" }}>nwi2026</strong> — to change, ask Claude to update APP_PASSWORD in PublicApp.js</div>
-        </div>
-        <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>Admin Codes</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}><strong style={{ color:"#ff4500" }}>nuke2026</strong> · <strong style={{ color:"#00aaff" }}>whale2026</strong> · <strong style={{ color:"#ffd700" }}>admin2026</strong></div>
         </div>
