@@ -145,14 +145,24 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
   const hcpAllowances = meta?.hcpAllowances || {};
-  const scrambleIds = competitions.filter(c=>c.name?.toLowerCase().includes("scramble")).map(c=>c.id);
   const compOrder = competitions.reduce((acc,c,i)=>({...acc,[c.id]:i}),{});
-  const teamComps = competitions.filter(c=>teamFormats[c.id]).sort((a,b)=>{
-    const aS=scrambleIds.includes(a.id), bS=scrambleIds.includes(b.id);
-    if(aS&&bS) return a.name?.toLowerCase().includes("9")?1:-1;
-    if(aS) return 1; if(bS) return -1;
-    return (compOrder[a.id]||0)-(compOrder[b.id]||0);
-  });
+
+  // Scramble detection — group all scramble competitions
+  const scrambleComps = competitions.filter(c=>c.name?.toLowerCase().includes("scramble"));
+  const scrambleIds = scrambleComps.map(c=>c.id);
+  const isScrambleGroup = (id) => scrambleIds.includes(id);
+  const SCRAMBLE_KEY = "__scramble__";
+
+  // Team competitions sorted (scrambles last, grouped)
+  const nonScrambleTeamComps = competitions.filter(c=>teamFormats[c.id]&&!isScrambleGroup(c.id))
+    .sort((a,b)=>(compOrder[a.id]||0)-(compOrder[b.id]||0));
+  const hasScramble = scrambleComps.some(c=>teamFormats[c.id]);
+
+  // Board entries: non-scramble comps + optional scramble group
+  const boardEntries = [
+    ...nonScrambleTeamComps.map(c=>({type:"comp",comp:c,id:c.id})),
+    ...(hasScramble?[{type:"scramble",id:SCRAMBLE_KEY}]:[]),
+  ];
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [nukes, setNukes_] = useState([]);
@@ -160,8 +170,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
   const [assignSort, setAssignSort] = useState("hcp");
   const [selComp, setSelComp] = useState(null);
-  const [selNukes, setSelNukes] = useState([]); // selected for matchup (max 2)
-  const [selWhales, setSelWhales] = useState([]); // selected for matchup (max 2)
+  const [selNukes, setSelNukes] = useState([]);
+  const [selWhales, setSelWhales] = useState([]);
   const [explorerSort, setExplorerSort] = useState("hcp");
   const [savedMatchups, setSavedMatchups] = useState({});
   const [ptsOverride, setPtsOverride] = useState({});
@@ -196,10 +206,9 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return Math.round(hcps[0]*0.35+hcps[1]*0.15);
   };
 
-  const toOdds = (prob) => {
-    prob=Math.max(0.1,Math.min(0.9,prob));
-    if(prob>=0.5) return `-${Math.round((prob/(1-prob))*100)}`;
-    return `+${Math.round(((1-prob)/prob)*100)}`;
+  const toOdds = p => {
+    p=Math.max(0.1,Math.min(0.9,p));
+    return p>=0.5?`-${Math.round((p/(1-p))*100)}`:`+${Math.round(((1-p)/p)*100)}`;
   };
 
   const getPlayerStats = (name) => {
@@ -208,58 +217,43 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       if(!m.winner) return;
       const onN=(m.nukes||[]).includes(name),onW=(m.whales||[]).includes(name);
       if(!onN&&!onW) return;
-      const pt=onN?"nukes":"whales";
-      const p=m.pointsWorth||defaultPts,tie=p/2;
-      if(m.winner===pt){w++;pts+=p;}else if(m.winner==="tie"){t++;pts+=tie;}else{l++;}
+      const pt=onN?"nukes":"whales",p=m.pointsWorth||defaultPts,tie=p/2;
+      if(m.winner===pt){w++;pts+=p;}else if(m.winner==="tie"){t++;pts+=tie;}else l++;
       ptsAvail+=p;
     }));
     return {w,l,t,pts,ptsAvail,total:w+l+t};
   };
 
-  const getBlendedWinRate = (players, compName) => {
-    let w=0,total=0;
+  const getBlendedStats = (players, compName) => {
+    let w=0,t=0,total=0;
     players.forEach(name=>{
       (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
         if(!m.winner) return;
-        if(compName){
-          const mc=(m.roundName||"").toLowerCase();
-          if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;
-        }
+        if(compName){const mc=(m.roundName||"").toLowerCase();if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;}
         const onN=(m.nukes||[]).includes(name),onW=(m.whales||[]).includes(name);
         if(!onN&&!onW) return;
         const pt=onN?"nukes":"whales";
-        if(m.winner===pt) w++;
-        else if(m.winner==="tie") w+=0.5;
+        if(m.winner===pt) w++; else if(m.winner==="tie") t+=0.5;
         total++;
       }));
     });
-    return total>=2 ? {w:Math.round(w*10)/10, total, pct:Math.round((w/total)*100)} : null;
-  };
-
-  const getPlayerRecord = (name) => {
-    const s=getPlayerStats(name);
-    return `${s.w}-${s.t}-${s.l}`;
+    if(total<2) return null;
+    return {w:Math.round(w*10)/10,t:Math.round(t*10)/10,l:Math.round((total-w-t)*10)/10,total,pct:Math.round((w/total)*100)};
   };
 
   const calcProb = (nPair, wPair, comp) => {
     if(!comp) return 0.5;
     const allow=hcpAllowances[comp.id]||100;
-    const nHcp=teamHcp(nPair,allow), wHcp=teamHcp(wPair,allow);
-    const hcpProb=Math.max(0.1,Math.min(0.9,0.5+(wHcp-nHcp)*0.03));
-    const nHist=getBlendedWinRate(nPair,comp.name);
-    const wHist=getBlendedWinRate(wPair,comp.name);
-    if(nHist&&wHist) {
-      const tot=nHist.pct+wHist.pct;
-      const histProb=tot>0?nHist.pct/tot*0.01:0.5;
-      return Math.max(0.1,Math.min(0.9,hcpProb*0.6+histProb*0.4));
-    }
+    const hcpProb=Math.max(0.1,Math.min(0.9,0.5+(teamHcp(wPair,allow)-teamHcp(nPair,allow))*0.03));
+    const nH=getBlendedStats(nPair,comp.name), wH=getBlendedStats(wPair,comp.name);
+    if(nH&&wH){const tot=nH.pct+wH.pct;return Math.max(0.1,Math.min(0.9,hcpProb*0.6+(tot>0?nH.pct/tot:0.5)*0.4));}
     return hcpProb;
   };
 
-  const getPairs = (players) => {
-    const pairs=[];
-    for(let i=0;i<players.length;i++) for(let j=i+1;j<players.length;j++) pairs.push([players[i],players[j]]);
-    return pairs;
+  const getPairs = players => {
+    const p=[];
+    for(let i=0;i<players.length;i++) for(let j=i+1;j<players.length;j++) p.push([players[i],players[j]]);
+    return p;
   };
 
   const getCompPts = (comp) => {
@@ -269,100 +263,90 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return r?.pointsPerWin||defaultPts;
   };
 
-  // Players already used in saved matchups for current competition
-  const usedInComp = selComp ? (savedMatchups[selComp.id]||[]).flatMap(m=>[...(m.np||[]),...(m.wp||[])]) : [];
-  const isScrambleComp = selComp ? scrambleIds.includes(selComp.id) : false;
+  // Dynamic max slots based on team size
+  const maxSlots = Math.max(1, Math.floor(Math.min(nukes.length||1, whales.length||1)/2));
 
-  // Check if a pair has been saved together before (partner repeat warning)
+  // Players already used in saved matchups for current competition
+  const selCompIsScramble = selComp ? isScrambleGroup(selComp.id) : false;
+  const usedInSelComp = selComp ? (
+    selCompIsScramble
+      ? (savedMatchups[SCRAMBLE_KEY]||[]).flatMap(m=>[...(m.np||[]),...(m.wp||[])])
+      : (savedMatchups[selComp.id]||[]).flatMap(m=>[...(m.np||[]),...(m.wp||[])])
+  ) : [];
+
   const checkPartnerRepeat = (p1, p2) => {
     if(!p1||!p2) return false;
     const key=[p1,p2].sort().join("|");
-    return Object.entries(savedMatchups).some(([cid,ms])=>{
-      if(scrambleIds.includes(cid)&&isScrambleComp) return false;
-      return ms.some(m=>[...(m.np||[]),...(m.wp||[])].sort().join("|").includes(key)||
-        ([...(m.np||[])].sort().join("|")===key||[...(m.wp||[])].sort().join("|")===key));
-    });
-  };
-
-  // Auto-compute suggestions when selNukes/selWhales change
-  const suggestions = (() => {
-    if(!selComp) return null;
-    const np=selNukes.filter(Boolean), wp=selWhales.filter(Boolean);
-    if(np.length<2&&wp.length<2) return null;
-    const allow=hcpAllowances[selComp.id]||100;
-    if(np.length===2&&wp.length===2) {
-      const prob=calcProb(np,wp,selComp);
-      // find next best alternative
-      const altPool=np.length===2?(whales.length>=2?whales:sortedRoster.map(p=>p.name).filter(n=>!np.includes(n))):[];
-      const altPairs=getPairs(altPool).filter(p=>JSON.stringify(p.sort())!==JSON.stringify([...wp].sort()));
-      let nextBest=null;
-      if(altPairs.length) {
-        const ranked=altPairs.map(ap=>({pair:ap,prob:calcProb(np,ap,selComp),diff:Math.abs(calcProb(np,ap,selComp)-0.5)})).sort((a,b)=>a.diff-b.diff);
-        if(ranked[0]) nextBest={pair:ranked[0].pair,prob:ranked[0].prob,diff:Math.abs(ranked[0].prob-prob)};
-      }
-      return [{label:"Projected Matchup",emoji:"🎯",np,wp,prob,nHcp:teamHcp(np,allow),wHcp:teamHcp(wp,allow),color:"rgba(255,200,0,0.8)",bg:"rgba(255,200,0,0.04)",border:"rgba(255,200,0,0.2)",nextBest}];
-    }
-    const knownIsNuke=np.length===2;
-    const known=knownIsNuke?np:wp;
-    const otherPool=knownIsNuke?(whales.length>=2?whales:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n))):(nukes.length>=2?nukes:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n)));
-    // Filter out players already used in this comp
-    const filteredPool=isScrambleComp?otherPool:otherPool.filter(n=>!usedInComp.includes(n));
-    const otherPairs=getPairs(filteredPool);
-    const matchups=otherPairs.map(op=>{
-      const nPair=knownIsNuke?known:op, wPair=knownIsNuke?op:known;
-      const prob=calcProb(nPair,wPair,selComp);
-      return {nPair,wPair,prob,diff:Math.abs(prob-0.5),nHcp:teamHcp(nPair,allow),wHcp:teamHcp(wPair,allow)};
-    });
-    if(!matchups.length) return [];
-    matchups.sort((a,b)=>a.diff-b.diff);
-    const mostComp=matchups[0];
-    matchups.sort((a,b)=>b.prob-a.prob);
-    const nukeStamp=matchups[0];
-    matchups.sort((a,b)=>a.prob-b.prob);
-    const whaleStamp=matchups[0];
-    const nukeLabel=nukeStamp.prob>=0.6?"☢️ Nuke Stomp":"Most Nuke-Favored";
-    const whaleLabel=whaleStamp.prob<=0.4?"🐋 Whale Stomp":"Most Whale-Favored";
-    // next best for each
-    const nextFor=(base,pool)=>{
-      const alt=pool.filter(m=>JSON.stringify(m.nPair)!==JSON.stringify(base.nPair)||JSON.stringify(m.wPair)!==JSON.stringify(base.wPair));
-      if(!alt.length) return null;
-      alt.sort((a,b)=>a.diff-b.diff);
-      return {pair:knownIsNuke?alt[0].wPair:alt[0].nPair,prob:alt[0].prob,diffFromBest:Math.abs(alt[0].prob-base.prob)};
-    };
-    const allM=[...matchups];
-    return [
-      {label:"Most Competitive",emoji:"⚖️",np:mostComp.nPair,wp:mostComp.wPair,prob:mostComp.prob,nHcp:mostComp.nHcp,wHcp:mostComp.wHcp,color:"rgba(74,222,128,0.8)",bg:"rgba(74,222,128,0.04)",border:"rgba(74,222,128,0.2)",nextBest:nextFor(mostComp,allM)},
-      {label:nukeLabel,emoji:"☢️",np:nukeStamp.nPair,wp:nukeStamp.wPair,prob:nukeStamp.prob,nHcp:nukeStamp.nHcp,wHcp:nukeStamp.wHcp,color:"rgba(255,69,0,0.8)",bg:"rgba(255,69,0,0.04)",border:"rgba(255,69,0,0.2)",nextBest:nextFor(nukeStamp,allM)},
-      {label:whaleLabel,emoji:"🐋",np:whaleStamp.nPair,wp:whaleStamp.wPair,prob:whaleStamp.prob,nHcp:whaleStamp.nHcp,wHcp:whaleStamp.wHcp,color:"rgba(0,170,255,0.8)",bg:"rgba(0,170,255,0.04)",border:"rgba(0,170,255,0.2)",nextBest:nextFor(whaleStamp,allM)},
-    ];
-  })();
-
-  const saveMatchup = (m) => {
-    if(!selComp) return;
-    try {
-      const cid=selComp.id;
-      const current=savedMatchups[cid]||[];
-      if(current.length>=3) return;
-      const pts=getCompPts(selComp);
-      const entry={np:m.np,wp:m.wp,prob:m.prob,nHcp:m.nHcp,wHcp:m.wHcp,label:m.label,emoji:m.emoji,compId:selComp.id,compName:selComp.name,pointsWorth:pts};
-      setSavedMatchups(s=>{const next={...s,[cid]:[...current,entry]};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
-    } catch(e) { console.log("save error:",e); }
-  };
-
-  const deleteMatchup = (cid, idx) => {
-    setSavedMatchups(s=>{const next={...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
+    return Object.entries(savedMatchups).some(([,ms])=>
+      ms.some(m=>[...(m.np||[])].sort().join("|")===key||[...(m.wp||[])].sort().join("|")===key)
+    );
   };
 
   const checkRepeat = (np, wp, cid) => {
     if(!np?.length||!wp?.length) return false;
     try {
       const nKey=[...np].sort().join("|"), wKey=[...wp].sort().join("|");
-      const pairKeys=Object.entries(savedMatchups).flatMap(([ocid,ms])=>ms.flatMap(m=>[{key:[...(m.np||[])].sort().join("|"),cid:ocid},{key:[...(m.wp||[])].sort().join("|"),cid:ocid}]));
-      return pairKeys.some(({key,cid:ocid})=>(key===nKey||key===wKey)&&ocid!==cid&&!(scrambleIds.includes(cid)&&scrambleIds.includes(ocid)));
-    } catch(e) { return false; }
+      const pairKeys=Object.entries(savedMatchups).flatMap(([ocid,ms])=>ms.flatMap(m=>[
+        {key:[...(m.np||[])].sort().join("|"),cid:ocid},
+        {key:[...(m.wp||[])].sort().join("|"),cid:ocid}
+      ]));
+      return pairKeys.some(({key,cid:ocid})=>(key===nKey||key===wKey)&&ocid!==cid&&!(isScrambleGroup(cid)&&isScrambleGroup(ocid)));
+    } catch(e){return false;}
   };
 
-  const assign = (name, team) => {
+  // Auto-compute suggestions
+  const suggestions = (() => {
+    if(!selComp) return null;
+    const np=selNukes.filter(Boolean), wp=selWhales.filter(Boolean);
+    if(np.length<2&&wp.length<2) return null;
+    const allow=hcpAllowances[selComp.id]||100;
+    if(np.length===2&&wp.length===2){
+      const prob=calcProb(np,wp,selComp);
+      const altPool=whales.length>=2?whales.filter(n=>!np.includes(n)):sortedRoster.map(p=>p.name).filter(n=>!np.includes(n));
+      const altPairs=getPairs(altPool).filter(p=>p.join("|")!==[...wp].sort().join("|"));
+      const ranked=altPairs.map(ap=>({pair:ap,prob:calcProb(np,ap,selComp),diff:Math.abs(calcProb(np,ap,selComp)-0.5)})).sort((a,b)=>a.diff-b.diff);
+      const nextBest=ranked[0]?{pair:ranked[0].pair,prob:ranked[0].prob,diffFromBest:Math.abs(ranked[0].prob-prob)}:null;
+      return [{label:"Projected Matchup",emoji:"🎯",np,wp,prob,nHcp:teamHcp(np,allow),wHcp:teamHcp(wp,allow),color:"rgba(255,200,0,0.8)",bg:"rgba(255,200,0,0.04)",border:"rgba(255,200,0,0.2)",nextBest}];
+    }
+    const knownIsNuke=np.length===2;
+    const known=knownIsNuke?np:wp;
+    const pool=knownIsNuke?(whales.length>=2?whales:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n))):(nukes.length>=2?nukes:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n)));
+    const filtered=selCompIsScramble?pool:pool.filter(n=>!usedInSelComp.includes(n));
+    const matchups=getPairs(filtered).map(op=>{
+      const nP=knownIsNuke?known:op, wP=knownIsNuke?op:known;
+      const prob=calcProb(nP,wP,selComp);
+      return {nPair:nP,wPair:wP,prob,diff:Math.abs(prob-0.5),nHcp:teamHcp(nP,allow),wHcp:teamHcp(wP,allow)};
+    });
+    if(!matchups.length) return [];
+    const byComp=[...matchups];
+    byComp.sort((a,b)=>a.diff-b.diff); const mostComp=byComp[0];
+    const byNuke=[...matchups].sort((a,b)=>b.prob-a.prob); const nukeStamp=byNuke[0];
+    const byWhale=[...matchups].sort((a,b)=>a.prob-b.prob); const whaleStamp=byWhale[0];
+    const nextFor=(base,sorted)=>{const alt=sorted.filter(m=>m!==base);if(!alt.length)return null;return{pair:knownIsNuke?alt[0].wPair:alt[0].nPair,prob:alt[0].prob,diffFromBest:Math.abs(alt[0].prob-base.prob)};};
+    return [
+      {label:"Most Competitive",emoji:"⚖️",np:mostComp.nPair,wp:mostComp.wPair,prob:mostComp.prob,nHcp:mostComp.nHcp,wHcp:mostComp.wHcp,color:"rgba(74,222,128,0.8)",bg:"rgba(74,222,128,0.04)",border:"rgba(74,222,128,0.2)",nextBest:nextFor(mostComp,byComp)},
+      {label:nukeStamp.prob>=0.6?"☢️ Nuke Stomp":"Most Nuke-Favored",emoji:"☢️",np:nukeStamp.nPair,wp:nukeStamp.wPair,prob:nukeStamp.prob,nHcp:nukeStamp.nHcp,wHcp:nukeStamp.wHcp,color:"rgba(255,69,0,0.8)",bg:"rgba(255,69,0,0.04)",border:"rgba(255,69,0,0.2)",nextBest:nextFor(nukeStamp,byNuke)},
+      {label:whaleStamp.prob<=0.4?"🐋 Whale Stomp":"Most Whale-Favored",emoji:"🐋",np:whaleStamp.nPair,wp:whaleStamp.wPair,prob:whaleStamp.prob,nHcp:whaleStamp.nHcp,wHcp:whaleStamp.wHcp,color:"rgba(0,170,255,0.8)",bg:"rgba(0,170,255,0.04)",border:"rgba(0,170,255,0.2)",nextBest:nextFor(whaleStamp,byWhale)},
+    ];
+  })();
+
+  const saveMatchup = (m) => {
+    if(!selComp) return;
+    try {
+      const isScr=isScrambleGroup(selComp.id);
+      const cid=isScr?SCRAMBLE_KEY:selComp.id;
+      const current=savedMatchups[cid]||[];
+      if(current.length>=maxSlots) return;
+      const pts=getCompPts(selComp);
+      const entry={np:m.np,wp:m.wp,prob:m.prob,nHcp:m.nHcp,wHcp:m.wHcp,label:m.label,compId:cid,pointsWorth:pts,isScramble:isScr};
+      setSavedMatchups(s=>{const next={...s,[cid]:[...current,entry]};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
+      setSelNukes([]); setSelWhales([]); // clear after save
+    } catch(e){console.log("save error:",e);}
+  };
+
+  const deleteMatchup=(cid,idx)=>setSavedMatchups(s=>{const next={...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
+
+  const assign=(name,team)=>{
     setUnassigned(u=>u.filter(n=>n!==name));
     setNukes(n=>n.filter(n2=>n2!==name));
     setWhales(w=>w.filter(n=>n!==name));
@@ -372,54 +356,68 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     setSelNukes([]); setSelWhales([]);
   };
 
-  const sortPlayers = (players, sortBy) => [...players].sort((a,b)=>{
-    if(sortBy==="alpha") return a.localeCompare(b);
-    if(sortBy==="hcp") return getHandicap(a)-getHandicap(b);
-    const sa=getPlayerStats(a), sb=getPlayerStats(b);
-    if(sortBy==="record") return sb.w-sa.w||sb.t-sa.t||sa.l-sb.l;
-    if(sortBy==="winRate") return (sb.total?(sb.w+sb.t*0.5)/sb.total:0)-(sa.total?(sa.w+sa.t*0.5)/sa.total:0);
-    if(sortBy==="ptsRate") return (sb.ptsAvail?sb.pts/sb.ptsAvail:0)-(sa.ptsAvail?sa.pts/sa.ptsAvail:0);
+  const sortPlayers=(players,by)=>[...players].sort((a,b)=>{
+    if(by==="alpha") return a.localeCompare(b);
+    if(by==="hcp") return getHandicap(a)-getHandicap(b);
+    const sa=getPlayerStats(a),sb=getPlayerStats(b);
+    if(by==="record") return sb.w-sa.w||sb.t-sa.t||sa.l-sb.l;
+    if(by==="winRate") return (sb.total?(sb.w+sb.t*0.5)/sb.total:0)-(sa.total?(sa.w+sa.t*0.5)/sa.total:0);
+    if(by==="ptsRate") return (sb.ptsAvail?sb.pts/sb.ptsAvail:0)-(sa.ptsAvail?sa.pts/sa.ptsAvail:0);
     return 0;
   });
 
-  const PhotoAvatar = ({name, size=28}) => {
+  const PhotoAvatar=({name,size=28})=>{
     const p=roster.find(r=>r.name===name);
     return p?.photoURL
-      ? <img src={p.photoURL} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
-      : <div style={{width:size,height:size,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:800,flexShrink:0}}>{name[0]}</div>;
+      ?<img src={p.photoURL} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
+      :<div style={{width:size,height:size,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:800,flexShrink:0}}>{name[0]}</div>;
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const SortSelect=({value,onChange})=>(
+    <select value={value} onChange={e=>onChange(e.target.value)}
+      style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
+      <option value="hcp">By HCP</option>
+      <option value="alpha">A–Z</option>
+      <option value="record">By Record</option>
+      <option value="winRate">By Win%</option>
+      <option value="ptsRate">By Pts%</option>
+    </select>
+  );
+
+  // Explorer competition options (non-scramble + single "Scramble" entry)
+  const explorerComps=[
+    ...nonScrambleTeamComps,
+    ...(hasScramble?[{id:SCRAMBLE_KEY,name:"Scramble",icon:"🏌️"}]:[]),
+  ];
+  // When scramble is selected in explorer, use first scramble comp for hcp calc
+  const effectiveComp = selComp?.id===SCRAMBLE_KEY ? scrambleComps[0] : selComp;
+
   return (
     <div>
-      <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>🃏 Mock Draft</div>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:16}}>Assign players to teams, then explore matchups. Nothing is saved to the app.</div>
+      {/* ── HEADER ── */}
+      <div style={{fontSize:22,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>🃏 Mock Draft</div>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Build your mock draft and explore optimal matchups. Nothing saves to the app.</div>
 
-      {/* ── STEP 1: Assign Players ── */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 1 — Assign Players</div>
-        <select value={assignSort} onChange={e=>setAssignSort(e.target.value)}
-          style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
-          <option value="hcp">By HCP</option>
-          <option value="alpha">A–Z</option>
-          <option value="record">By Record</option>
-          <option value="winRate">By Win%</option>
-          <option value="ptsRate">By Pts%</option>
-        </select>
-      </div>
+      {/* ══ STEP 1 ══════════════════════════════════════════════════════════ */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px",marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase"}}>Step 1 — Assign Players</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>Assign everyone to a team before exploring matchups</div>
+          </div>
+          <SortSelect value={assignSort} onChange={setAssignSort}/>
+        </div>
 
-      {unassigned.length>0&&(
-        <div style={{marginBottom:12}}>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {unassigned.length>0&&(
+          <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:4}}>
             {sortPlayers(unassigned,assignSort).map(name=>{
-              const p=roster.find(r=>r.name===name);
               const s=getPlayerStats(name);
               return (
-                <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8}}>
+                <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8}}>
                   <PhotoAvatar name={name} size={26}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:600}}>{name}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>HCP {getHandicap(name)} · {s.w}-{s.t}-{s.l}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W · {s.t}T · {s.l}L</div>
                   </div>
                   <button onClick={()=>assign(name,"nukes")} style={{padding:"3px 8px",background:"rgba(255,69,0,0.15)",border:"1px solid rgba(255,69,0,0.3)",borderRadius:5,color:"#ff4500",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>☢️</button>
                   <button onClick={()=>assign(name,"whales")} style={{padding:"3px 8px",background:"rgba(0,170,255,0.15)",border:"1px solid rgba(0,170,255,0.3)",borderRadius:5,color:"#00aaff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>🐋</button>
@@ -427,271 +425,303 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               );
             })}
           </div>
-        </div>
-      )}
+        )}
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-        {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
-          <div key={team} style={{padding:"8px 10px",background:bg,border:`1px solid ${border}`,borderRadius:10}}>
-            <div style={{fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
-            {players.length===0?<div style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>None yet</div>:players.map(name=>(
-              <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <PhotoAvatar name={name} size={20}/>
-                  <span style={{fontSize:11,fontWeight:600}}>{name}</span>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
+            <div key={team} style={{padding:"8px 10px",background:bg,border:`1px solid ${border}`,borderRadius:10}}>
+              <div style={{fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{label}</div>
+              {players.length===0?<div style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>None yet</div>:players.map(name=>(
+                <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <PhotoAvatar name={name} size={18}/>
+                    <span style={{fontSize:11,fontWeight:600}}>{name}</span>
+                  </div>
+                  <button onClick={()=>assign(name,"none")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:11}}>✕</button>
                 </div>
-                <button onClick={()=>assign(name,"none")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:11}}>✕</button>
-              </div>
-            ))}
-          </div>
-        ))}
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSelNukes([]);setSelWhales([]);setSavedMatchups({});setPtsOverride({});try{["nwi_mock_saved","nwi_mock_nukes","nwi_mock_whales","nwi_mock_pts"].forEach(k=>sessionStorage.removeItem(k));}catch(e){}}}
+          style={{width:"100%",padding:"8px",background:"rgba(255,140,0,0.12)",border:"1px solid rgba(255,140,0,0.35)",borderRadius:8,color:"#ff8c00",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+          🔄 Reset All Players
+        </button>
       </div>
 
-      <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSelNukes([]);setSelWhales([]);setSavedMatchups({});setPtsOverride({});try{sessionStorage.removeItem("nwi_mock_saved");sessionStorage.removeItem("nwi_mock_nukes");sessionStorage.removeItem("nwi_mock_whales");sessionStorage.removeItem("nwi_mock_pts");}catch(e){}}}
-        style={{width:"100%",padding:"8px",background:"rgba(255,140,0,0.12)",border:"1px solid rgba(255,140,0,0.35)",borderRadius:8,color:"#ff8c00",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:20}}>
-        🔄 Reset All Players
-      </button>
-
-      {/* ── STEP 2: Matchup Explorer ── */}
-      <div style={{height:1,background:"rgba(255,255,255,0.08)",marginBottom:16}}/>
-      <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:4}}>Step 2 — Matchup Explorer</div>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:12}}>Pick a competition, then tap players to build a matchup. Projections update live.</div>
-
-      {/* Competition picker */}
-      {teamComps.length===0?(
-        <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",marginBottom:12}}>No team competitions flagged — set them in Admin → Settings</div>
-      ):(
+      {/* ══ STEP 2 ══════════════════════════════════════════════════════════ */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px",marginBottom:20}}>
         <div style={{marginBottom:12}}>
-          <CustomPicker setModalPicker={setModalPicker}
-            label="— Select competition —"
-            value={selComp?.id||""}
-            options={teamComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name} · ${getCompPts(c)} pts`}))}
-            onSelect={v=>{setSelComp(teamComps.find(c=>c.id===v)||null);setSelNukes([]);setSelWhales([]);}}
-            color="#ffd700"
-          />
+          <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase"}}>Step 2 — Matchup Explorer</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>Select a competition, then tap up to 2 players per side to build a matchup or choose from suggested pairings below</div>
         </div>
-      )}
 
-      {selComp&&(
-        <>
-          {/* Sort + player columns */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>Tap to select (max 2 per side)</div>
-            <select value={explorerSort} onChange={e=>setExplorerSort(e.target.value)}
-              style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
-              <option value="hcp">By HCP</option>
-              <option value="alpha">A–Z</option>
-              <option value="record">By Record</option>
-              <option value="winRate">By Win%</option>
-              <option value="ptsRate">By Pts%</option>
-            </select>
+        {explorerComps.length===0?(
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>No team competitions flagged — set them in Admin → Settings</div>
+        ):(
+          <div style={{marginBottom:12}}>
+            <CustomPicker setModalPicker={setModalPicker}
+              label="— Select competition —"
+              value={selComp?.id||""}
+              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name}${c.id===SCRAMBLE_KEY?" (Front 9 · Back 9 · Full 18)":` · ${getCompPts(c)} pts`}`}))}
+              onSelect={v=>{
+                const found=explorerComps.find(c=>c.id===v)||null;
+                setSelComp(found); setSelNukes([]); setSelWhales([]);
+              }}
+              color="#ffd700"
+            />
           </div>
+        )}
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.2)",nukes,selNukes,setSelNukes],
-              ["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.15)",whales,selWhales,setSelWhales]
-            ].map(([team,label,color,bg,border,players,sel,setSel])=>{
-              const displayPlayers=players.length>0?players:sortedRoster.map(p=>p.name);
-              return (
+        {selComp&&(
+          <>
+            {selComp.id===SCRAMBLE_KEY&&(
+              <div style={{marginBottom:10,padding:"8px 12px",background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.2)",borderRadius:8}}>
+                <div style={{fontSize:11,color:"#ffd700",fontWeight:700,marginBottom:4}}>🏌️ Scramble — One pairing, three sub-matches</div>
+                <div style={{display:"flex",gap:12,fontSize:11,color:"rgba(255,255,255,0.5)"}}>
+                  <span>Front 9: {defaultPts} pts</span>
+                  <span>Back 9: {defaultPts} pts</span>
+                  <span>Full 18: {defaultPts*2} pts</span>
+                  <span style={{color:"#ffd700",fontWeight:700}}>Total: {defaultPts*4} pts</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Tap to select · max 2 per side</div>
+              <SortSelect value={explorerSort} onChange={setExplorerSort}/>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+              {[
+                ["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.2)",nukes.length>0?nukes:sortedRoster.map(p=>p.name),selNukes,setSelNukes],
+                ["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.15)",whales.length>0?whales:sortedRoster.map(p=>p.name),selWhales,setSelWhales],
+              ].map(([team,label,color,bg,border,players,sel,setSel])=>(
                 <div key={team} style={{background:bg,border:`1px solid ${border}`,borderRadius:10,overflow:"hidden"}}>
                   <div style={{padding:"8px 10px",borderBottom:`1px solid ${border}`,fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</div>
-                  <div style={{padding:"6px",display:"flex",flexDirection:"column",gap:4,maxHeight:280,overflowY:"auto"}}>
-                    {sortPlayers(displayPlayers,explorerSort).map(name=>{
+                  <div style={{padding:"6px",display:"flex",flexDirection:"column",gap:3,maxHeight:260,overflowY:"auto"}}>
+                    {sortPlayers(players,explorerSort).map(name=>{
                       const isSelected=sel.includes(name);
-                      const isUsed=!isScrambleComp&&usedInComp.includes(name);
+                      const isUsed=!selCompIsScramble&&usedInSelComp.includes(name);
                       const canSelect=!isUsed&&(isSelected||sel.length<2);
                       const s=getPlayerStats(name);
-                      const partnerWarn=sel.length===1&&isSelected===false&&checkPartnerRepeat(sel[0],name);
+                      const partnerWarn=sel.length===1&&!isSelected&&checkPartnerRepeat(sel[0],name);
                       return (
-                        <div key={name}
-                          onClick={()=>{
-                            if(isUsed) return;
-                            if(isSelected) setSel(v=>v.filter(n=>n!==name));
-                            else if(sel.length<2) setSel(v=>[...v,name]);
-                          }}
-                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 8px",borderRadius:7,
-                            background:isSelected?`${color}22`:isUsed?"rgba(255,255,255,0.02)":"rgba(255,255,255,0.03)",
-                            border:`1px solid ${isSelected?color:isUsed?"rgba(255,255,255,0.04)":"rgba(255,255,255,0.06)"}`,
-                            opacity:isUsed?0.35:canSelect?1:0.5,
-                            cursor:isUsed?"not-allowed":canSelect?"pointer":"default",
-                            position:"relative"}}>
+                        <div key={name} onClick={()=>{if(isUsed)return;if(isSelected)setSel(v=>v.filter(n=>n!==name));else if(sel.length<2)setSel(v=>[...v,name]);}}
+                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 7px",borderRadius:7,
+                            background:isSelected?`${color}22`:isUsed?"rgba(255,255,255,0.01)":"rgba(255,255,255,0.03)",
+                            border:`1px solid ${isSelected?color:"rgba(255,255,255,0.05)"}`,
+                            opacity:isUsed?0.3:canSelect?1:0.5,cursor:isUsed?"not-allowed":canSelect?"pointer":"default"}}>
                           <PhotoAvatar name={name} size={24}/>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:11,fontWeight:700,color:isSelected?color:"#e8edf3",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
-                            <div style={{fontSize:9,color:"rgba(255,255,255,0.35)"}}>HCP {getHandicap(name)} · {s.w}-{s.t}-{s.l}</div>
+                            <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>
+                              HCP {getHandicap(name)}&nbsp;<span style={{opacity:0.4}}>|</span>&nbsp;{s.w}W·{s.t}T·{s.l}L
+                            </div>
                           </div>
-                          {isSelected&&<div style={{fontSize:14,color}}>✓</div>}
-                          {isUsed&&<div style={{fontSize:9,color:"rgba(255,85,85,0.7)"}}>used</div>}
-                          {partnerWarn&&<div style={{fontSize:9,color:"#ffd700"}}>⚠️</div>}
+                          {isSelected&&<div style={{fontSize:13,color,flexShrink:0}}>✓</div>}
+                          {isUsed&&<div style={{fontSize:9,color:"rgba(255,85,85,0.6)",flexShrink:0}}>used</div>}
+                          {partnerWarn&&<div style={{fontSize:10,flexShrink:0}}>⚠️</div>}
                         </div>
                       );
                     })}
                   </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Live suggestions */}
+            {suggestions&&suggestions.length>0&&suggestions.map((s,si)=>{
+              const cid=selCompIsScramble?SCRAMBLE_KEY:selComp.id;
+              const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
+              const compSlots=(savedMatchups[cid]||[]).length;
+              const playerConflict=!alreadySaved&&!selCompIsScramble&&[...s.np,...s.wp].some(p=>usedInSelComp.includes(p));
+              const repeat=checkRepeat(s.np,s.wp,cid);
+              const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
+              const partnerRepeatWhale=checkPartnerRepeat(s.wp[0],s.wp[1]);
+              const nHist=getBlendedStats(s.np,effectiveComp?.name);
+              const wHist=getBlendedStats(s.wp,effectiveComp?.name);
+              const compPtsDisplay=selComp.id===SCRAMBLE_KEY?`${defaultPts}+${defaultPts}+${defaultPts*2} pts`:getCompPts(selComp)+" pts/win";
+              return (
+                <div key={si} style={{padding:"10px 12px",background:s.bg,border:`2px solid ${repeat?"rgba(255,200,0,0.5)":s.border}`,borderRadius:10,marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:13,color:s.color,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.emoji} {s.label}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1}}>{compPtsDisplay}</div>
+                    </div>
+                    <button onClick={()=>{if(!alreadySaved&&!playerConflict&&compSlots<maxSlots) saveMatchup(s);}}
+                      style={{padding:"5px 12px",background:alreadySaved?"rgba(74,222,128,0.15)":playerConflict?"rgba(255,85,85,0.1)":"rgba(255,255,255,0.08)",border:`1px solid ${alreadySaved?"rgba(74,222,128,0.3)":playerConflict?"rgba(255,85,85,0.3)":"rgba(255,255,255,0.15)"}`,borderRadius:6,color:alreadySaved?"#4ade80":playerConflict?"#ff5555":"rgba(255,255,255,0.7)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:alreadySaved||playerConflict||compSlots>=maxSlots?"default":"pointer",flexShrink:0}}>
+                      {alreadySaved?"✓ Saved":playerConflict?"Player used":compSlots>=maxSlots?"Full":"+ Save"}
+                    </button>
+                  </div>
+                  {repeat&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ Repeat pairing detected</div>}
+                  {partnerRepeatNuke&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.np[0]} & {s.np[1]} have been paired before</div>}
+                  {partnerRepeatWhale&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.wp[0]} & {s.wp[1]} have been paired before</div>}
+                  {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar key={n} name={n} size={26}/>)}</div>
+                      {s.np.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
+                      <div style={{fontSize:17,fontWeight:900,color:"#ff4500",marginTop:3,lineHeight:1}}>{toOdds(s.prob)}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round(s.prob*100)}% win · HCP {s.nHcp}</div>
+                      {nHist&&<div style={{fontSize:9,color:"rgba(255,69,0,0.6)",marginTop:2}}>{nHist.w}W·{nHist.l}L ({nHist.pct}%){effectiveComp?` in ${effectiveComp.name}`:""}</div>}
+                    </div>
+                    <div style={{fontSize:10,fontWeight:900,color:"rgba(255,255,255,0.15)"}}>VS</div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.wp.map(n=><PhotoAvatar key={n} name={n} size={26}/>)}</div>
+                      {s.wp.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
+                      <div style={{fontSize:17,fontWeight:900,color:"#00aaff",marginTop:3,lineHeight:1}}>{toOdds(1-s.prob)}</div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round((1-s.prob)*100)}% win · HCP {s.wHcp}</div>
+                      {wHist&&<div style={{fontSize:9,color:"rgba(0,170,255,0.6)",marginTop:2}}>{wHist.w}W·{wHist.l}L ({wHist.pct}%){effectiveComp?` in ${effectiveComp.name}`:""}</div>}
+                    </div>
+                  </div>
+                  {s.nextBest&&(
+                    <div style={{marginTop:8,padding:"5px 8px",background:"rgba(255,255,255,0.04)",borderRadius:6,fontSize:10,color:"rgba(255,255,255,0.35)"}}>
+                      Next best: {s.nextBest.pair.join(" & ")} → {toOdds(s.nextBest.prob)} ({s.nextBest.diffFromBest<0.01?"similar":Math.round(s.nextBest.diffFromBest*100)+"% shift"})
+                    </div>
+                  )}
+                </div>
               );
             })}
-          </div>
+            {suggestions&&suggestions.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.3)",textAlign:"center",padding:10}}>Not enough players to generate suggestions</div>}
+            {!suggestions&&(selNukes.length>0||selWhales.length>0)&&<div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textAlign:"center",padding:10}}>Select 2 players on at least one side</div>}
+          </>
+        )}
+      </div>
 
-          {/* Live projections */}
-          {suggestions&&suggestions.length>0&&suggestions.map((s,si)=>{
-            const cid=selComp.id;
-            const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
-            const compSlots=(savedMatchups[cid]||[]).length;
-            const npUsed=!isScrambleComp&&s.np.some(p=>usedInComp.includes(p));
-            const wpUsed=!isScrambleComp&&s.wp.some(p=>usedInComp.includes(p));
-            const playerConflict=!alreadySaved&&(npUsed||wpUsed);
-            const repeat=checkRepeat(s.np,s.wp,cid);
-            const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
-            const partnerRepeatWhale=checkPartnerRepeat(s.wp[0],s.wp[1]);
-            const nHist=getBlendedWinRate(s.np,selComp.name);
-            const wHist=getBlendedWinRate(s.wp,selComp.name);
+      {/* ══ MATCHUP BOARD ═══════════════════════════════════════════════════ */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px"}}>
+        <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>📋 Matchup Board</div>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:14}}>{maxSlots} slot{maxSlots!==1?"s":""} per competition · based on {Math.min(nukes.length,whales.length)||"?"} players per team</div>
+
+        {boardEntries.map(entry=>{
+          if(entry.type==="scramble"){
+            const ms=savedMatchups[SCRAMBLE_KEY]||[];
+            const m=ms[0]; // only 1 pairing for scramble
             return (
-              <div key={si} style={{padding:"12px",background:s.bg,border:`1px solid ${repeat?"rgba(255,200,0,0.5)":s.border}`,borderRadius:10,marginBottom:8}}>
-                {repeat&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ Repeat pairing detected</div>}
-                {partnerRepeatNuke&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.np[0]} & {s.np[1]} have been paired before</div>}
-                {partnerRepeatWhale&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.wp[0]} & {s.wp[1]} have been paired before</div>}
-                {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div>
-                    <div style={{fontSize:10,color:s.color,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:700}}>{s.emoji} {s.label}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1}}>{getCompPts(selComp)} pts per win</div>
-                  </div>
-                  <button onClick={()=>{if(!alreadySaved&&!playerConflict&&compSlots<3) saveMatchup(s);}}
-                    style={{padding:"5px 12px",background:alreadySaved?"rgba(74,222,128,0.15)":playerConflict?"rgba(255,85,85,0.1)":"rgba(255,255,255,0.08)",border:`1px solid ${alreadySaved?"rgba(74,222,128,0.3)":playerConflict?"rgba(255,85,85,0.3)":"rgba(255,255,255,0.15)"}`,borderRadius:6,color:alreadySaved?"#4ade80":playerConflict?"#ff5555":"rgba(255,255,255,0.7)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:alreadySaved||playerConflict||compSlots>=3?"default":"pointer"}}>
-                    {alreadySaved?"✓ Saved":playerConflict?"Player used":compSlots>=3?"Full":"+ Save"}
-                  </button>
+              <div key="scramble" style={{marginBottom:14}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
-                  <div style={{textAlign:"center"}}>
-                    <div style={{display:"flex",justifyContent:"center",gap:4,marginBottom:4}}>
-                      {s.np.map(n=><PhotoAvatar key={n} name={n} size={28}/>)}
+                {m?(
+                  <div style={{padding:"10px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,position:"relative"}}>
+                    <button onClick={()=>deleteMatchup(SCRAMBLE_KEY,0)} style={{position:"absolute",top:6,right:6,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:11}}>✕</button>
+                    {/* Player row */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center",marginBottom:10}}>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar key={n} name={n} size={22}/>)}</div>
+                        {(m.np||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
+                      </div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>VS</div>
+                      <div style={{textAlign:"center"}}>
+                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.wp||[]).map(n=><PhotoAvatar key={n} name={n} size={22}/>)}</div>
+                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
+                      </div>
                     </div>
-                    {s.np.map(n=><div key={n} style={{fontSize:12,fontWeight:700,color:"#ff4500"}}>{n}</div>)}
-                    <div style={{fontSize:18,fontWeight:900,color:"#ff4500",marginTop:4,lineHeight:1}}>{toOdds(s.prob)}</div>
-                    <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round(s.prob*100)}% win</div>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>Team HCP {s.nHcp}</div>
-                    {nHist&&<div style={{fontSize:9,color:"rgba(255,69,0,0.6)",marginTop:2}}>{nHist.w}/{nHist.total} hist ({nHist.pct}%)</div>}
+                    {/* Sub-match rows */}
+                    {[["Front 9",defaultPts],["Back 9",defaultPts],["Full 18",defaultPts*2]].map(([label,pts])=>(
+                      <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 8px",background:"rgba(255,255,255,0.03)",borderRadius:6,marginBottom:4}}>
+                        <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600}}>{label}</span>
+                        <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                          <span style={{fontSize:11,fontWeight:800,color:"#ff4500"}}>{toOdds(m.prob)}</span>
+                          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>vs</span>
+                          <span style={{fontSize:11,fontWeight:800,color:"#00aaff"}}>{toOdds(1-m.prob)}</span>
+                          <span style={{fontSize:10,color:"#ffd700",fontWeight:700}}>{pts}pts</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{fontSize:11,fontWeight:900,color:"rgba(255,255,255,0.2)"}}>VS</div>
-                  <div style={{textAlign:"center"}}>
-                    <div style={{display:"flex",justifyContent:"center",gap:4,marginBottom:4}}>
-                      {s.wp.map(n=><PhotoAvatar key={n} name={n} size={28}/>)}
-                    </div>
-                    {s.wp.map(n=><div key={n} style={{fontSize:12,fontWeight:700,color:"#00aaff"}}>{n}</div>)}
-                    <div style={{fontSize:18,fontWeight:900,color:"#00aaff",marginTop:4,lineHeight:1}}>{toOdds(1-s.prob)}</div>
-                    <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round((1-s.prob)*100)}% win</div>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>Team HCP {s.wHcp}</div>
-                    {wHist&&<div style={{fontSize:9,color:"rgba(0,170,255,0.6)",marginTop:2}}>{wHist.w}/{wHist.total} hist ({wHist.pct}%)</div>}
-                  </div>
-                </div>
-                {s.nextBest&&(
-                  <div style={{marginTop:8,padding:"6px 10px",background:"rgba(255,255,255,0.04)",borderRadius:6,fontSize:10,color:"rgba(255,255,255,0.35)"}}>
-                    Next best: {s.nextBest.pair.join(" & ")} → {toOdds(s.nextBest.prob)} ({s.nextBest.diffFromBest<0.01?"similar odds":`${Math.round(s.nextBest.diffFromBest*100)}% shift`})
+                ):(
+                  <div style={{padding:"16px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:13,color:"rgba(255,255,255,0.15)"}}>+ Save a scramble pairing</span>
                   </div>
                 )}
               </div>
             );
-          })}
-          {suggestions&&suggestions.length===0&&(
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.3)",textAlign:"center",padding:12}}>Not enough players to generate suggestions</div>
-          )}
-          {!suggestions&&(selNukes.length>0||selWhales.length>0)&&(
-            <div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textAlign:"center",padding:12}}>Select 2 players on at least one side</div>
-          )}
-        </>
-      )}
-
-      {/* ── Matchup Board ── */}
-      <div style={{height:1,background:"rgba(255,255,255,0.08)",margin:"20px 0 16px"}}/>
-      <div style={{fontSize:13,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:12}}>📋 Matchup Board</div>
-      {teamComps.map(comp=>{
-        const ms=savedMatchups[comp.id]||[];
-        const compPts=getCompPts(comp);
-        return (
-          <div key={comp.id} style={{marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>{comp.icon||"🏅"} {comp.name}</div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win:</span>
-                <input type="number" min="0" step="0.5"
-                  value={ptsOverride[comp.id]!==undefined?ptsOverride[comp.id]:compPts}
-                  onChange={e=>setPtsOverride(p=>({...p,[comp.id]:e.target.value}))}
-                  style={{width:40,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px"}}/>
+          }
+          // Regular competition
+          const comp=entry.comp;
+          const ms=savedMatchups[comp.id]||[];
+          const slots=Math.max(maxSlots,ms.length);
+          return (
+            <div key={comp.id} style={{marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>{comp.icon||"🏅"} {comp.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win:</span>
+                  <input type="number" min="0" step="0.5"
+                    value={ptsOverride[comp.id]!==undefined?ptsOverride[comp.id]:getCompPts(comp)}
+                    onChange={e=>setPtsOverride(p=>({...p,[comp.id]:e.target.value}))}
+                    style={{width:38,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px"}}/>
+                </div>
               </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-              {[0,1,2].map(i=>{
-                const m=ms[i];
-                if(!m) return (
-                  <div key={i} style={{padding:"10px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",minHeight:70}}>
-                    <span style={{fontSize:18,color:"rgba(255,255,255,0.15)"}}>+</span>
-                  </div>
-                );
-                const repeat=checkRepeat(m.np||[],m.wp||[],comp.id);
-                // Conflict = player appears in another saved slot for same comp
-                const allOtherPlayers=ms.filter((_,idx)=>idx!==i).flatMap(x=>[...(x.np||[]),...(x.wp||[])]);
-                const hasConflict=[...(m.np||[]),...(m.wp||[])].some(p=>allOtherPlayers.includes(p));
-                return (
-                  <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${hasConflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
-                    {(hasConflict||repeat)&&<div style={{fontSize:8,color:hasConflict?"#ff8c00":"#ffd700",marginBottom:3}}>{hasConflict?"⚠️ Conflict":"⚠️ Repeat"}</div>}
-                    <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:4}}>
-                      {(m.np||[]).map(n=><PhotoAvatar key={n} name={n} size={20}/>)}
+              <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
+                {Array.from({length:slots}).map((_,i)=>{
+                  const m=ms[i];
+                  if(!m) return (
+                    <div key={i} style={{padding:"10px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",minHeight:80}}>
+                      <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
                     </div>
-                    {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                    <div style={{fontSize:10,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
-                    <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                    <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>
-                      {(m.wp||[]).map(n=><PhotoAvatar key={n} name={n} size={20}/>)}
+                  );
+                  const repeat=checkRepeat(m.np||[],m.wp||[],comp.id);
+                  const allOther=ms.filter((_,idx)=>idx!==i).flatMap(x=>[...(x.np||[]),...(x.wp||[])]);
+                  const conflict=[...(m.np||[]),...(m.wp||[])].some(p=>allOther.includes(p));
+                  return (
+                    <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${conflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
+                      {conflict&&<div style={{fontSize:8,color:"#ff8c00",marginBottom:2}}>⚠️ Conflict</div>}
+                      {repeat&&!conflict&&<div style={{fontSize:8,color:"#ffd700",marginBottom:2}}>⚠️ Repeat</div>}
+                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar key={n} name={n} size={18}/>)}</div>
+                      {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                      <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
+                      <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar key={n} name={n} size={18}/>)}</div>
+                      {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                      <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
+                      <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
                     </div>
-                    {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                    <div style={{fontSize:10,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
-                    <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10,lineHeight:1}}>✕</button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Team probability */}
+        {(()=>{
+          const all=Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
+          if(!all.length) return null;
+          let nExp=0,wExp=0,tPts=0;
+          all.forEach(m=>{
+            const isScr=m.isScramble||m.cid===SCRAMBLE_KEY;
+            const pts=isScr?(defaultPts*4):(Number(ptsOverride[m.cid]||"")||Number(m.pointsWorth)||defaultPts);
+            nExp+=m.prob*pts; wExp+=(1-m.prob)*pts; tPts+=pts;
+          });
+          const nPct=tPts>0?Math.round((nExp/tPts)*100):50;
+          return (
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>📊 Projected Outcome</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                {[["☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nPct,nExp],["🐋 Whales","#00aaff","rgba(0,170,255,0.08)","rgba(0,170,255,0.25)",100-nPct,wExp]].map(([label,color,bg,border,pct,exp])=>(
+                  <div key={label} style={{padding:"12px",background:bg,border:`1px solid ${border}`,borderRadius:12,textAlign:"center"}}>
+                    <div style={{fontSize:11,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>{label}</div>
+                    <div style={{fontSize:30,fontWeight:900,color,lineHeight:1}}>{pct}%</div>
+                    <div style={{fontSize:12,color,fontWeight:700,marginTop:3}}>{exp.toFixed(1)} pts</div>
+                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>projected</div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* Team probability boxes */}
-      {(()=>{
-        const allSaved=Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
-        if(!allSaved.length) return null;
-        let nukeExp=0,whaleExp=0,totalPts=0;
-        allSaved.forEach(m=>{
-          const pts=Number(ptsOverride[m.cid]||"")||Number(m.pointsWorth)||defaultPts;
-          nukeExp+=m.prob*pts; whaleExp+=(1-m.prob)*pts; totalPts+=pts;
-        });
-        const nukePct=totalPts>0?Math.round((nukeExp/totalPts)*100):50;
-        const whalePct=100-nukePct;
-        return (
-          <div style={{marginTop:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>📊 Projected Outcome</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-              <div style={{padding:"14px",background:"rgba(255,69,0,0.08)",border:"1px solid rgba(255,69,0,0.25)",borderRadius:12,textAlign:"center"}}>
-                <div style={{fontSize:11,color:"#ff4500",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>☢️ Nukes</div>
-                <div style={{fontSize:32,fontWeight:900,color:"#ff4500",lineHeight:1}}>{nukePct}%</div>
-                <div style={{fontSize:13,color:"#ff4500",fontWeight:700,marginTop:4}}>{nukeExp.toFixed(1)} pts</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>projected</div>
+                ))}
               </div>
-              <div style={{padding:"14px",background:"rgba(0,170,255,0.08)",border:"1px solid rgba(0,170,255,0.25)",borderRadius:12,textAlign:"center"}}>
-                <div style={{fontSize:11,color:"#00aaff",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>🐋 Whales</div>
-                <div style={{fontSize:32,fontWeight:900,color:"#00aaff",lineHeight:1}}>{whalePct}%</div>
-                <div style={{fontSize:13,color:"#00aaff",fontWeight:700,marginTop:4}}>{whaleExp.toFixed(1)} pts</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>projected</div>
+              <div style={{height:8,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",display:"flex"}}>
+                <div style={{width:`${nPct}%`,background:"#ff4500",transition:"width 0.5s"}}/>
+                <div style={{flex:1,background:"#00aaff"}}/>
               </div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center"}}>Based on {all.length} saved matchup{all.length!==1?"s":""}</div>
             </div>
-            <div style={{height:10,background:"rgba(255,255,255,0.06)",borderRadius:5,overflow:"hidden",display:"flex"}}>
-              <div style={{width:`${nukePct}%`,background:"#ff4500",transition:"width 0.5s"}}/>
-              <div style={{flex:1,background:"#00aaff"}}/>
-            </div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center"}}>Based on {allSaved.length} saved matchup{allSaved.length!==1?"s":""}</div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </div>
 
-      {/* Modal picker overlay */}
+      {/* Modal picker */}
       {modalPicker&&(
         <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>setModalPicker(null)}>
           <div style={{background:"#0d1520",borderRadius:"16px",width:"100%",maxWidth:480,maxHeight:"75vh",overflow:"hidden",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
@@ -700,10 +730,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               <button onClick={()=>setModalPicker(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
             </div>
             <div style={{overflowY:"auto",flex:1}}>
-              {modalPicker.current&&(
-                <div onClick={()=>{modalPicker.onSelect("");setModalPicker(null);}}
-                  style={{padding:"14px 16px",fontSize:13,color:"rgba(255,255,255,0.4)",borderBottom:"1px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>— Clear selection —</div>
-              )}
+              {modalPicker.current&&<div onClick={()=>{modalPicker.onSelect("");setModalPicker(null);}} style={{padding:"14px 16px",fontSize:13,color:"rgba(255,255,255,0.4)",borderBottom:"1px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>— Clear selection —</div>}
               {modalPicker.options.map(opt=>(
                 <div key={opt.value} onClick={()=>{modalPicker.onSelect(opt.value);setModalPicker(null);}}
                   style={{padding:"14px 16px",fontSize:13,fontWeight:600,color:opt.value===modalPicker.current?"#ffd700":"rgba(255,255,255,0.85)",background:opt.value===modalPicker.current?"rgba(255,200,0,0.08)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer"}}>
