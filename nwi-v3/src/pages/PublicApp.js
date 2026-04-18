@@ -141,6 +141,26 @@ function CustomPicker({ label, value, options, onSelect, setModalPicker, color="
   );
 }
 
+function PhotoAvatar({ name, roster, size=28 }) {
+  const p = roster?.find(r=>r.name===name);
+  return p?.photoURL
+    ? <img src={p.photoURL} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
+    : <div style={{width:size,height:size,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:800,flexShrink:0}}>{name[0]}</div>;
+}
+
+function SortSelect({ value, onChange }) {
+  return (
+    <select value={value} onChange={e=>onChange(e.target.value)}
+      style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
+      <option value="hcp">By HCP</option>
+      <option value="alpha">A–Z</option>
+      <option value="record">By Record</option>
+      <option value="winRate">By Win%</option>
+      <option value="ptsRate">By Pts%</option>
+    </select>
+  );
+}
+
 function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds }) {
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
   const teamFormats = meta?.teamFormats || {};
@@ -366,28 +386,24 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return 0;
   });
 
-  const PhotoAvatar=({name,size=28})=>{
-    const p=roster.find(r=>r.name===name);
-    return p?.photoURL
-      ?<img src={p.photoURL} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
-      :<div style={{width:size,height:size,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:800,flexShrink:0}}>{name[0]}</div>;
-  };
+  // PhotoAvatar and SortSelect defined at top level (outside component)
 
-  const SortSelect=({value,onChange})=>(
-    <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
-      <option value="hcp">By HCP</option>
-      <option value="alpha">A–Z</option>
-      <option value="record">By Record</option>
-      <option value="winRate">By Win%</option>
-      <option value="ptsRate">By Pts%</option>
-    </select>
-  );
-
+  // Sort non-scramble comps by order they appear in rounds/matchups
+  const roundsCompOrder = (rounds||[]).reduce((acc,r,ri)=>{
+    const name = r.competitionName||r.name||"";
+    if(!acc[name]) acc[name]=ri;
+    (r.matchups||[]).forEach(m=>{ if(m.competitionName&&!acc[m.competitionName]) acc[m.competitionName]=ri*100+(r.matchups||[]).indexOf(m); });
+    return acc;
+  },{});
+  const sortedNonScramble = [...nonScrambleTeamComps].sort((a,b)=>{
+    const ao = roundsCompOrder[a.name]??compOrder[a.id]??999;
+    const bo = roundsCompOrder[b.name]??compOrder[b.id]??999;
+    return ao-bo;
+  });
   // Explorer competition options (non-scramble + single "Scramble" entry)
   const explorerComps=[
-    ...nonScrambleTeamComps,
-    ...(hasScramble?[{id:SCRAMBLE_KEY,name:"Scramble",icon:"🏌️"}]:[]),
+    ...sortedNonScramble,
+    ...(hasScramble?[{id:SCRAMBLE_KEY,name:"Scramble",icon:"🏌️",_scramble:true}]:[]),
   ];
   // When scramble is selected in explorer, use first scramble comp for hcp calc
   const effectiveComp = selComp?.id===SCRAMBLE_KEY ? scrambleComps[0] : selComp;
@@ -414,7 +430,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               const s=getPlayerStats(name);
               return (
                 <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8}}>
-                  <PhotoAvatar name={name} size={26}/>
+                  <PhotoAvatar roster={roster} name={name} size={26}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,fontWeight:600}}>{name}</div>
                     <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W · {s.t}T · {s.l}L</div>
@@ -434,7 +450,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               {players.length===0?<div style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>None yet</div>:players.map(name=>(
                 <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
                   <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <PhotoAvatar name={name} size={18}/>
+                    <PhotoAvatar roster={roster} name={name} size={18}/>
                     <span style={{fontSize:11,fontWeight:600}}>{name}</span>
                   </div>
                   <button onClick={()=>assign(name,"none")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:11}}>✕</button>
@@ -464,7 +480,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
             <CustomPicker setModalPicker={setModalPicker}
               label="— Select competition —"
               value={selComp?.id||""}
-              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name}${c.id===SCRAMBLE_KEY?" (Front 9 · Back 9 · Full 18)":` · ${getCompPts(c)} pts`}`}))}
+              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name} · ${c.id===SCRAMBLE_KEY?defaultPts*4+" pts (F9+B9+18)":getCompPts(c)+" pts"}`}))}
               onSelect={v=>{
                 const found=explorerComps.find(c=>c.id===v)||null;
                 setSelComp(found); setSelNukes([]); setSelWhales([]);
@@ -513,7 +529,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                             background:isSelected?`${color}22`:isUsed?"rgba(255,255,255,0.01)":"rgba(255,255,255,0.03)",
                             border:`1px solid ${isSelected?color:"rgba(255,255,255,0.05)"}`,
                             opacity:isUsed?0.3:canSelect?1:0.5,cursor:isUsed?"not-allowed":canSelect?"pointer":"default"}}>
-                          <PhotoAvatar name={name} size={24}/>
+                          <PhotoAvatar roster={roster} name={name} size={24}/>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:11,fontWeight:700,color:isSelected?color:"#e8edf3",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
                             <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>
@@ -561,7 +577,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                   {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
                   <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
                     <div style={{textAlign:"center"}}>
-                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar key={n} name={n} size={26}/>)}</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
                       {s.np.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
                       <div style={{fontSize:17,fontWeight:900,color:"#ff4500",marginTop:3,lineHeight:1}}>{toOdds(s.prob)}</div>
                       <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round(s.prob*100)}% win · HCP {s.nHcp}</div>
@@ -569,7 +585,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     </div>
                     <div style={{fontSize:10,fontWeight:900,color:"rgba(255,255,255,0.15)"}}>VS</div>
                     <div style={{textAlign:"center"}}>
-                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.wp.map(n=><PhotoAvatar key={n} name={n} size={26}/>)}</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.wp.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
                       {s.wp.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
                       <div style={{fontSize:17,fontWeight:900,color:"#00aaff",marginTop:3,lineHeight:1}}>{toOdds(1-s.prob)}</div>
                       <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round((1-s.prob)*100)}% win · HCP {s.wHcp}</div>
@@ -610,12 +626,12 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     {/* Player row */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center",marginBottom:10}}>
                       <div style={{textAlign:"center"}}>
-                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar key={n} name={n} size={22}/>)}</div>
+                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={22}/>)}</div>
                         {(m.np||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
                       </div>
                       <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>VS</div>
                       <div style={{textAlign:"center"}}>
-                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.wp||[]).map(n=><PhotoAvatar key={n} name={n} size={22}/>)}</div>
+                        <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:3}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={22}/>)}</div>
                         {(m.wp||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
                       </div>
                     </div>
@@ -671,11 +687,11 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${conflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
                       {conflict&&<div style={{fontSize:8,color:"#ff8c00",marginBottom:2}}>⚠️ Conflict</div>}
                       {repeat&&!conflict&&<div style={{fontSize:8,color:"#ffd700",marginBottom:2}}>⚠️ Repeat</div>}
-                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar key={n} name={n} size={18}/>)}</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:3}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                       {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                       <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
                       <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                      <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar key={n} name={n} size={18}/>)}</div>
+                      <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                       {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                       <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
                       <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
