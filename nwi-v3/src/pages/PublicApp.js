@@ -809,7 +809,6 @@ export default function PublicApp({ onGoAdmin }) {
 
   const tournamentDate = new Date((meta?.date || "2026-08-13") + "T" + (meta?.startTime || "10:00") + ":00");
 
-  // ── Password ────────────────────────────────────────────────────────────────
   // ── Countdown ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const tick = () => {
@@ -992,8 +991,6 @@ export default function PublicApp({ onGoAdmin }) {
   const whaleWins = history.filter(h => h.winner === "THE WHALES").length;
 
   // ── Styles ──────────────────────────────────────────────────────────────────
-
-  // ── Password screen ──────────────────────────────────────────────────────────
 
   // ── Dynamic team colors ────────────────────────────────────────────────────
   const dynamicColors = (() => {
