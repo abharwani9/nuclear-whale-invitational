@@ -74,7 +74,7 @@ const SECTIONS = [
 
 export default function AdminPanel({ authed, onAuth, onBack }) {
   const [code, setCode]       = useState("");
-  const [section, setSection] = useState("rounds");
+  const [section, setSection] = useState(()=>sessionStorage.getItem("nwi_admin_section")||"rounds");
   const [toast, setToast]     = useState(null);
   const [seeding, setSeeding] = useState(false);
 
@@ -134,7 +134,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
 
       <div style={{ background:"#0a0f1a", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"8px 16px", display:"flex", gap:6, overflowX:"auto", scrollbarWidth:"none" }}>
         {SECTIONS.map(sec=>(
-          <button key={sec.id} className={`sec-btn${section===sec.id?" active":""}`} onClick={()=>setSection(sec.id)}>{sec.icon} {sec.label}</button>
+          <button key={sec.id} className={`sec-btn${section===sec.id?" active":""}`} onClick={()=>{sessionStorage.setItem("nwi_admin_section",sec.id);setSection(sec.id);}}>{sec.icon} {sec.label}</button>
         ))}
       </div>
 
@@ -2186,12 +2186,16 @@ function AnalyticsSection() {
   }, []);
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0,10);
-  const weekAgo = new Date(now - 7*24*60*60*1000).toISOString();
+  // Use local date string for "today" comparison
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const weekAgoMs = now.getTime() - 7*24*60*60*1000;
 
   const filtered = sessions.filter(s => {
-    if(filter==="today") return s.startedAt?.slice(0,10)===todayStr;
-    if(filter==="week") return s.startedAt >= weekAgo;
+    if(!s.startedAt) return filter==="all";
+    const d = new Date(s.startedAt);
+    const dLocal = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    if(filter==="today") return dLocal===todayStr;
+    if(filter==="week") return d.getTime() >= weekAgoMs;
     return true;
   });
 
@@ -2212,12 +2216,14 @@ function AnalyticsSection() {
   const tabsSorted = Object.entries(tabCounts).sort((a,b)=>b[1]-a[1]);
   const maxTabCount = tabsSorted[0]?.[1]||1;
 
-  // Hour distribution
+  // Hour distribution (local time)
   const hourCounts = Array(24).fill(0);
   filtered.forEach(s=>{
     if(s.startedAt) hourCounts[new Date(s.startedAt).getHours()]++;
   });
   const maxHour = Math.max(...hourCounts,1);
+  const peakHour = hourCounts.indexOf(maxHour);
+  const fmt12 = h => { const ampm=h>=12?"pm":"am"; const h12=h%12||12; return `${h12}${ampm}`; };
 
   // Device breakdown
   const deviceCounts = {ios:0,android:0,desktop:0};
@@ -2285,14 +2291,24 @@ function AnalyticsSection() {
           {/* Usage by hour */}
           <div style={s.card}>
             <div style={{...s.label,marginBottom:12}}>Opens by Hour of Day</div>
-            <div style={{display:"flex",alignItems:"flex-end",gap:3,height:60}}>
-              {hourCounts.map((count,h)=>(
-                <div key={h} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <div style={{width:"100%",height:`${Math.max(2,(count/maxHour)*52)}px`,background:count>0?"rgba(255,140,0,0.7)":"rgba(255,255,255,0.06)",borderRadius:2}}/>
-                  {h%6===0&&<div style={{fontSize:7,color:"rgba(255,255,255,0.3)"}}>{h}h</div>}
+            {filtered.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data for this period</div>:(
+              <>
+                <div style={{display:"flex",alignItems:"flex-end",gap:2,height:60,marginBottom:4}}>
+                  {hourCounts.map((count,h)=>(
+                    <div key={h} title={`${fmt12(h)}: ${count} open${count!==1?"s":""}`}
+                      style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                      <div style={{width:"100%",height:`${Math.max(count>0?3:1,(count/maxHour)*56)}px`,
+                        background:count>0?h===peakHour?"#ffd700":"rgba(255,140,0,0.7)":"rgba(255,255,255,0.05)",
+                        borderRadius:2,transition:"height 0.3s"}}/>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(255,255,255,0.3)"}}>
+                  {[0,6,12,18,23].map(h=><span key={h}>{fmt12(h)}</span>)}
+                </div>
+                {maxHour>0&&<div style={{fontSize:11,color:"#ffd700",marginTop:6}}>Peak: {fmt12(peakHour)} ({hourCounts[peakHour]} open{hourCounts[peakHour]!==1?"s":""})</div>}
+              </>
+            )}
           </div>
 
           {/* Recent sessions */}
