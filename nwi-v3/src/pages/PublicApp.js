@@ -1346,12 +1346,12 @@ export default function PublicApp({ onGoAdmin }) {
 
       {/* Fixed admin button — top right corner */}
       <button onClick={onGoAdmin} style={{
-        position:"fixed", bottom:24, left:16, zIndex:999,
-        background:"rgba(0,0,0,0.7)", backdropFilter:"blur(8px)",
+        position:"fixed", bottom:"env(safe-area-inset-bottom, 24px)", left:16, zIndex:999,
+        background:"rgba(0,0,0,0.75)", backdropFilter:"blur(8px)",
         border:"1px solid rgba(255,255,255,0.15)", borderRadius:20,
         color:"rgba(255,255,255,0.5)", fontFamily:"inherit",
-        fontSize:11, fontWeight:700, padding:"7px 14px", cursor:"pointer",
-        letterSpacing:"0.05em"
+        fontSize:11, fontWeight:700, padding:"8px 16px", cursor:"pointer",
+        letterSpacing:"0.05em", marginBottom:24
       }}>⚙️ Admin</button>
 
       {/* Tab bar — full width, centered on desktop, scrollable on mobile */}
