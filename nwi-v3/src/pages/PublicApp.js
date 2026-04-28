@@ -1025,12 +1025,11 @@ export default function PublicApp({ onGoAdmin }) {
   useEffect(() => {
     const sessionKey = "nwi_session_id";
     const sessionStartKey = "nwi_session_start";
-    const sessionTabsKey = "nwi_session_tabs";
     const now = Date.now();
     const ua = navigator.userAgent;
-    const deviceType = /iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/.test(ua) ? "android" : "desktop";
+    const dtype = /iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/.test(ua) ? "android" : "desktop";
+    const did = (() => { let id = localStorage.getItem("nwi_device_id"); if(!id){id=Math.random().toString(36).slice(2);localStorage.setItem("nwi_device_id",id);} return id; })();
 
-    // Get or create session (30 min timeout)
     let sessionId = sessionStorage.getItem(sessionKey);
     const sessionStart = parseInt(sessionStorage.getItem(sessionStartKey) || "0");
     const isNewSession = !sessionId || (now - sessionStart) > 30 * 60 * 1000;
@@ -1039,29 +1038,29 @@ export default function PublicApp({ onGoAdmin }) {
       sessionId = Math.random().toString(36).slice(2);
       sessionStorage.setItem(sessionKey, sessionId);
       sessionStorage.setItem(sessionStartKey, String(now));
-      sessionStorage.setItem(sessionTabsKey, "[]");
-      // Log new session
-      const logSession = async () => {
+      sessionStorage.setItem("nwi_session_tabs", "[]");
+      sessionStorage.setItem("nwi_session_device", dtype);
+      sessionStorage.setItem("nwi_session_did", did);
+      (async () => {
         try {
           const { db } = await import("../firebase/config");
           const { doc, setDoc } = await import("firebase/firestore");
           await setDoc(doc(db, "analytics", sessionId), {
-            deviceId,
-            deviceType,
+            deviceId: did,
+            deviceType: dtype,
             sessionId,
-            startedAt: new Date().toISOString(),
-            lastActiveAt: new Date().toISOString(),
+            startedAt: new Date(now).toISOString(),
+            lastActiveAt: new Date(now).toISOString(),
             tabsVisited: ["leaderboard"],
             duration: 0,
           });
-          console.log("analytics session logged:", sessionId);
+          console.log("analytics: new session", sessionId, dtype, did.slice(0,6));
         } catch(e) { console.log("analytics session error:", e); }
-      };
-      logSession();
+      })();
     }
   }, []);
 
-  // Track tab changes — use set (merge) so it works even if doc doesn't exist yet
+  // Track tab changes
   useEffect(() => {
     const sessionId = sessionStorage.getItem("nwi_session_id");
     if (!sessionId) return;
@@ -1073,16 +1072,17 @@ export default function PublicApp({ onGoAdmin }) {
         if (!tabs.includes(tab)) tabs.push(tab);
         sessionStorage.setItem("nwi_session_tabs", JSON.stringify(tabs));
         const start = parseInt(sessionStorage.getItem("nwi_session_start") || "0");
-        const duration = Math.round((Date.now() - start) / 1000);
-        const start2 = sessionStorage.getItem("nwi_session_start");
+        const dtype = sessionStorage.getItem("nwi_session_device") || "desktop";
+        const did = sessionStorage.getItem("nwi_session_did") || localStorage.getItem("nwi_device_id") || "unknown";
         await setDoc(doc(db, "analytics", sessionId), {
           tabsVisited: tabs,
           lastActiveAt: new Date().toISOString(),
-          duration,
-          // Always include startedAt in case initial write hasn't completed
-          startedAt: start2 ? new Date(parseInt(start2)).toISOString() : new Date().toISOString(),
+          duration: Math.round((Date.now() - start) / 1000),
+          startedAt: start ? new Date(start).toISOString() : new Date().toISOString(),
+          deviceType: dtype,
+          deviceId: did,
         }, { merge: true });
-      } catch(e) { console.log("analytics tab update error:", e); }
+      } catch(e) { console.log("analytics tab error:", e); }
     })();
   }, [tab]);
 
