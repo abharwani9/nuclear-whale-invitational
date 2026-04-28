@@ -986,10 +986,10 @@ function WeatherWidget({ location, tournamentDate }) {
 }
 
 export default function PublicApp({ onGoAdmin }) {
-  const [tab, setTab]               = useState("leaderboard");
+  const [tab, setTab]               = useState(()=>{ try{ return sessionStorage.getItem("nwi_pub_tab")||"leaderboard"; }catch(e){ return "leaderboard"; } });
   const [countdown, setCountdown]   = useState({});
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [lbTab, setLbTab]           = useState("team");
+  const [lbTab, setLbTab]           = useState(()=>{ try{ return sessionStorage.getItem("nwi_pub_lbtab")||"team"; }catch(e){ return "team"; } });
   const [expandedHistory, setExpandedHistory] = useState(null);
   const [atSort, setAtSort]         = useState("ptsWinPct");
   const [atDir, setAtDir]           = useState("desc");
@@ -1343,7 +1343,7 @@ export default function PublicApp({ onGoAdmin }) {
       {/* Tab bar — full width, centered on desktop, scrollable on mobile */}
       <div className="tab-bar">
         {TABS.map(t => (
-          <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)}>
+          <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>{ try{sessionStorage.setItem("nwi_pub_tab",t.id);}catch(e){} setTab(t.id); }}>
             {t.icon} {t.label}
           </button>
         ))}
@@ -1361,7 +1361,7 @@ export default function PublicApp({ onGoAdmin }) {
             </div>
             <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
               {[["team","🏆 Team"],["individual","👤 Individual"],["alltime","📜 All-Time"]].map(([id,label])=>(
-                <button key={id} className={`lb-tab${lbTab===id?" active":""}`} onClick={()=>setLbTab(id)}>{label}</button>
+                <button key={id} className={`lb-tab${lbTab===id?" active":""}`} onClick={()=>{ try{sessionStorage.setItem("nwi_pub_lbtab",id);}catch(e){} setLbTab(id); }}>{label}</button>
               ))}
             </div>
 
