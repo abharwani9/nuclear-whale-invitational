@@ -2174,10 +2174,11 @@ function AnalyticsSection() {
     const loadSessions = async () => {
       try {
         const { db } = await import("../firebase/config");
-        const { collection, getDocs, orderBy, query } = await import("firebase/firestore");
-        const q = query(collection(db, "analytics"), orderBy("startedAt", "desc"));
-        const snap = await getDocs(q);
-        setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const { collection, getDocs } = await import("firebase/firestore");
+        const snap = await getDocs(collection(db, "analytics"));
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        docs.sort((a,b) => (b.startedAt||"").localeCompare(a.startedAt||""));
+        setSessions(docs);
       } catch(e) { console.log("analytics load error:", e); }
       setLoading(false);
     };
