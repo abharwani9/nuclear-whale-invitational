@@ -227,7 +227,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   };
 
   const toOdds = p => {
-    p=Math.max(0.1,Math.min(0.9,p));
+    p=Math.max(0.05,Math.min(0.95,p));
     return p>=0.5?`-${Math.round((p/(1-p))*100)}`:`+${Math.round(((1-p)/p)*100)}`;
   };
 
@@ -261,13 +261,78 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     return {w:Math.round(w*10)/10,t:Math.round(t*10)/10,l:Math.round((total-w-t)*10)/10,total,pct:Math.round((w/total)*100)};
   };
 
+  // ── Adaptive odds model ───────────────────────────────────────────────────
+  // Opponent-quality weighted win rate for a set of players
+  // compName: if provided, filter to that competition only
+  const getWeightedWinRate = (players, compName) => {
+    if(!players?.length) return null;
+    let weightedWins=0, totalWeight=0;
+    (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
+      if(m.type==="heading"||!m.winner) return;
+      if(compName){
+        const mc=(m.roundName||m.competitionName||"").toLowerCase();
+        if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;
+      }
+      const inN=players.some(p=>(m.nukes||[]).includes(p));
+      const inW=players.some(p=>(m.whales||[]).includes(p));
+      if(!inN&&!inW) return;
+      // Opponent quality weight — avg opponent HCP normalized around 18
+      const oppTeam=inN?"whales":"nukes";
+      const oppPlayers=m[oppTeam]||[];
+      const oppAvgHcp=oppPlayers.length>0
+        ? oppPlayers.map(n=>getHandicap(n)).reduce((s,h)=>s+h,0)/oppPlayers.length
+        : 18;
+      const weight=Math.max(0.5, 1+(18-oppAvgHcp)/18); // lower opp hcp = higher weight
+      const pt=inN?"nukes":"whales";
+      const won=m.winner===pt?1:m.winner==="tie"?0.5:0;
+      weightedWins+=won*weight;
+      totalWeight+=weight;
+    }));
+    if(totalWeight<2) return null; // not enough data
+    return weightedWins/totalWeight; // 0-1 win rate
+  };
+
+  // Convert two team win rates to a head-to-head probability
+  const winRateToProb = (nRate, wRate) => {
+    const tot=nRate+wRate;
+    return tot>0?nRate/tot:0.5;
+  };
+
   const calcProb = (nPair, wPair, comp) => {
     if(!comp) return 0.5;
-    const allow=hcpAllowances[comp.id]||100;
-    const hcpProb=Math.max(0.1,Math.min(0.9,0.5+(teamHcp(wPair,allow)-teamHcp(nPair,allow))*0.03));
-    const nH=getBlendedStats(nPair,comp.name), wH=getBlendedStats(wPair,comp.name);
-    if(nH&&wH){const tot=nH.pct+wH.pct;return Math.max(0.1,Math.min(0.9,hcpProb*0.6+(tot>0?nH.pct/tot:0.5)*0.4));}
-    return hcpProb;
+    const compId=comp.id===SCRAMBLE_KEY?scrambleComps[0]?.id:comp.id;
+    const compName=comp.id===SCRAMBLE_KEY?null:comp.name; // scramble uses all-time only
+    const allow=hcpAllowances[compId]||100;
+
+    // Factor 1: Team handicap (always present)
+    const nHcp=teamHcp(nPair,allow), wHcp=teamHcp(wPair,allow);
+    const hcpProb=Math.max(0.05,Math.min(0.95, 0.5+(wHcp-nHcp)*0.03));
+
+    // Factor 2: All-time opponent-weighted win rate
+    const nAllTime=getWeightedWinRate(nPair,null);
+    const wAllTime=getWeightedWinRate(wPair,null);
+    const hasAllTime=nAllTime!==null||wAllTime!==null;
+    const allTimeProb=hasAllTime?winRateToProb(nAllTime??0.5,wAllTime??0.5):null;
+
+    // Factor 3: Competition-specific win rate
+    const nCompSpec=compName?getWeightedWinRate(nPair,compName):null;
+    const wCompSpec=compName?getWeightedWinRate(wPair,compName):null;
+    const hasCompSpec=nCompSpec!==null||wCompSpec!==null;
+    const compSpecProb=hasCompSpec?winRateToProb(nCompSpec??0.5,wCompSpec??0.5):null;
+
+    // Blend based on available data
+    let prob;
+    if(hasCompSpec&&allTimeProb!==null) {
+      // All three factors: 50% hcp + 25% all-time + 25% comp-specific
+      prob=hcpProb*0.50+allTimeProb*0.25+compSpecProb*0.25;
+    } else if(allTimeProb!==null) {
+      // Two factors: 75% hcp + 25% all-time
+      prob=hcpProb*0.75+allTimeProb*0.25;
+    } else {
+      // Handicap only
+      prob=hcpProb;
+    }
+    return Math.max(0.1,Math.min(0.9,prob));
   };
 
   const getPairs = players => {
@@ -485,7 +550,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
             <CustomPicker setModalPicker={setModalPicker}
               label="— Select competition —"
               value={selComp?.id||""}
-              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name} · ${c.id===SCRAMBLE_KEY?defaultPts*4+" pts (F9+B9+18)":getCompPts(c)+" pts"}`}))}
+              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name} · ${c.id===SCRAMBLE_KEY?((Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2))+" pts (F9+B9+18)":getCompPts(c)+" pts"}`}))}
               onSelect={v=>{
                 const found=explorerComps.find(c=>c.id===v)||null;
                 setSelComp(found); setSelNukes([]); setSelWhales([]);
@@ -622,9 +687,20 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
             const slots=Math.max(maxSlots,ms.length);
             return (
               <div key="scramble" style={{marginBottom:14}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>🏌️ Scramble</div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>Front 9 {defaultPts}pts · Back 9 {defaultPts}pts · 18-Holes {defaultPts*2}pts</div>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>🏌️ Scramble</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {[["Front 9",`${SCRAMBLE_KEY}_f9`,defaultPts],["Back 9",`${SCRAMBLE_KEY}_b9`,defaultPts],["18-Holes",`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>(
+                      <div key={key} style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>{lbl}:</span>
+                        <input type="number" min="0" step="0.5"
+                          value={ptsOverride[key]!==undefined?ptsOverride[key]:def}
+                          onChange={e=>setPtsOverride(p=>({...p,[key]:e.target.value}))}
+                          style={{width:36,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px"}}/>
+                        <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
                   {Array.from({length:slots}).map((_,i)=>{
@@ -634,7 +710,10 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                         <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
                       </div>
                     );
-                    const totalPts=defaultPts*4;
+                    const f9Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts;
+                    const b9Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts;
+                    const full18Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2;
+                    const totalPts=f9Pts+b9Pts+full18Pts;
                     const nExp=(m.prob*totalPts).toFixed(1);
                     const wExp=((1-m.prob)*totalPts).toFixed(1);
                     return (
@@ -644,11 +723,14 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                         {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                         <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
                         <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
-                        {[["Front 9",defaultPts],["Back 9",defaultPts],["18-Holes",defaultPts*2]].map(([lbl,pts])=>(
-                          <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.35)",marginBottom:1}}>
-                            <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{pts}pts</span>
-                          </div>
-                        ))}
+                        {[[`Front 9`,`${SCRAMBLE_KEY}_f9`,defaultPts],[`Back 9`,`${SCRAMBLE_KEY}_b9`,defaultPts],[`18-Holes`,`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>{
+                          const pts=Number(ptsOverride[key]||"")||def;
+                          return (
+                            <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.35)",marginBottom:1}}>
+                              <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{pts}pts</span>
+                            </div>
+                          );
+                        })}
                         <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"2px 0"}}>vs</div>
                         <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                         {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
@@ -719,7 +801,8 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
           let nExp=0,wExp=0,tPts=0;
           all.forEach(m=>{
             const isScr=m.isScramble||m.cid===SCRAMBLE_KEY;
-            const pts=isScr?(defaultPts*4):(Number(ptsOverride[m.cid]||"")||Number(m.pointsWorth)||defaultPts);
+            const scrPts=(Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2);
+            const pts=isScr?scrPts:(Number(ptsOverride[m.cid]||"")||Number(m.pointsWorth)||defaultPts);
             nExp+=m.prob*pts; wExp+=(1-m.prob)*pts; tPts+=pts;
           });
           const nPct=tPts>0?Math.round((nExp/tPts)*100):50;
@@ -1435,23 +1518,34 @@ export default function PublicApp({ onGoAdmin }) {
             return Math.round(hcaps[0] * 0.35 + hcaps[1] * 0.15);
           };
 
-          // Get historical win rate for a set of players
-          const getWinRate = (players) => {
-            if (!players?.length) return 0.5;
-            let wins = 0, total = 0;
+          // Get opponent-quality weighted win rate for a set of players
+          // compName: if provided, filter to that competition only
+          const getWeightedWinRateMatchups = (players, compName) => {
+            if (!players?.length) return null;
+            let weightedWins = 0, totalWeight = 0;
             history.forEach(yr => {
               (yr.matches||[]).forEach(m => {
                 if (m.type === "heading" || !m.winner) return;
-                const inNukes = players.some(p => (m.nukes||[]).includes(p));
-                const inWhales = players.some(p => (m.whales||[]).includes(p));
-                if (!inNukes && !inWhales) return;
-                total++;
-                const playerTeam = inNukes ? "nukes" : "whales";
-                if (m.winner === playerTeam) wins++;
-                else if (m.winner === "tie") wins += 0.5;
+                if (compName) {
+                  const mc = (m.roundName||m.competitionName||"").toLowerCase();
+                  if (!mc.includes(compName.toLowerCase().split(" ")[0])) return;
+                }
+                const inN = players.some(p => (m.nukes||[]).includes(p));
+                const inW = players.some(p => (m.whales||[]).includes(p));
+                if (!inN && !inW) return;
+                const oppTeam = inN ? "whales" : "nukes";
+                const oppPlayers = m[oppTeam] || [];
+                const oppAvgHcp = oppPlayers.length > 0
+                  ? oppPlayers.map(n => getHandicap(n)).reduce((s,h)=>s+h,0) / oppPlayers.length
+                  : 18;
+                const weight = Math.max(0.5, 1 + (18 - oppAvgHcp) / 18);
+                const pt = inN ? "nukes" : "whales";
+                const won = m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0;
+                weightedWins += won * weight;
+                totalWeight += weight;
               });
             });
-            return total >= 2 ? wins / total : 0.5; // need at least 2 matches
+            return totalWeight >= 2 ? weightedWins / totalWeight : null;
           };
 
           // Convert probability to American odds
@@ -1464,28 +1558,36 @@ export default function PublicApp({ onGoAdmin }) {
             }
           };
 
-          // Calculate odds for a matchup
-          const calcOdds = (nukes, whales, allowancePct) => {
+          // Adaptive odds model: blends handicap + all-time + competition-specific history
+          const calcOdds = (nukes, whales, allowancePct, compName) => {
             const nukeHcp  = teamHandicap(nukes, allowancePct);
             const whaleHcp = teamHandicap(whales, allowancePct);
-            const nukeWR   = getWinRate(nukes);
-            const whaleWR  = getWinRate(whales);
+            const hcpDiff  = whaleHcp - nukeHcp;
+            const hcpProb  = 0.5 + (hcpDiff * 0.03);
 
-            // Handicap probability — lower hcp = better, differential affects prob
-            const hcpDiff = whaleHcp - nukeHcp; // positive = nukes have lower hcp (better)
-            // Each stroke roughly = 3% probability shift (calibrated for golf)
-            const hcpProb = 0.5 + (hcpDiff * 0.03);
+            // All-time opponent-weighted win rate
+            const nAllTime = getWeightedWinRateMatchups(nukes, null);
+            const wAllTime = getWeightedWinRateMatchups(whales, null);
+            const hasAllTime = nAllTime !== null || wAllTime !== null;
+            const nA = nAllTime ?? 0.5, wA = wAllTime ?? 0.5;
+            const allTimeProb = hasAllTime ? (nA + wA > 0 ? nA / (nA + wA) : 0.5) : null;
 
-            // Historical win rate probability
-            const totalWR = nukeWR + whaleWR;
-            const histProb = totalWR > 0 ? nukeWR / totalWR : 0.5;
+            // Competition-specific win rate
+            const nComp = compName ? getWeightedWinRateMatchups(nukes, compName) : null;
+            const wComp = compName ? getWeightedWinRateMatchups(whales, compName) : null;
+            const hasCompSpec = nComp !== null || wComp !== null;
+            const nC = nComp ?? 0.5, wC = wComp ?? 0.5;
+            const compSpecProb = hasCompSpec ? (nC + wC > 0 ? nC / (nC + wC) : 0.5) : null;
 
-            // Blend: 60% handicap, 40% history
-            const hasHistory = (nukes||[]).some(p => getWinRate([p]) !== 0.5) ||
-                               (whales||[]).some(p => getWinRate([p]) !== 0.5);
-            const nukeProb = hasHistory
-              ? (hcpProb * 0.60 + histProb * 0.40)
-              : hcpProb;
+            // Blend based on available data
+            let nukeProb;
+            if (hasCompSpec && allTimeProb !== null) {
+              nukeProb = hcpProb * 0.50 + allTimeProb * 0.25 + compSpecProb * 0.25;
+            } else if (allTimeProb !== null) {
+              nukeProb = hcpProb * 0.75 + allTimeProb * 0.25;
+            } else {
+              nukeProb = hcpProb;
+            }
 
             const clampedProb = Math.max(0.1, Math.min(0.9, nukeProb));
             return {
@@ -1567,7 +1669,7 @@ export default function PublicApp({ onGoAdmin }) {
                           return 100;
                         })();
                         const isAdj = Number(allowance) < 100;
-                        const odds = calcOdds(m.nukes, m.whales, Number(allowance));
+                        const odds = calcOdds(m.nukes, m.whales, Number(allowance), m.competitionName||round.competitionName||"");
                         const nukeHcp = teamHandicap(m.nukes, Number(allowance));
                         const whaleHcp = teamHandicap(m.whales, Number(allowance));
                         return (
