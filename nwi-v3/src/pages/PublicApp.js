@@ -1020,6 +1020,102 @@ export default function PublicApp({ onGoAdmin }) {
 
   const tournamentDate = new Date((meta?.date || "2026-08-13") + "T" + (meta?.startTime || "10:00") + ":00");
 
+  // ── Analytics tracking ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const sessionKey = "nwi_session_id";
+    const sessionStartKey = "nwi_session_start";
+    const sessionTabsKey = "nwi_session_tabs";
+    const now = Date.now();
+    const ua = navigator.userAgent;
+    const deviceType = /iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/.test(ua) ? "android" : "desktop";
+
+    // Get or create session (30 min timeout)
+    let sessionId = sessionStorage.getItem(sessionKey);
+    const sessionStart = parseInt(sessionStorage.getItem(sessionStartKey) || "0");
+    const isNewSession = !sessionId || (now - sessionStart) > 30 * 60 * 1000;
+
+    if (isNewSession) {
+      sessionId = Math.random().toString(36).slice(2);
+      sessionStorage.setItem(sessionKey, sessionId);
+      sessionStorage.setItem(sessionStartKey, String(now));
+      sessionStorage.setItem(sessionTabsKey, "[]");
+      // Log new session
+      const logSession = async () => {
+        try {
+          const { firestore } = await import("../firebase/hooks");
+          await firestore.set("analytics", sessionId, {
+            deviceId,
+            deviceType,
+            sessionId,
+            startedAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            tabsVisited: ["leaderboard"],
+            duration: 0,
+          });
+        } catch(e) {}
+      };
+      logSession();
+    }
+  }, []);
+
+  // Track tab changes
+  useEffect(() => {
+    const sessionKey = "nwi_session_id";
+    const sessionTabsKey = "nwi_session_tabs";
+    const sessionStartKey = "nwi_session_start";
+    const sessionId = sessionStorage.getItem(sessionKey);
+    if (!sessionId) return;
+    const updateTab = async () => {
+      try {
+        const { firestore } = await import("../firebase/hooks");
+        const tabs = JSON.parse(sessionStorage.getItem(sessionTabsKey) || "[]");
+        if (!tabs.includes(tab)) tabs.push(tab);
+        sessionStorage.setItem(sessionTabsKey, JSON.stringify(tabs));
+        const start = parseInt(sessionStorage.getItem(sessionStartKey) || "0");
+        const duration = Math.round((Date.now() - start) / 1000);
+        await firestore.update("analytics", sessionId, {
+          tabsVisited: tabs,
+          lastActiveAt: new Date().toISOString(),
+          duration,
+        });
+      } catch(e) {}
+    };
+    updateTab();
+  }, [tab]);
+
+  // ── Analytics tracking ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const now = Date.now();
+    const ua = navigator.userAgent;
+    const deviceType = /iPhone|iPad|iPod/.test(ua)?"ios":/Android/.test(ua)?"android":"desktop";
+    const sessionKey = "nwi_session_id";
+    const sessionStartKey = "nwi_session_start";
+    let sessionId = sessionStorage.getItem(sessionKey);
+    const sessionStart = parseInt(sessionStorage.getItem(sessionStartKey)||"0");
+    const isNew = !sessionId||(now-sessionStart)>30*60*1000;
+    if(isNew){
+      sessionId = Math.random().toString(36).slice(2);
+      sessionStorage.setItem(sessionKey,sessionId);
+      sessionStorage.setItem(sessionStartKey,String(now));
+      sessionStorage.setItem("nwi_session_tabs",JSON.stringify(["leaderboard"]));
+      (async()=>{try{const {firestore}=await import("../firebase/hooks");await firestore.set("analytics",sessionId,{deviceId,deviceType,sessionId,startedAt:new Date().toISOString(),lastActiveAt:new Date().toISOString(),tabsVisited:["leaderboard"],duration:0});}catch(e){}})();
+    }
+  }, []);
+
+  useEffect(() => {
+    const sessionId = sessionStorage.getItem("nwi_session_id");
+    if(!sessionId) return;
+    (async()=>{try{
+      const {firestore}=await import("../firebase/hooks");
+      const tabs=JSON.parse(sessionStorage.getItem("nwi_session_tabs")||"[]");
+      if(!tabs.includes(tab)) tabs.push(tab);
+      sessionStorage.setItem("nwi_session_tabs",JSON.stringify(tabs));
+      const start=parseInt(sessionStorage.getItem("nwi_session_start")||"0");
+      const duration=Math.round((Date.now()-start)/1000);
+      await firestore.update("analytics",sessionId,{tabsVisited:tabs,lastActiveAt:new Date().toISOString(),duration});
+    }catch(e){}})();
+  }, [tab]);
+
   // ── Countdown ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const tick = () => {
