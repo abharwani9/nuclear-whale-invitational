@@ -2203,7 +2203,8 @@ function AnalyticsSection({ sessions: rawSessions }) {
   };
 
   // Debug: show what we have
-  const debugInfo = sessions.length > 0 ? `${sessions.length} total · sample: ${sessions[0]?.startedAt?.slice(0,19)}` : "no sessions loaded";
+  const withDate = sessions.filter(s=>s.startedAt);
+  const debugInfo = `${sessions.length} total · ${withDate.length} with date · sample: ${withDate[0]?.startedAt?.slice(0,19)||"none"}`;
 
   const filtered = getFiltered();
   const uniqueDevices = new Set(filtered.map(s => s.deviceId)).size;
