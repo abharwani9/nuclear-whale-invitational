@@ -69,6 +69,7 @@ const SECTIONS = [
   { id:"history",      label:"History",          icon:"📜" },
   { id:"rules",        label:"Rules",            icon:"📋" },
   { id:"settings",     label:"Settings",         icon:"⚙️"  },
+  { id:"analytics",    label:"Analytics",        icon:"📊" },
 ];
 
 export default function AdminPanel({ authed, onAuth, onBack }) {
@@ -150,6 +151,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
         {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
         {section==="settings"     && <SettingsSection meta={meta} history={history} competitions={competitions} showToast={showToast}/>}
+        {section==="analytics"    && <AnalyticsSection/>}
       </div>
     </div>
   );
@@ -2158,6 +2160,165 @@ function SettingsSection({ meta, history, competitions, showToast }) {
             }
           }}>Remove All Subscribers</button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyticsSection() {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("week"); // today / week / all
+
+  useEffect(() => {
+    const loadSessions = async () => {
+      try {
+        const { db } = await import("../firebase/config");
+        const { collection, getDocs, orderBy, query } = await import("firebase/firestore");
+        const q = query(collection(db, "analytics"), orderBy("startedAt", "desc"));
+        const snap = await getDocs(q);
+        setSessions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch(e) { console.log("analytics load error:", e); }
+      setLoading(false);
+    };
+    loadSessions();
+  }, []);
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0,10);
+  const weekAgo = new Date(now - 7*24*60*60*1000).toISOString();
+
+  const filtered = sessions.filter(s => {
+    if(filter==="today") return s.startedAt?.slice(0,10)===todayStr;
+    if(filter==="week") return s.startedAt >= weekAgo;
+    return true;
+  });
+
+  const uniqueDevices = new Set(filtered.map(s=>s.deviceId)).size;
+  const avgDuration = filtered.length ? Math.round(filtered.reduce((a,s)=>a+(s.duration||0),0)/filtered.length) : 0;
+  const fmtDuration = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+
+  const TAB_LABELS = {
+    leaderboard:"Leaderboard",individual:"Individual",alltime:"All-Time",
+    matchups:"Matchups",countdown:"Countdown",schedule:"Schedule",
+    competitions:"Competitions","hole-in-one":"Hole-in-One",superlatives:"Superlatives",
+    players:"Players",history:"History",media:"Media",rules:"Rules",mockdraft:"Mock Draft"
+  };
+
+  // Tab popularity
+  const tabCounts = {};
+  filtered.forEach(s=>(s.tabsVisited||[]).forEach(t=>{tabCounts[t]=(tabCounts[t]||0)+1;}));
+  const tabsSorted = Object.entries(tabCounts).sort((a,b)=>b[1]-a[1]);
+  const maxTabCount = tabsSorted[0]?.[1]||1;
+
+  // Hour distribution
+  const hourCounts = Array(24).fill(0);
+  filtered.forEach(s=>{
+    if(s.startedAt) hourCounts[new Date(s.startedAt).getHours()]++;
+  });
+  const maxHour = Math.max(...hourCounts,1);
+
+  // Device breakdown
+  const deviceCounts = {ios:0,android:0,desktop:0};
+  filtered.forEach(s=>{if(s.deviceType) deviceCounts[s.deviceType]=(deviceCounts[s.deviceType]||0)+1;});
+
+  const s = {
+    card:{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px", marginBottom:12 },
+    label:{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 },
+    val:{ fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 },
+    sub:{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:3 },
+  };
+
+  return (
+    <div>
+      <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:16}}>📊 Analytics</div>
+
+      {/* Filter */}
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {[["today","Today"],["week","This Week"],["all","All Time"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)}
+            style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===v?"rgba(255,200,0,0.5)":"rgba(255,255,255,0.1)"}`,background:filter===v?"rgba(255,200,0,0.1)":"transparent",color:filter===v?"#ffd700":"rgba(255,255,255,0.5)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{color:"rgba(255,255,255,0.3)",textAlign:"center",padding:40}}>Loading analytics...</div>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            {[
+              ["Sessions",filtered.length,"opens in period"],
+              ["Unique Devices",uniqueDevices,"distinct users"],
+              ["Avg Duration",fmtDuration(avgDuration),"per session"],
+              ["Device Split",`📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}`,"ios/android · desktop"],
+            ].map(([label,val,sub])=>(
+              <div key={label} style={s.card}>
+                <div style={s.label}>{label}</div>
+                <div style={s.val}>{val}</div>
+                <div style={s.sub}>{sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Tab popularity */}
+          <div style={s.card}>
+            <div style={{...s.label,marginBottom:12}}>Tab Popularity</div>
+            {tabsSorted.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data yet</div>:
+              tabsSorted.map(([t,count])=>(
+                <div key={t} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                    <span style={{fontSize:12,fontWeight:600}}>{TAB_LABELS[t]||t}</span>
+                    <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{count} visits</span>
+                  </div>
+                  <div style={{height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${(count/maxTabCount)*100}%`,background:"linear-gradient(90deg,#ff8c00,#ffd700)",borderRadius:3}}/>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+
+          {/* Usage by hour */}
+          <div style={s.card}>
+            <div style={{...s.label,marginBottom:12}}>Opens by Hour of Day</div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:3,height:60}}>
+              {hourCounts.map((count,h)=>(
+                <div key={h} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                  <div style={{width:"100%",height:`${Math.max(2,(count/maxHour)*52)}px`,background:count>0?"rgba(255,140,0,0.7)":"rgba(255,255,255,0.06)",borderRadius:2}}/>
+                  {h%6===0&&<div style={{fontSize:7,color:"rgba(255,255,255,0.3)"}}>{h}h</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recent sessions */}
+          <div style={s.card}>
+            <div style={{...s.label,marginBottom:12}}>Recent Sessions</div>
+            {filtered.slice(0,20).map(sess=>{
+              const dt = sess.startedAt ? new Date(sess.startedAt) : null;
+              const timeStr = dt ? dt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—";
+              const icon = sess.deviceType==="ios"?"📱":sess.deviceType==="android"?"🤖":"💻";
+              return (
+                <div key={sess.id} style={{padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:14}}>{icon}</span>
+                      <div>
+                        <div style={{fontSize:11,fontWeight:600}}>{timeStr}</div>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>{fmtDuration(sess.duration||0)} · {(sess.tabsVisited||[]).map(t=>TAB_LABELS[t]||t).join(" → ")}</div>
+                      </div>
+                    </div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{sess.deviceId?.slice(0,6)}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length===0&&<div style={{color:"rgba(255,255,255,0.25)",fontSize:12,textAlign:"center",padding:"16px 0"}}>No sessions yet — analytics will appear once users open the app</div>}
+          </div>
+        </>
       )}
     </div>
   );
