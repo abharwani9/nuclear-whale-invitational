@@ -1074,10 +1074,13 @@ export default function PublicApp({ onGoAdmin }) {
         sessionStorage.setItem("nwi_session_tabs", JSON.stringify(tabs));
         const start = parseInt(sessionStorage.getItem("nwi_session_start") || "0");
         const duration = Math.round((Date.now() - start) / 1000);
+        const start2 = sessionStorage.getItem("nwi_session_start");
         await setDoc(doc(db, "analytics", sessionId), {
           tabsVisited: tabs,
           lastActiveAt: new Date().toISOString(),
           duration,
+          // Always include startedAt in case initial write hasn't completed
+          startedAt: start2 ? new Date(parseInt(start2)).toISOString() : new Date().toISOString(),
         }, { merge: true });
       } catch(e) { console.log("analytics tab update error:", e); }
     })();
@@ -1343,11 +1346,11 @@ export default function PublicApp({ onGoAdmin }) {
 
       {/* Fixed admin button — top right corner */}
       <button onClick={onGoAdmin} style={{
-        position:"fixed", top:12, right:12, zIndex:999,
-        background:"rgba(0,0,0,0.6)", backdropFilter:"blur(8px)",
-        border:"1px solid rgba(255,255,255,0.15)", borderRadius:8,
-        color:"rgba(255,255,255,0.6)", fontFamily:"inherit",
-        fontSize:11, fontWeight:700, padding:"6px 12px", cursor:"pointer",
+        position:"fixed", bottom:24, left:16, zIndex:999,
+        background:"rgba(0,0,0,0.7)", backdropFilter:"blur(8px)",
+        border:"1px solid rgba(255,255,255,0.15)", borderRadius:20,
+        color:"rgba(255,255,255,0.5)", fontFamily:"inherit",
+        fontSize:11, fontWeight:700, padding:"7px 14px", cursor:"pointer",
         letterSpacing:"0.05em"
       }}>⚙️ Admin</button>
 
