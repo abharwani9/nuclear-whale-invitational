@@ -1341,6 +1341,16 @@ export default function PublicApp({ onGoAdmin }) {
         </div>
       </div>
 
+      {/* Fixed admin button — top right corner */}
+      <button onClick={onGoAdmin} style={{
+        position:"fixed", top:12, right:12, zIndex:999,
+        background:"rgba(0,0,0,0.6)", backdropFilter:"blur(8px)",
+        border:"1px solid rgba(255,255,255,0.15)", borderRadius:8,
+        color:"rgba(255,255,255,0.6)", fontFamily:"inherit",
+        fontSize:11, fontWeight:700, padding:"6px 12px", cursor:"pointer",
+        letterSpacing:"0.05em"
+      }}>⚙️ Admin</button>
+
       {/* Tab bar — full width, centered on desktop, scrollable on mobile */}
       <div className="tab-bar">
         {TABS.map(t => (
@@ -1356,9 +1366,8 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── LEADERBOARD ── */}
         {tab==="leaderboard" && (
           <div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <div style={{ marginBottom:16 }}>
               <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>Standings</div>
-              <button className="ghost-btn" onClick={onGoAdmin}>Admin</button>
             </div>
             <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
               {[["team","🏆 Team"],["individual","👤 Individual"],["alltime","📜 All-Time"]].map(([id,label])=>(
