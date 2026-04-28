@@ -74,7 +74,7 @@ const SECTIONS = [
 
 export default function AdminPanel({ authed, onAuth, onBack }) {
   const [code, setCode]       = useState("");
-  const [section, setSection] = useState(()=>sessionStorage.getItem("nwi_admin_section")||"rounds");
+  const [section, setSection] = useState(()=>{ try{ return sessionStorage.getItem("nwi_admin_section")||"rounds"; }catch(e){ return "rounds"; } });
   const [toast, setToast]     = useState(null);
   const [seeding, setSeeding] = useState(false);
 
@@ -2168,7 +2168,8 @@ function SettingsSection({ meta, history, competitions, showToast }) {
 function AnalyticsSection() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("week"); // today / week / all
+  const [filter, setFilter] = useState("today");
+  const [customMonths, setCustomMonths] = useState(3);
 
   useEffect(() => {
     const loadSessions = async () => {
@@ -2186,17 +2187,26 @@ function AnalyticsSection() {
   }, []);
 
   const now = new Date();
-  // Use local date string for "today" comparison
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-  const weekAgoMs = now.getTime() - 7*24*60*60*1000;
+
+  // Parse startedAt handling both ISO strings and Firestore Timestamps
+  const parseDate = (startedAt) => {
+    if(!startedAt) return null;
+    if(typeof startedAt === "string") return new Date(startedAt);
+    if(startedAt.toDate) return startedAt.toDate(); // Firestore Timestamp
+    if(startedAt.seconds) return new Date(startedAt.seconds * 1000); // Timestamp object
+    return new Date(startedAt);
+  };
+
+  const toLocalDateStr = (d) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` : "";
 
   const filtered = sessions.filter(s => {
-    if(!s.startedAt) return filter==="all";
-    const d = new Date(s.startedAt);
-    const dLocal = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    if(filter==="today") return dLocal===todayStr;
-    if(filter==="week") return d.getTime() >= weekAgoMs;
-    return true;
+    const d = parseDate(s.startedAt);
+    if(!d||isNaN(d.getTime())) return filter==="all";
+    if(filter==="today") return toLocalDateStr(d)===todayStr;
+    if(filter==="week") return d.getTime() >= now.getTime()-7*24*60*60*1000;
+    if(filter==="custom") return d.getTime() >= now.getTime()-customMonths*30*24*60*60*1000;
+    return true; // all
   });
 
   const uniqueDevices = new Set(filtered.map(s=>s.deviceId)).size;
@@ -2219,7 +2229,7 @@ function AnalyticsSection() {
   // Hour distribution (local time)
   const hourCounts = Array(24).fill(0);
   filtered.forEach(s=>{
-    if(s.startedAt) hourCounts[new Date(s.startedAt).getHours()]++;
+    const hd=parseDate(s.startedAt); if(hd&&!isNaN(hd.getTime())) hourCounts[hd.getHours()]++;
   });
   const maxHour = Math.max(...hourCounts,1);
   const peakHour = hourCounts.indexOf(maxHour);
@@ -2241,14 +2251,25 @@ function AnalyticsSection() {
       <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:16}}>📊 Analytics</div>
 
       {/* Filter */}
-      <div style={{display:"flex",gap:6,marginBottom:16}}>
-        {[["today","Today"],["week","This Week"],["all","All Time"]].map(([v,l])=>(
+      <div style={{display:"flex",gap:6,marginBottom:filter==="custom"?8:16,flexWrap:"wrap"}}>
+        {[["today","Today"],["week","This Week"],["custom","Last X Months"],["all","All Time"]].map(([v,l])=>(
           <button key={v} onClick={()=>setFilter(v)}
             style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===v?"rgba(255,200,0,0.5)":"rgba(255,255,255,0.1)"}`,background:filter===v?"rgba(255,200,0,0.1)":"transparent",color:filter===v?"#ffd700":"rgba(255,255,255,0.5)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
             {l}
           </button>
         ))}
       </div>
+      {filter==="custom"&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Show last</span>
+          {[1,2,3,6,12].map(m=>(
+            <button key={m} onClick={()=>setCustomMonths(m)}
+              style={{padding:"4px 10px",borderRadius:16,border:`1px solid ${customMonths===m?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.1)"}`,background:customMonths===m?"rgba(255,200,0,0.08)":"transparent",color:customMonths===m?"#ffd700":"rgba(255,255,255,0.4)",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {m}mo
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div style={{color:"rgba(255,255,255,0.3)",textAlign:"center",padding:40}}>Loading analytics...</div>
@@ -2315,7 +2336,7 @@ function AnalyticsSection() {
           <div style={s.card}>
             <div style={{...s.label,marginBottom:12}}>Recent Sessions</div>
             {filtered.slice(0,20).map(sess=>{
-              const dt = sess.startedAt ? new Date(sess.startedAt) : null;
+              const dt = parseDate(sess.startedAt);
               const timeStr = dt ? dt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—";
               const icon = sess.deviceType==="ios"?"📱":sess.deviceType==="android"?"🤖":"💻";
               return (
