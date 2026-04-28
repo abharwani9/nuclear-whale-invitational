@@ -997,6 +997,7 @@ export default function PublicApp({ onGoAdmin }) {
   const [indSort, setIndSort]       = useState("ptsWon");
   const [indDir, setIndDir]         = useState("desc");
   const indSortLabels = { ptsWon:"points won", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
+  const [playersSort, setPlayersSort] = useState("alpha");
 
   const { data: roster }       = useCollection("roster");       // master player profiles
   const { data: rounds }       = useCollection("rounds");
@@ -1883,10 +1884,23 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── PLAYERS ── */}
         {tab==="players" && (
           <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:6 }}>Player Profiles</div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+              <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>Player Profiles</div>
+              <select value={playersSort||"alpha"} onChange={e=>setPlayersSort(e.target.value)}
+                style={{ background:"#1a2235", border:"1px solid rgba(255,255,255,0.2)", borderRadius:6, color:"#e8edf3", fontFamily:"inherit", fontSize:11, padding:"4px 6px" }}>
+                <option value="alpha">A–Z</option>
+                <option value="hcp">By HCP</option>
+              </select>
+            </div>
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:20 }}>Tap any player to see their full profile</div>
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {[...roster].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{
+              {[...roster].sort((a,b)=>{
+                if((playersSort||"alpha")==="hcp"){
+                  const ha=parseFloat(a.handicap)||99, hb=parseFloat(b.handicap)||99;
+                  return ha-hb;
+                }
+                return a.name.localeCompare(b.name);
+              }).map(p=>{
                 const team = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
                 const tc = team ? TEAMS[team] : null;
                 const at = allTimeStats[p.name];
