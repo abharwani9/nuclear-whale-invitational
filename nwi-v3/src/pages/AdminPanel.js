@@ -2229,8 +2229,11 @@ function AnalyticsSection({ sessions: rawSessions }) {
   const tabsSorted = Object.entries(tabCounts).sort((a,b) => b[1]-a[1]);
   const maxTab = tabsSorted[0]?.[1] || 1;
 
-  const deviceCounts = { ios:0, android:0, desktop:0 };
-  filtered.forEach(s => { if(s.deviceType) deviceCounts[s.deviceType] = (deviceCounts[s.deviceType]||0)+1; });
+  const deviceCounts = { ios:0, android:0, desktop:0, unknown:0 };
+  filtered.forEach(s => {
+    const dt = s.deviceType||"unknown";
+    deviceCounts[dt] = (deviceCounts[dt]||0)+1;
+  });
 
   const useHourChart = filter === "today" || filter === "week";
   const hourCounts = Array(24).fill(0);
@@ -2286,7 +2289,7 @@ function AnalyticsSection({ sessions: rawSessions }) {
               ["Sessions", filtered.length, "opens"],
               ["Unique Devices", uniqueDevices, "distinct users"],
               ["Avg Duration", fmtDur(avgDur), "per session"],
-              ["Devices", `📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}`, "mobile · desktop"],
+              ["Devices", `📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}${deviceCounts.unknown?` ❓${deviceCounts.unknown}`:""}`, "mobile · desktop · unknown"],
             ].map(([label,val,sub])=>(
               <div key={label} style={st.card}>
                 <div style={st.lbl}>{label}</div>
