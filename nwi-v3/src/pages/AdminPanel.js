@@ -1,2519 +1,2381 @@
-// src/pages/PublicApp.js
-import { useState, useEffect } from "react";
-import { useCollection, useDocument } from "../firebase/hooks";
-import { messaging, getToken, onMessage, VAPID_KEY } from "../firebase/config";
-import MediaGallery from "./MediaGallery";
+// src/pages/AdminPanel.js
+import { useState, useRef, useEffect } from "react";
+import { useCollection, useDocument, firestore } from "../firebase/hooks";
+import { uploadToCloudinary } from "../cloudinary/config";
+import { seedDatabase } from "../firebase/seed";
+import AdminMedia from "./AdminMedia";
 
-const TEAMS = {
-  nukes:  { name: "THE NUKES",  emoji: "☢️", color: "#ff4500", bg: "rgba(255,69,0,0.1)"   },
-  whales: { name: "THE WHALES", emoji: "🐋", color: "#00aaff", bg: "rgba(0,170,255,0.1)" },
-};
+// ── DRAG-TO-REORDER HOOK ─────────────────────────────────────────────────────
+// Saves all item orders to Firebase in one batch when drag ends
+async function saveOrder(items, collection) {
+  for (let i = 0; i < items.length; i++) {
+    await firestore.update(collection, items[i].id, { order: i * 10 });
+  }
+}
 
-const TABS = [
-  { id: "leaderboard",  label: "Leaderboard",  icon: "🏆" },
-  { id: "matchups",     label: "Matchups",      icon: "⚔️"  },
-  { id: "countdown",    label: "Countdown",     icon: "⏳" },
-  { id: "schedule",     label: "Schedule",      icon: "📅" },
-  { id: "competitions", label: "Competitions",  icon: "🎯" },
-  { id: "hole",         label: "Hole-in-One",   icon: "⛳" },
-  { id: "superlatives", label: "Superlatives",  icon: "🏅" },
-  { id: "players",      label: "Players",       icon: "👤" },
-  { id: "history",      label: "History",       icon: "📜" },
-  { id: "media",        label: "Media",         icon: "🎬" },
-  { id: "rules",        label: "Rules",         icon: "📋" },
-  { id: "mockdraft",    label: "Mock Draft",    icon: "🃏" },
-];
+function useDragList(initialItems) {
+  const [items, setItems] = useState(initialItems);
+  const dragIdx = useRef(null);
+  const [dragOver, setDragOver] = useState(null);
 
-function SuperlativesTab({ meta, roster, votes, drafts }) {
-  const categories = meta?.superlativeCategories || [];
-  const votingOpen = meta?.votingOpen === true;
+  // Keep in sync with Firebase updates
+  useEffect(() => { setItems(initialItems); }, [JSON.stringify(initialItems.map(x=>x.id))]);
 
-  const deviceId = (() => {
-    let id = localStorage.getItem("nwi_device_id");
-    if (!id) { id = Math.random().toString(36).slice(2); localStorage.setItem("nwi_device_id", id); }
-    return id;
-  })();
-
-  const myVoteDoc = votes?.find(v => v.id === deviceId);
-  const myVotes = myVoteDoc?.votes || {};
-  const hasSubmitted = !!myVoteDoc?.submittedAt;
-
-  const [selections, setSelections] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-
-  // Only show players in the current year draft
-  const currentYearStr = String(meta?.year || new Date().getFullYear());
-  const currentDraft = (drafts || []).find(d => String(d.year) === currentYearStr);
-  const assignments = currentDraft?.assignments || {};
-  const draftedPlayers = roster.filter(p => assignments[p.name] && assignments[p.name] !== "out");
-  const sortedRoster = draftedPlayers.length > 0
-    ? [...draftedPlayers].sort((a,b)=>a.name.localeCompare(b.name))
-    : [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-
-  const handleSubmit = async () => {
-    const allAnswered = categories.every(c => selections[c]);
-    if (!allAnswered) { alert("Please vote in every category before submitting."); return; }
-    setSubmitting(true);
-    const { firestore } = await import("../firebase/hooks");
-    await firestore.set("votes", deviceId, { votes: selections, submittedAt: new Date().toISOString(), deviceId });
-    setSubmitted(true);
-    setSubmitting(false);
+  const onDragStart = (i) => { dragIdx.current = i; };
+  const onDragEnter = (i) => {
+    if (dragIdx.current === null || dragIdx.current === i) return;
+    setItems(prev => {
+      const arr = [...prev];
+      const [moved] = arr.splice(dragIdx.current, 1);
+      arr.splice(i, 0, moved);
+      dragIdx.current = i;
+      return arr;
+    });
+    setDragOver(i);
+  };
+  const onDragEnd = async (collection) => {
+    dragIdx.current = null;
+    setDragOver(null);
+    await saveOrder(items, collection);
   };
 
-  if (!votingOpen) return (
-    <div style={{ textAlign:"center", padding:"60px 20px" }}>
-      <div style={{ fontSize:48, marginBottom:16 }}>🏅</div>
-      <div style={{ fontSize:22, fontWeight:800, color:"#e8edf3", marginBottom:8 }}>Voting Not Open Yet</div>
-      <div style={{ fontSize:14, color:"rgba(255,255,255,0.35)" }}>Check back during the tournament when voting opens.</div>
+  return { items, dragOver, onDragStart, onDragEnter, onDragEnd };
+}
+
+const ADMIN_CODES = ["nuke2026", "whale2026", "admin2026"];
+
+const s = {
+  label:    { fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 },
+  input:    { background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:14, padding:"9px 12px", width:"100%", outline:"none" },
+  select:   { background:"#1a2035", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:14, padding:"9px 12px", width:"100%", outline:"none" },
+  card:     { background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"18px 16px", marginBottom:10 },
+  btnFire:  { padding:"9px 18px", background:"linear-gradient(135deg,#ff4500,#ff8c00)", border:"none", borderRadius:8, color:"#fff", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" },
+  btnBlue:  { padding:"9px 18px", background:"linear-gradient(135deg,#0066cc,#00ccff)", border:"none", borderRadius:8, color:"#fff", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" },
+  btnGhost: { padding:"8px 14px", background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:12, fontWeight:600, cursor:"pointer" },
+  btnDanger:{ padding:"7px 12px", background:"rgba(220,30,30,0.15)", border:"1px solid rgba(220,30,30,0.4)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, cursor:"pointer" },
+  row:      { display:"flex", gap:8, alignItems:"center" },
+  grid2:    { display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 },
+  sectionTitle: { fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 },
+};
+
+const SECTIONS = [
+  { id:"roster",       label:"Player Roster",    icon:"👤" },
+  { id:"draft",        label:"Draft / Teams",    icon:"🎲" },
+  { id:"rounds",       label:"Rounds",           icon:"⚔️"  },
+  { id:"schedule",     label:"Schedule",         icon:"📅" },
+  { id:"competitions", label:"Competitions",     icon:"🎯" },
+  { id:"hole",         label:"Hole-in-One Pool", icon:"⛳" },
+  { id:"media",        label:"Media Vault",      icon:"🎬" },
+  { id:"history",      label:"History",          icon:"📜" },
+  { id:"rules",        label:"Rules",            icon:"📋" },
+  { id:"settings",     label:"Settings",         icon:"⚙️"  },
+  { id:"analytics",    label:"Analytics",        icon:"📊" },
+];
+
+export default function AdminPanel({ authed, onAuth, onBack }) {
+  const [code, setCode]       = useState("");
+  const [section, setSection] = useState(()=>{ try{ return sessionStorage.getItem("nwi_admin_section")||"rounds"; }catch(e){ return "rounds"; } });
+  const [toast, setToast]     = useState(null);
+  const [seeding, setSeeding] = useState(false);
+
+  const { data: roster }       = useCollection("roster");
+  const { data: rounds }       = useCollection("rounds");
+  const { data: schedule }     = useCollection("schedule");
+  const { data: competitions } = useCollection("competitions");
+  const { data: history }      = useCollection("history");
+  const { data: rules }        = useCollection("rules", "order");
+  const { data: analytics }    = useCollection("analytics");
+  const { data: meta }         = useDocument("meta", "tournament");
+  const { data: drafts }       = useCollection("drafts");
+  const { data: holePool }     = useCollection("holepool");
+
+  const showToast = (msg, err=false) => { setToast({msg,err}); setTimeout(()=>setToast(null), 3000); };
+  const tryLogin  = () => {
+    if (ADMIN_CODES.includes(code.trim())) { onAuth(); setCode(""); }
+    else showToast("Invalid access code", true);
+  };
+  const handleSeed = async () => {
+    if (!window.confirm("Populate with starter data? Only do once on fresh setup.")) return;
+    setSeeding(true); await seedDatabase(); setSeeding(false);
+  };
+
+  if (!authed) return (
+    <div style={{ minHeight:"100vh", background:"#07090e", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Barlow Condensed',sans-serif", padding:20 }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&display=swap');*{box-sizing:border-box;margin:0;padding:0;}`}</style>
+      <div style={{ ...s.card, width:"100%", maxWidth:360, textAlign:"center" }}>
+        <div style={{ fontSize:32, marginBottom:8 }}>🔐</div>
+        <div style={{ fontSize:22, fontWeight:800, color:"#e8edf3", marginBottom:4 }}>ADMIN PANEL</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:24 }}>Nuclear Whale Invitational</div>
+        <input type="password" placeholder="Enter access code" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryLogin()} style={{ ...s.input, marginBottom:12, textAlign:"center", letterSpacing:"0.12em" }}/>
+        <button style={{ ...s.btnFire, width:"100%", marginBottom:10 }} onClick={tryLogin}>Unlock</button>
+        <button style={{ ...s.btnGhost, width:"100%" }} onClick={onBack}>← Back to App</button>
+        {toast&&<div style={{ marginTop:12, fontSize:13, color:toast.err?"#ff5555":"#4ade80" }}>{toast.msg}</div>}
+      </div>
     </div>
   );
 
-  if (submitted || hasSubmitted) {
-    const displayVotes = hasSubmitted ? myVotes : selections;
-    return (
-      <div>
-        <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏅 Superlatives</div>
-        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Your votes are in! Results will be revealed by the admin.</div>
-        {categories.map(cat => {
-          const pick = displayVotes[cat];
-          const p = roster.find(r => r.name === pick);
-          return (
-            <div key={cat} className="card" style={{ padding:"12px 14px", marginBottom:8, display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 }}>{cat}</div>
-                <div style={{ fontWeight:700, fontSize:15 }}>{pick || "—"}</div>
-              </div>
-              {p?.photoURL
-                ? <img src={p.photoURL} alt={pick} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>
-                : <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800 }}>{pick?.[0]}</div>}
-            </div>
-          );
-        })}
+  return (
+    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        input:focus,select:focus,textarea:focus{border-color:rgba(255,255,255,0.3)!important;outline:none;}
+        textarea{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e8edf3;font-family:'Barlow',sans-serif;font-size:14px;padding:9px 12px;width:100%;resize:vertical;}
+        .sec-btn{flex-shrink:0;padding:7px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.45);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+        .sec-btn.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;}
+      `}</style>
+
+      <div style={{ background:"#0d1520", borderBottom:"1px solid rgba(255,255,255,0.08)", padding:"12px 16px" }}>
+        <div style={{ maxWidth:720, margin:"0 auto", display:"flex", alignItems:"center", gap:10 }}>
+          <button style={s.btnGhost} onClick={onBack}>← App</button>
+          <div style={{ flex:1, fontSize:17, fontWeight:800 }}>☢️🐋 ADMIN PANEL</div>
+          <button style={{ ...s.btnGhost, borderColor:"rgba(255,69,0,0.4)", color:"#ff4500", fontSize:11 }} onClick={handleSeed} disabled={seeding}>{seeding?"Seeding...":"⚡ Seed DB"}</button>
+        </div>
       </div>
-    );
-  }
+
+      <div style={{ background:"#0a0f1a", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"8px 16px", display:"flex", gap:6, overflowX:"auto", scrollbarWidth:"none" }}>
+        {SECTIONS.map(sec=>(
+          <button key={sec.id} className={`sec-btn${section===sec.id?" active":""}`} onClick={()=>{sessionStorage.setItem("nwi_admin_section",sec.id);setSection(sec.id);}}>{sec.icon} {sec.label}</button>
+        ))}
+      </div>
+
+      <div style={{ maxWidth:720, margin:"0 auto", padding:"20px 16px 60px" }}>
+        {toast&&<div style={{ marginBottom:12, padding:"10px 14px", borderRadius:8, background:toast.err?"rgba(220,30,30,0.15)":"rgba(74,222,128,0.12)", border:`1px solid ${toast.err?"rgba(220,30,30,0.4)":"rgba(74,222,128,0.3)"}`, fontSize:14, color:toast.err?"#ff5555":"#4ade80" }}>{toast.msg}</div>}
+
+        {section==="roster"       && <RosterSection roster={roster} showToast={showToast}/>}
+        {section==="draft"        && <DraftSection roster={roster} drafts={drafts} showToast={showToast}/>}
+        {section==="rounds"       && <RoundsSection rounds={rounds} roster={roster} drafts={drafts} competitions={competitions} meta={meta} showToast={showToast}/>}
+        {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
+        {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
+        {section==="hole"         && <HoleInOneSection roster={roster} holePool={holePool} meta={meta} showToast={showToast}/>}
+        {section==="media"        && <AdminMedia showToast={showToast}/>}
+        {section==="history"      && <HistorySection history={history} drafts={drafts} roster={roster} competitions={competitions} rounds={rounds} meta={meta} showToast={showToast}/>}
+        {section==="rules"        && <RulesSection rules={rules} showToast={showToast}/>}
+        {section==="settings"     && <SettingsSection meta={meta} history={history} competitions={competitions} showToast={showToast}/>}
+        {section==="analytics"    && <AnalyticsSection sessions={analytics||[]}/>}
+      </div>
+    </div>
+  );
+}
+
+// ── MASTER ROSTER (no team assignment here) ────────────────────────────────
+function RosterSection({ roster, showToast }) {
+  const blank = { name:"", handicap:"", hometown:"", nickname:"", bio:"", photoURL:"", favoriteClub:"", strengths:"", weaknesses:"", golferComparison:"", bestPartOfGame:"" };
+  const [form, setForm]       = useState(blank);
+  const [editing, setEditing] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress]   = useState(null);
+  const [cropSrc, setCropSrc]     = useState(null);   // raw image for cropping
+  const [cropFile, setCropFile]   = useState(null);   // raw file
+  const fileRef  = useRef();
+  const canvasRef = useRef();
+  const imgRef    = useRef();
+  const dragRef   = useRef({ dragging:false, lastX:0, lastY:0 });
+  const cropState = useRef({ offsetX:0, offsetY:0, scale:1 });
+
+  const openCropper = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setCropFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => { setCropSrc(ev.target.result); };
+    reader.readAsDataURL(file);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const drawCrop = () => {
+    const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+    const size = canvas.width;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, size, size);
+    // Draw circle clip
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.clip();
+    const { offsetX, offsetY, scale } = cropState.current;
+    const w = img.naturalWidth * scale;
+    const h = img.naturalHeight * scale;
+    ctx.drawImage(img, size/2 - w/2 + offsetX, size/2 - h/2 + offsetY, w, h);
+    ctx.restore();
+    // Dim outside circle
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.clip();
+    ctx.clearRect(0, 0, size, size);
+    ctx.restore();
+    // Redraw image inside circle only
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.clip();
+    ctx.drawImage(img, size/2 - w/2 + offsetX, size/2 - h/2 + offsetY, w, h);
+    ctx.restore();
+    // Circle border
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2-1, 0, Math.PI*2);
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  };
+
+  const onImgLoad = () => {
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+    if (!img || !canvas) return;
+    const size = canvas.width;
+    const fitScale = Math.max(size/img.naturalWidth, size/img.naturalHeight);
+    cropState.current = { offsetX:0, offsetY:0, scale:fitScale };
+    drawCrop();
+  };
+
+  const onMouseDown = (e) => {
+    e.preventDefault();
+    dragRef.current = { dragging:true, lastX: e.clientX || e.touches?.[0]?.clientX, lastY: e.clientY || e.touches?.[0]?.clientY };
+  };
+  const onMouseMove = (e) => {
+    if (!dragRef.current.dragging) return;
+    const x = e.clientX || e.touches?.[0]?.clientX;
+    const y = e.clientY || e.touches?.[0]?.clientY;
+    cropState.current.offsetX += x - dragRef.current.lastX;
+    cropState.current.offsetY += y - dragRef.current.lastY;
+    dragRef.current.lastX = x; dragRef.current.lastY = y;
+    drawCrop();
+  };
+  const onMouseUp = () => { dragRef.current.dragging = false; };
+  const onWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    cropState.current.scale = Math.max(0.2, Math.min(10, cropState.current.scale * delta));
+    drawCrop();
+  };
+  const onZoom = (dir) => {
+    cropState.current.scale = Math.max(0.2, Math.min(10, cropState.current.scale * (dir > 0 ? 1.15 : 0.87)));
+    drawCrop();
+  };
+
+  const uploadCropped = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setUploading(true); setProgress(0);
+    try {
+      // Export square canvas as blob
+      const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
+      const file = new File([blob], "profile.jpg", { type:"image/jpeg" });
+      const url = await uploadToCloudinary(file, "photo", setProgress);
+      setForm(f => ({ ...f, photoURL: url }));
+      setCropSrc(null); setCropFile(null);
+      showToast("Photo uploaded!");
+    } catch(err) { showToast("Upload failed: " + err.message, true); }
+    setUploading(false); setProgress(null);
+  };
+
+  const save = async () => {
+    if (!form.name) return showToast("Name required", true);
+    try {
+      const data = { ...form, handicap: Number(form.handicap) || 0 };
+      if (editing) { await firestore.update("roster", editing, data); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("roster", data); showToast("Player added to roster!"); }
+      setForm(blank);
+    } catch(e) { showToast("Error: " + e.message, true); }
+  };
 
   return (
     <div>
-      <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏅 Superlatives</div>
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Vote for one player in each category. One submission per device.</div>
-      {categories.map(cat => (
-        <div key={cat} style={{ marginBottom:24 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>{cat}</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            {sortedRoster.map(p => {
-              const selected = selections[cat] === p.name;
+      <div style={s.sectionTitle}>👤 Master Roster</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16, fontFamily:"'Barlow',sans-serif" }}>
+        All players who have ever played. Team assignments are done in <strong style={{ color:"#fff" }}>Draft / Teams</strong> per year.
+      </div>
+
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Player":"➕ Add Player"}</div>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Name *</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Full name"/></div>
+          <div><div style={s.label}>Nickname (optional)</div><input style={s.input} value={form.nickname||""} onChange={e=>setForm(f=>({...f,nickname:e.target.value}))} placeholder={'e.g. "The Shark"' }/></div>
+          <div><div style={s.label}>Handicap</div><input style={s.input} type="number" value={form.handicap} onChange={e=>setForm(f=>({...f,handicap:e.target.value}))} placeholder="e.g. 12"/></div>
+          <div><div style={s.label}>Hometown</div><input style={s.input} value={form.hometown} onChange={e=>setForm(f=>({...f,hometown:e.target.value}))} placeholder="e.g. Rochester, NY"/></div>
+          <div>
+            <div style={s.label}>Profile Photo</div>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={openCropper}/>
+
+            {/* Cropper modal */}
+            {cropSrc&&(
+              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:300, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:20 }}>
+                <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginBottom:12, letterSpacing:"0.08em" }}>DRAG TO REPOSITION · SCROLL TO ZOOM</div>
+                <div style={{ position:"relative", touchAction:"none" }}
+                  onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+                  onTouchStart={e=>onMouseDown(e.touches[0])} onTouchMove={e=>onMouseMove(e.touches[0])} onTouchEnd={onMouseUp}
+                  onWheel={onWheel}>
+                  <canvas ref={canvasRef} width={280} height={280} style={{ borderRadius:"50%", cursor:"grab", display:"block" }}/>
+                  <img ref={imgRef} src={cropSrc} alt="crop" style={{ display:"none" }} onLoad={onImgLoad}/>
+                </div>
+                {/* Zoom controls */}
+                <div style={{ display:"flex", gap:12, marginTop:16, alignItems:"center" }}>
+                  <button onClick={()=>onZoom(-1)} style={{ width:40, height:40, borderRadius:"50%", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", color:"#fff", fontSize:20, cursor:"pointer", fontFamily:"inherit" }}>−</button>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Zoom</div>
+                  <button onClick={()=>onZoom(1)} style={{ width:40, height:40, borderRadius:"50%", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", color:"#fff", fontSize:20, cursor:"pointer", fontFamily:"inherit" }}>+</button>
+                </div>
+                {progress!==null&&(
+                  <div style={{ width:280, marginTop:12 }}>
+                    <div style={{ height:4, background:"rgba(255,255,255,0.1)", borderRadius:2, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${progress}%`, background:"#ff4500", borderRadius:2, transition:"width 0.3s" }}/>
+                    </div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:4, textAlign:"center" }}>{progress}% uploading...</div>
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:10, marginTop:16 }}>
+                  <button style={{ padding:"10px 24px", background:"linear-gradient(135deg,#ff4500,#ff8c00)", border:"none", borderRadius:8, color:"#fff", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }} onClick={uploadCropped} disabled={uploading}>
+                    {uploading?"Uploading...":"✓ Use This Photo"}
+                  </button>
+                  <button style={{ padding:"10px 20px", background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:13, cursor:"pointer" }} onClick={()=>{setCropSrc(null);setCropFile(null);}}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {form.photoURL
+              ? <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  <img src={form.photoURL} alt="preview" style={{ width:44, height:44, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.2)" }}/>
+                  <button style={s.btnGhost} onClick={()=>fileRef.current.click()} disabled={uploading}>Change</button>
+                  <button style={s.btnDanger} onClick={()=>setForm(f=>({...f,photoURL:""}))}>✕</button>
+                </div>
+              : <button style={{ ...s.btnGhost, width:"100%" }} onClick={()=>fileRef.current.click()} disabled={uploading}>
+                  📷 Upload Photo
+                </button>
+            }
+          </div>
+        </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Bio / Fun Fact</div><textarea rows={2} value={form.bio} onChange={e=>setForm(f=>({...f,bio:e.target.value}))} placeholder="Fun facts, past wins, nickname..."/></div>
+        <div style={s.grid2}>
+          <div style={{ marginTop:10 }}><div style={s.label}>Favorite Club</div><input style={s.input} value={form.favoriteClub} onChange={e=>setForm(f=>({...f,favoriteClub:e.target.value}))} placeholder="e.g. 7-iron"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Golfer Comparison</div><input style={s.input} value={form.golferComparison} onChange={e=>setForm(f=>({...f,golferComparison:e.target.value}))} placeholder="e.g. Budget Tiger Woods"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Strengths</div><input style={s.input} value={form.strengths} onChange={e=>setForm(f=>({...f,strengths:e.target.value}))} placeholder="e.g. Long drive, putting"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Weaknesses</div><input style={s.input} value={form.weaknesses} onChange={e=>setForm(f=>({...f,weaknesses:e.target.value}))} placeholder="e.g. Sand traps"/></div>
+        </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Best Part of Golf Game</div><input style={s.input} value={form.bestPartOfGame||""} onChange={e=>setForm(f=>({...f,bestPartOfGame:e.target.value}))} placeholder="e.g. Short game, reading greens"/></div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add to Roster"}</button>
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
+        </div>
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:4 }}>
+        {[...roster].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>(
+          <div key={p.id} style={{ ...s.card, padding:"11px 14px", display:"flex", alignItems:"center", gap:10 }}>
+            {p.photoURL
+              ? <img src={p.photoURL} alt={p.name} style={{ width:38, height:38, borderRadius:"50%", objectFit:"cover" }}/>
+              : <div style={{ width:38, height:38, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16, color:"rgba(255,255,255,0.4)" }}>{p.name?.[0]}</div>
+            }
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>{p.name}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>HCP {p.handicap}{p.hometown?` · ${p.hometown}`:""}</div>
+            </div>
+            <div style={s.row}>
+              <button style={s.btnGhost} onClick={()=>{setEditing(p.id);setForm({name:p.name||"",handicap:p.handicap||"",hometown:p.hometown||"",nickname:p.nickname||"",bio:p.bio||"",photoURL:p.photoURL||"",favoriteClub:p.favoriteClub||"",strengths:p.strengths||"",weaknesses:p.weaknesses||"",golferComparison:p.golferComparison||"",bestPartOfGame:p.bestPartOfGame||""});}}>Edit</button>
+              <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Remove from roster?"))await firestore.delete("roster",p.id);}}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── DRAFT / TEAM ASSIGNMENTS PER YEAR ──────────────────────────────────────
+function DraftSection({ roster, drafts, showToast }) {
+  const blankForm = { year: new Date().getFullYear().toString(), notes: "" };
+  const [form, setForm]           = useState(blankForm);
+  const [editing, setEditing]     = useState(null);
+  const [assignments, setAssignments] = useState({});  // name → "nukes"|"whales"|"out"
+
+  const startEdit = (d) => {
+    setEditing(d.id);
+    setForm({ year: d.year, notes: d.notes || "" });
+    // Pre-fill: everyone in roster starts as "out", override with saved
+    const init = {};
+    roster.forEach(p => { init[p.name] = "out"; });
+    Object.entries(d.assignments || {}).forEach(([n, t]) => { init[n] = t; });
+    setAssignments(init);
+  };
+
+  const startNew = () => {
+    const init = {};
+    roster.forEach(p => { init[p.name] = "out"; });
+    setEditing("new");
+    setForm(blankForm);
+    setAssignments(init);
+  };
+
+  const save = async () => {
+    if (!form.year) return showToast("Year required", true);
+    // Only save players who are actually on a team
+    const active = {};
+    Object.entries(assignments).forEach(([n, t]) => { if (t !== "out") active[n] = t; }); // tbd, nukes, whales all saved
+    try {
+      const data = { year: Number(form.year), notes: form.notes, assignments: active, updatedAt: new Date().toISOString() };
+      if (editing && editing !== "new") { await firestore.update("drafts", editing, data); showToast("Draft saved!"); }
+      else { await firestore.add("drafts", { ...data, createdAt: new Date().toISOString() }); showToast("Draft created!"); }
+      setEditing(null); setAssignments({});
+    } catch(e) { showToast("Error: " + e.message, true); }
+  };
+
+  const nukes  = roster.filter(p => assignments[p.name] === "nukes");
+  const whales = roster.filter(p => assignments[p.name] === "whales");
+  const out    = roster.filter(p => !assignments[p.name] || assignments[p.name] === "out");
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>🎲 Draft / Team Assignments</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16, fontFamily:"'Barlow',sans-serif" }}>
+        Assign players from the master roster to teams for each tournament year. Players not assigned are marked as not competing.
+      </div>
+
+      {!editing && <button style={{ ...s.btnFire, marginBottom:16 }} onClick={startNew}>+ New Draft Year</button>}
+
+      {editing && (
+        <div style={s.card}>
+          <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:"#ff8c00" }}>✏️ {editing==="new"?"New Draft":"Edit Draft"}</div>
+          <div style={s.grid2}>
+            <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
+            <div><div style={s.label}>Notes</div><input style={s.input} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="e.g. snake draft"/></div>
+          </div>
+
+          <div style={{ marginTop:16 }}>
+            <div style={s.label}>Assign Players</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:10 }}>Select a team for each player, or leave as "Not Playing"</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {roster.map(p => (
+                <div key={p.name} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:"rgba(255,255,255,0.03)", borderRadius:8, border:`1px solid ${assignments[p.name]==="nukes"?"rgba(255,69,0,0.3)":assignments[p.name]==="whales"?"rgba(0,170,255,0.25)":"rgba(255,255,255,0.06)"}` }}>
+                  {p.photoURL ? <img src={p.photoURL} alt={p.name} style={{ width:30, height:30, borderRadius:"50%", objectFit:"cover" }}/> : <div style={{ width:30, height:30, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800 }}>{p.name?.[0]}</div>}
+                  <div style={{ flex:1, fontSize:14, fontWeight:600 }}>{p.name}</div>
+                  <div style={{ display:"flex", gap:4 }}>
+                    {[["nukes","☢️","#ff4500"],["whales","🐋","#00aaff"],["tbd","❓","#ffd700"],["out","✗","rgba(255,255,255,0.3)"]].map(([val,emoji,color])=>(
+                      <button key={val} onClick={()=>setAssignments(a=>({...a,[p.name]:val}))}
+                        style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${assignments[p.name]===val?color:"rgba(255,255,255,0.1)"}`, background:assignments[p.name]===val?"rgba(255,255,255,0.1)":"none", color:assignments[p.name]===val?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Summary */}
+            <div style={{ marginTop:14, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
+              {[["☢️ Nukes",nukes.length,"#ff4500"],["🐋 Whales",whales.length,"#00aaff"],["❓ TBD",roster.filter(p=>assignments[p.name]==="tbd").length,"#ffd700"],["Not Playing",out.length,"rgba(255,255,255,0.3)"]].map(([l,n,c])=>(
+                <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"10px 6px" }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:c }}>{n}</div>
+                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ ...s.row, marginTop:16 }}>
+            <button style={s.btnFire} onClick={save}>Save Draft</button>
+            <button style={s.btnGhost} onClick={()=>{setEditing(null);setAssignments({});}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {[...drafts].sort((a,b)=>b.year-a.year).map(d=>(
+        <div key={d.id} style={{ ...s.card, padding:"13px 16px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <div style={{ fontSize:20, fontWeight:900, color:"rgba(255,255,255,0.15)", minWidth:48 }}>{d.year}</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>{d.year} Draft</div>
+              {d.notes&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{d.notes}</div>}
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>
+                ☢️ {Object.values(d.assignments||{}).filter(t=>t==="nukes").length} nukes · 🐋 {Object.values(d.assignments||{}).filter(t=>t==="whales").length} whales
+              </div>
+            </div>
+            <div style={s.row}>
+              <button style={s.btnGhost} onClick={()=>startEdit(d)}>Edit</button>
+              <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete draft?"))await firestore.delete("drafts",d.id);}}>✕</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── ROUNDS ─────────────────────────────────────────────────────────────────
+function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }) {
+  const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"" };
+  const [form, setForm]           = useState(blankRound);
+  const [editingRound, setEditingRound] = useState(null);
+  const [newSegment, setNewSegment] = useState("");
+  const [addingSegment, setAddingSegment] = useState(false);
+  const sortedRounds = [...rounds].sort((a,b)=>(a.order??0)-(b.order??0));
+  const { items:dragRounds, dragOver:dragOverRound, onDragStart:roundDragStart, onDragEnter:roundDragEnter, onDragEnd:roundDragEnd } = useDragList(sortedRounds);
+
+  const addSegment = async () => {
+    if (!newSegment.trim()) return;
+    // segments stored as special round entries with type:"segment"
+    const maxOrder = Math.max(0,...rounds.map(r=>r.order||0));
+    await firestore.add("rounds",{type:"segment",label:newSegment.trim(),order:maxOrder+10,matchups:[]});
+    setNewSegment(""); setAddingSegment(false); showToast("Subsection added!");
+  };
+
+  const currentYear = meta?.year || new Date().getFullYear();
+  const currentDraft = drafts.find(d => d.year === currentYear || d.year === String(currentYear));
+  const teamAssign = currentDraft?.assignments || {};
+  const nukeNames  = roster.filter(p => teamAssign[p.name] === "nukes").map(p => p.name);
+  const whaleNames = roster.filter(p => teamAssign[p.name] === "whales").map(p => p.name);
+  const compNames  = competitions.map(c => c.name);
+
+  const saveRound = async () => {
+    if (!form.name) return showToast("Round name required", true);
+    const data = { name:form.name, day:form.day, pointsPerWin:Number(form.pointsPerWin), pointsPerTie:Number(form.pointsPerTie), competitionName:form.competitionName||"" };
+    try {
+      if (editingRound) { await firestore.update("rounds",editingRound,data); showToast("Updated!"); setEditingRound(null); }
+      else { await firestore.add("rounds",{...data,matchups:[]}); showToast("Round added!"); }
+      setForm(blankRound);
+    } catch(e) { showToast(e.message,true); }
+  };
+
+  const addMatchup = async (round) => {
+    const curr = getMatchups(round); await saveMatchups(round, [...curr, {nukes:["",""],whales:["",""],winner:null,competitionName:"",pointsWorth:""}]);
+  };
+
+  // Local matchup state per round — avoids Firebase re-render flicker
+  const [localMatchups, setLocalMatchups] = useState({});
+
+  // Keep local state in sync when Firebase updates (but don't overwrite mid-edit)
+  useEffect(() => {
+    setLocalMatchups(prev => {
+      const next = {...prev};
+      rounds.forEach(r => {
+        // Only sync if we don't have a pending local edit for this round
+        if (!next[r.id]) next[r.id] = r.matchups || [];
+      });
+      return next;
+    });
+  }, [rounds]);
+
+  const getMatchups = (round) => localMatchups[round.id] ?? round.matchups ?? [];
+
+  const updateLocal = (roundId, newMatchups) => {
+    setLocalMatchups(prev => ({...prev, [roundId]: newMatchups}));
+  };
+
+  const saveMatchups = async (round, newMatchups) => {
+    updateLocal(round.id, newMatchups);
+    await firestore.update("rounds", round.id, {matchups: newMatchups});
+  };
+
+  const updateMatchupPlayer = async (round, mi, side, idx, value) => {
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => {
+      if (i !== mi) return m;
+      const arr = [...(m[side] || ["",""])];
+      arr[idx] = value;
+      return {...m, [side]: arr};
+    });
+    await saveMatchups(round, updated);
+  };
+
+  const updateWinner = async (round, mi, winner) => {
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => i===mi ? {...m, winner} : m);
+    await saveMatchups(round, updated);
+    showToast("Result saved!");
+  };
+
+  const delMatchup = async (round, mi) => {
+    const current = getMatchups(round);
+    await saveMatchups(round, current.filter((_,i) => i !== mi));
+  };
+
+  const updateMatchupField = async (round, mi, field, value) => {
+    const current = getMatchups(round);
+    const updated = current.map((m,i) => i===mi ? {...m, [field]: value} : m);
+    await saveMatchups(round, updated);
+  };
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>⚔️ Rounds & Matchups</div>
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editingRound?"#ff8c00":"#4ade80" }}>{editingRound?"✏️ Edit Round":"➕ Add Round"}</div>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Round Name</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Round 1"/></div>
+          <div><div style={s.label}>Day</div>
+            <select style={s.select} value={form.day} onChange={e=>setForm(f=>({...f,day:e.target.value}))}>
+              <option>Day 1</option><option>Day 2</option><option>Day 3</option>
+            </select>
+          </div>
+          <div><div style={s.label}>Points per Win</div><input style={s.input} type="number" step="0.5" value={form.pointsPerWin} onChange={e=>setForm(f=>({...f,pointsPerWin:e.target.value}))}/></div>
+          <div><div style={s.label}>Points per Tie</div><input style={s.input} type="number" step="0.5" value={form.pointsPerTie} onChange={e=>setForm(f=>({...f,pointsPerTie:e.target.value}))}/></div>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Competition (optional)</div>
+          <select style={s.select} value={form.competitionName} onChange={e=>setForm(f=>({...f,competitionName:e.target.value}))}>
+            <option value="">— None —</option>
+            {compNames.map(n=><option key={n}>{n}</option>)}
+          </select>
+        </div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={saveRound}>{editingRound?"Save":"Add Round"}</button>
+          {editingRound&&<button style={s.btnGhost} onClick={()=>{setEditingRound(null);setForm(blankRound);}}>Cancel</button>}
+        </div>
+      </div>
+
+      {/* Add segment button */}
+      <div style={{ display:"flex", gap:8, marginBottom:12, alignItems:"center" }}>
+        <button style={{ ...s.btnGhost, marginLeft:"auto", fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingSegment(a=>!a)}>+ Subsection</button>
+      </div>
+      {addingSegment&&(
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <input autoFocus style={{ flex:1,...s.input,fontSize:13 }} value={newSegment} onChange={e=>setNewSegment(e.target.value)}
+            placeholder="e.g. Day 1, Morning Rounds..." onKeyDown={e=>{if(e.key==="Enter")addSegment();if(e.key==="Escape")setAddingSegment(false);}}/>
+          <button style={s.btnFire} onClick={addSegment}>Add</button>
+          <button style={s.btnGhost} onClick={()=>setAddingSegment(false)}>Cancel</button>
+        </div>
+      )}
+      {dragRounds.map((round,ri)=>(
+        round.type==="segment" ? (
+          /* Segment subheading */
+          <div key={round.id} draggable
+            onDragStart={()=>roundDragStart(ri)}
+            onDragEnter={()=>roundDragEnter(ri)}
+            onDragEnd={()=>roundDragEnd("rounds")}
+            onDragOver={e=>e.preventDefault()}
+            style={{ display:"flex", alignItems:"center", gap:8, marginTop:16, marginBottom:8, cursor:"grab", opacity:dragOverRound===ri?0.5:1 }}>
+            <span style={{ color:"rgba(255,255,255,0.25)", fontSize:16 }}>⠿</span>
+            <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.08em", textTransform:"uppercase", flex:1 }}>{round.label}</div>
+            <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:11 }} onClick={async()=>{ if(window.confirm("Delete subsection?")) await firestore.delete("rounds",round.id); }}>✕</button>
+          </div>
+        ) : (
+        <div key={round.id} draggable
+          onDragStart={()=>roundDragStart(ri)}
+          onDragEnter={()=>roundDragEnter(ri)}
+          onDragEnd={()=>roundDragEnd("rounds")}
+          onDragOver={e=>e.preventDefault()}
+          style={{ ...s.card, borderColor:dragOverRound===ri?"rgba(255,255,255,0.4)":"rgba(255,200,0,0.15)", marginBottom:12, cursor:"grab", opacity:dragOverRound===ri?0.6:1 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
+              <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}</div>
+            </div>
+            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
+            <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
+          </div>
+          {getMatchups(round).map((m,mi)=>(
+            <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"12px", marginBottom:8 }}>
+              <div style={s.grid2}>
+                <div>
+                  <div style={{ fontSize:11, color:"#ff4500", marginBottom:5 }}>☢️ NUKES</div>
+                  {[0,1].map(idx=>(
+                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.nukes||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"nukes",idx,e.target.value)}>
+                      <option value="">— Player —</option>
+                      {nukeNames.map(n=><option key={n}>{n}</option>)}
+                    </select>
+                  ))}
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"#00aaff", marginBottom:5 }}>🐋 WHALES</div>
+                  {[0,1].map(idx=>(
+                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.whales||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"whales",idx,e.target.value)}>
+                      <option value="">— Player —</option>
+                      {whaleNames.map(n=><option key={n}>{n}</option>)}
+                    </select>
+                  ))}
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>🏅 COMPETITION</div>
+                  <select style={s.select} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
+                    <option value="">— None —</option>
+                    {compNames.map(n=><option key={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>💰 POINTS WORTH</div>
+                  <input style={s.input} type="number" step="0.5" placeholder={`Default: ${round.pointsPerWin}`}
+                    value={m.pointsWorth||""} onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>Win={m.pointsWorth||round.pointsPerWin}pts · Tie={m.pointsWorth ? m.pointsWorth/2 : round.pointsPerTie}pts</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>Result:</div>
+                {["nukes","tie","whales",null].map(w=>(
+                  <button key={String(w)} onClick={()=>updateWinner(round,mi,w)}
+                    style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":w==="tie"?"#ffd700":"rgba(255,255,255,0.3)"):"rgba(255,255,255,0.1)"}`, background:m.winner===w?"rgba(255,255,255,0.08)":"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                    {w==="nukes"?"☢️ Win":w==="whales"?"🐋 Win":w==="tie"?"🤝 Tie":"Pending"}
+                  </button>
+                ))}
+                <div style={{ marginLeft:"auto", fontSize:12, fontWeight:700 }}>
+                  {m.pointsWorth
+                    ? <span style={{ color:"#ff8c00" }}>Win={m.pointsWorth}pts · Tie={m.pointsWorth/2}pts</span>
+                    : <span style={{ color:"rgba(255,200,0,0.5)" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts</span>
+                  }
+                </div>
+                <button style={{ ...s.btnDanger, padding:"4px 10px" }} onClick={()=>delMatchup(round,mi)}>✕</button>
+              </div>
+            </div>
+          ))}
+          <button style={{ ...s.btnGhost, marginTop:4 }} onClick={()=>addMatchup(round)}>+ Add Matchup</button>
+        </div>
+        )
+      ))}
+    </div>
+  );
+}
+
+// ── SCHEDULE ────────────────────────────────────────────────────────────────
+function SchedDayList({ items, showToast, setEditing, setForm }) {
+  const { items:dragItems, dragOver, onDragStart, onDragEnter, onDragEnd } = useDragList(items);
+  return (
+    <>
+      {dragItems.map((item,ii)=>(
+        <div key={item.id} draggable
+          onDragStart={()=>onDragStart(ii)}
+          onDragEnter={()=>onDragEnter(ii)}
+          onDragEnd={()=>onDragEnd("schedule")}
+          onDragOver={e=>e.preventDefault()}
+          style={{ ...{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"10px 12px", marginBottom:10 }, display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", opacity:dragOver===ii?0.5:1, borderColor:dragOver===ii?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
+          <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14 }}>⠿</span>
+          <span style={{ fontSize:16 }}>{item.icon}</span>
+          <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
+          <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
+          <button style={{ padding:"8px 14px", background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:12, fontWeight:600, cursor:"pointer" }} onClick={()=>{setEditing(item.id);setForm({day:item.day,time:item.time,event:item.event,icon:item.icon||"",course:item.course||""});}}>Edit</button>
+          <button style={{ padding:"7px 12px", background:"rgba(220,30,30,0.15)", border:"1px solid rgba(220,30,30,0.4)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, cursor:"pointer" }} onClick={async()=>{await firestore.delete("schedule",item.id);}}>✕</button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function ScheduleSection({ schedule, showToast }) {
+  // Custom days management
+  const defaultDays = ["Day 1","Day 2","Day 3"];
+  const existingDays = [...new Set(schedule.map(i=>i.day))];
+  const allDays = [...new Set([...defaultDays, ...existingDays])];
+
+  const [customDay, setCustomDay] = useState("");
+  const [days, setDays] = useState(allDays);
+  const [editingDayName, setEditingDayName] = useState(null);
+  const [editingDayValue, setEditingDayValue] = useState("");
+  const [form, setForm] = useState({ day:days[0]||"Day 1", time:"", event:"", icon:"⛳", course:"" });
+  const [editing, setEditing] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  // Keep days in sync with schedule data
+  const allCurrentDays = [...new Set([...days, ...schedule.map(i=>i.day)])];
+
+  const save = async () => {
+    if (!form.event||!form.time) return showToast("Time and event required",true);
+    try {
+      if (editing) { await firestore.update("schedule",editing,form); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("schedule",form); showToast("Added!"); }
+      setForm(f=>({...f,time:"",event:"",icon:"⛳",course:""}));
+    } catch(e) { showToast(e.message,true); }
+  };
+
+  const addCustomDay = () => {
+    if (!customDay.trim()) return;
+    setDays(d=>[...d,customDay.trim()]);
+    setForm(f=>({...f,day:customDay.trim()}));
+    setCustomDay("");
+  };
+
+  const renameDay = async (oldName, newName) => {
+    if (!newName.trim()||newName===oldName) { setEditingDayName(null); return; }
+    // Update all schedule items with this day
+    const toUpdate = schedule.filter(i=>i.day===oldName);
+    for (const item of toUpdate) {
+      await firestore.update("schedule",item.id,{day:newName.trim()});
+    }
+    setDays(d=>d.map(d2=>d2===oldName?newName.trim():d2));
+    if (form.day===oldName) setForm(f=>({...f,day:newName.trim()}));
+    setEditingDayName(null);
+    showToast("Day renamed!");
+  };
+
+  // Sort items by time for each day
+  const parseTime = (t) => {
+    if (!t) return 0;
+    const m = t.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (!m) return 0;
+    let h=parseInt(m[1]),min=parseInt(m[2]);
+    const period=(m[3]||"").toUpperCase();
+    if (period==="PM"&&h!==12) h+=12;
+    if (period==="AM"&&h===12) h=0;
+    return h*60+min;
+  };
+
+  // Drag reorder for schedule items
+  const handleDragStart = (e, id) => { e.dataTransfer.setData("scheduleId", id); };
+  const handleDrop = async (e, targetId) => {
+    const srcId = e.dataTransfer.getData("scheduleId");
+    if (!srcId||srcId===targetId) { setDragOver(null); return; }
+    // Swap times
+    const src = schedule.find(i=>i.id===srcId);
+    const tgt = schedule.find(i=>i.id===targetId);
+    if (src&&tgt) {
+      await firestore.update("schedule",srcId,{time:tgt.time});
+      await firestore.update("schedule",targetId,{time:src.time});
+    }
+    setDragOver(null);
+  };
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>📅 Schedule</div>
+
+      {/* Day management */}
+      <div style={{ ...s.card, marginBottom:14 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Days</div>
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+          {allCurrentDays.map(day=>(
+            <div key={day} style={{ display:"flex", alignItems:"center", gap:4 }}>
+              {editingDayName===day
+                ? <input autoFocus style={{ ...s.input, width:120, fontSize:12, padding:"4px 8px" }} value={editingDayValue} onChange={e=>setEditingDayValue(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") renameDay(day,editingDayValue); if(e.key==="Escape") setEditingDayName(null); }}
+                    onBlur={()=>renameDay(day,editingDayValue)}/>
+                : <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:20 }}>
+                    <span style={{ fontSize:12, color:"rgba(255,255,255,0.7)" }}>{day}</span>
+                    <button onClick={()=>{setEditingDayName(day);setEditingDayValue(day);}} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:11, padding:"0 0 0 2px" }}>✏️</button>
+                  </div>
+              }
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <input style={{ flex:1, ...s.input, fontSize:13 }} value={customDay} onChange={e=>setCustomDay(e.target.value)} placeholder="Add day (e.g. Friday, Saturday...)" onKeyDown={e=>e.key==="Enter"&&addCustomDay()}/>
+          <button style={s.btnFire} onClick={addCustomDay}>+ Add Day</button>
+        </div>
+      </div>
+
+      {/* Add/edit event form */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add Event"}</div>
+        <div style={s.grid2}>
+          <div>
+            <div style={s.label}>Day</div>
+            <select style={s.select} value={form.day} onChange={e=>setForm(f=>({...f,day:e.target.value}))}>
+              {allCurrentDays.map(d=><option key={d}>{d}</option>)}
+            </select>
+          </div>
+          <div><div style={s.label}>Time</div><input style={s.input} value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} placeholder="8:30 AM"/></div>
+          <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="⛳"/></div>
+          <div><div style={s.label}>Course Name</div><input style={s.input} value={form.course} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Pebble Beach"/></div>
+        </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Event</div><input style={s.input} value={form.event} onChange={e=>setForm(f=>({...f,event:e.target.value}))} placeholder="Event description"/></div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={save}>{editing?"Save":"Add"}</button>
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(f=>({...f,time:"",event:"",icon:"⛳",course:""}));}}>Cancel</button>}
+        </div>
+      </div>
+
+      {/* Events grouped by day, sorted by time, draggable */}
+      {allCurrentDays.map(day=>{
+        const items = schedule.filter(i=>i.day===day).sort((a,b)=>parseTime(a.time)-parseTime(b.time));
+        if(!items.length) return null;
+        return (
+          <div key={day} style={{ marginBottom:16 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.1em", textTransform:"uppercase" }}>{day}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>{items.length} event{items.length!==1?"s":""}</div>
+            </div>
+            <SchedDayList items={items} showToast={showToast} setEditing={setEditing} setForm={setForm}/>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── COMPETITIONS ────────────────────────────────────────────────────────────
+function CompetitionsSection({ competitions, showToast }) {
+  const blank = { name:"", icon:"🏅", desc:"", winner:"", winnerTeam:"nukes", detail:"" };
+  const [form, setForm]       = useState(blank);
+  const [editing, setEditing] = useState(null);
+  const [resultFor, setResultFor] = useState(null);
+  const sortedComps = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
+  const { items:dragComps, dragOver:dragOverComp, onDragStart:compDragStart, onDragEnter:compDragEnter, onDragEnd:compDragEnd } = useDragList(sortedComps);
+
+  const save = async () => {
+    if (!form.name) return showToast("Name required", true);
+    try {
+      if (editing) { await firestore.update("competitions",editing,form); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("competitions",{name:form.name,icon:form.icon,desc:form.desc,winner:"",winnerTeam:"nukes",detail:""}); showToast("Competition added!"); }
+      setForm(blank);
+    } catch(e) { showToast(e.message,true); }
+  };
+
+  const saveResult = async (id) => {
+    try { await firestore.update("competitions",id,{winner:form.winner,detail:form.detail}); showToast("Result saved!"); setResultFor(null); setForm(blank); }
+    catch(e) { showToast(e.message,true); }
+  };
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>🎯 Competitions</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16, fontFamily:"'Barlow',sans-serif" }}>
+        Master list of side competitions. These appear as a dropdown when setting up rounds, and show on the public app.
+      </div>
+
+      {/* Add / edit form */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Competition":"➕ Add Competition"}</div>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Name *</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Closest to the Pin"/></div>
+          <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="🎯"/></div>
+        </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Description</div><input style={s.input} value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Rules, hole number, etc."/></div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add Competition"}</button>
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
+        </div>
+      </div>
+
+      {/* Competition list */}
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>⠿ Drag to reorder</div>
+      {dragComps.map((c,ci)=>(
+        <div key={c.id} draggable
+          onDragStart={()=>compDragStart(ci)}
+          onDragEnter={()=>compDragEnter(ci)}
+          onDragEnd={()=>compDragEnd("competitions")}
+          onDragOver={e=>e.preventDefault()}
+          style={{ ...s.card, cursor:"grab", opacity:dragOverComp===ci?0.5:1, borderColor:dragOverComp===ci?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <span style={{ fontSize:24 }}>{c.icon}</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>{c.name}</div>
+              {c.desc&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>}
+              {c.winner&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:2 }}>
+                🏅 {c.winner}{c.detail?` — ${c.detail}`:""}
+              </div>}
+            </div>
+            <div style={s.row}>
+              <button style={{ ...s.btnGhost, fontSize:11 }} onClick={()=>{setResultFor(resultFor===c.id?null:c.id);setForm({winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>
+                {resultFor===c.id?"Cancel":"🏅 Result"}
+              </button>
+              <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setResultFor(null);setForm({name:c.name,icon:c.icon||"🏅",desc:c.desc||"",winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>Edit</button>
+              <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
+            </div>
+          </div>
+          {/* Result entry */}
+          {resultFor===c.id&&(
+            <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Enter Result</div>
+              <div style={s.grid2}>
+                <div><div style={s.label}>Winner / Leader</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name or team"/></div>
+                <div><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4ft 2in, -12"/></div>
+              </div>
+              <button style={{ ...s.btnFire, marginTop:12 }} onClick={()=>saveResult(c.id)}>Save Result</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {competitions.length===0&&(
+        <div style={{ textAlign:"center", padding:"30px 0", color:"rgba(255,255,255,0.2)", fontSize:14 }}>
+          No competitions yet — add some above. They'll appear as a dropdown when creating rounds.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── HISTORY ─────────────────────────────────────────────────────────────────
+function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
+  const blank = { year:new Date().getFullYear()-1, winner:"TBD", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
+  const [form, setForm]       = useState(blank);
+  const [editing, setEditing] = useState(null);
+  const [expanded, setExpanded] = useState(null);
+
+  const save = async () => {
+    try {
+      const data = { ...form, year:Number(form.year), nukes_pts:Number(form.nukes_pts)||0, whales_pts:Number(form.whales_pts)||0 };
+      if (editing) { await firestore.update("history",editing,data); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("history",{...data,matches:[],superlatives:[]}); showToast("Year added!"); }
+      setForm(blank);
+    } catch(e) { showToast(e.message,true); }
+  };
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>📜 Tournament History</div>
+
+      {/* Add / Edit year form */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Year":"➕ Add Tournament Year"}</div>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
+          <div><div style={s.label}>Winner</div>
+            <select style={s.select} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))}>
+              <option value="TBD">— TBD (auto from import) —</option>
+              <option value="THE NUKES">☢️ THE NUKES</option>
+              <option value="THE WHALES">🐋 THE WHALES</option>
+            </select>
+          </div>
+          <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
+          <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
+        </div>
+        <div style={s.grid2}>
+          <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Myrtle Beach, SC"/></div>
+          <div style={{ marginTop:10 }}><div style={s.label}>Golf Course</div><input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Barefoot Resort"/></div>
+        </div>
+        <div style={{ marginTop:10 }}><div style={s.label}>Notes / Recap</div><textarea rows={2} value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Memorable moments..."/></div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add Year"}</button>
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
+        </div>
+      </div>
+
+      {/* Year cards */}
+      {[...history].sort((a,b)=>b.year-a.year).map(h=>{
+        const isTBD = !h.winner || h.winner==="TBD";
+        const isNuke = h.winner==="THE NUKES";
+        const isWhale = h.winner==="THE WHALES";
+        const headerBg = isNuke?"rgba(255,69,0,0.08)":isWhale?"rgba(0,170,255,0.06)":"rgba(255,255,255,0.04)";
+        const headerBorder = isNuke?"rgba(255,69,0,0.25)":isWhale?"rgba(0,170,255,0.2)":"rgba(255,255,255,0.1)";
+        const winnerColor = isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)";
+        const winnerEmoji = isNuke?"☢️ ":isWhale?"🐋 ":"⏳ ";
+        const isExpanded = expanded===h.id;
+        const matchCount = (h.matches||[]).length;
+        const supCount = (h.superlatives||[]).length;
+        const yearDraft = drafts.find(d=>String(d.year)===String(h.year));
+        const yearAssign = yearDraft?.assignments || {};
+        const nukeNames = Object.entries(yearAssign).filter(([,t])=>t==="nukes").map(([n])=>n);
+        const whaleNames = Object.entries(yearAssign).filter(([,t])=>t==="whales").map(([n])=>n);
+        const allYearPlayers = [...nukeNames, ...whaleNames];
+
+        return (
+          <div key={h.id} style={{ marginBottom:12 }}>
+            {/* Year header */}
+            <div style={{ background:headerBg, border:`1px solid ${headerBorder}`, borderRadius:isExpanded?"12px 12px 0 0":"12px", padding:"14px 16px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ fontSize:26, fontWeight:900, color:"rgba(255,255,255,0.12)", minWidth:50, lineHeight:1 }}>{h.year}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:15, fontWeight:800, color:winnerColor }}>{winnerEmoji}{isTBD?"TBD":h.winner}</div>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
+                    MVP: {h.mvp||"—"} · {h.nukes_pts||0}–{h.whales_pts||0}
+                    {matchCount>0&&<span style={{ marginLeft:8, color:"rgba(255,255,255,0.3)" }}>{matchCount} match{matchCount!==1?"es":""}</span>}
+                    {supCount>0&&<span style={{ marginLeft:8, color:"rgba(255,200,0,0.5)" }}>🏅 {supCount}</span>}
+                  </div>
+                  {(h.location||h.course)&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>📍 {[h.course,h.location].filter(Boolean).join(" · ")}</div>}
+                </div>
+                <div style={s.row}>
+                  <button style={s.btnGhost} onClick={()=>setExpanded(isExpanded?null:h.id)}>{isExpanded?"▲ Hide":"▼ Edit"}</button>
+                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||""});}}>✏️</button>
+                  <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete this year?"))await firestore.delete("history",h.id);}}>✕</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Expanded subsections */}
+            {isExpanded&&(
+              <div style={{ border:`1px solid ${headerBorder}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
+
+                {/* Notes */}
+                {h.notes&&(
+                  <div style={{ padding:"10px 16px", background:"rgba(255,255,255,0.02)", borderBottom:"1px solid rgba(255,255,255,0.06)", fontSize:13, color:"rgba(255,255,255,0.4)", fontStyle:"italic" }}>
+                    {h.notes}
+                  </div>
+                )}
+
+                {/* Draft info notice */}
+                {allYearPlayers.length===0&&(
+                  <div style={{ padding:"10px 16px", background:"rgba(255,200,0,0.06)", borderBottom:"1px solid rgba(255,200,0,0.1)", fontSize:12, color:"rgba(255,200,0,0.7)" }}>
+                    ⚠️ No draft found for {h.year} — create one in Draft / Teams to get player dropdowns
+                  </div>
+                )}
+
+                {/* Import from current tournament - show only once */}
+                {String(h.year)===String(meta?.year||2026)&&(
+                  <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
+                )}
+
+                {/* Year in Review admin controls */}
+                <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,200,0,0.1)" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#ffd700", marginBottom:10 }}>🏆 Year in Review</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <button style={{ padding:"7px 14px", background:"rgba(255,200,0,0.15)", border:"1px solid rgba(255,200,0,0.3)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        if(!window.confirm("Generate Year in Review? This saves it to this year's history entry.")) return;
+                        await firestore.update("history", h.id, { reviewData: { generated: new Date().toISOString() } });
+                        showToast("Year in Review generated!");
+                      }}>⚡ Generate</button>
+                    <button style={{ padding:"7px 14px", background:h.reviewUnlocked?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", border:`1px solid ${h.reviewUnlocked?"rgba(74,222,128,0.3)":"rgba(255,255,255,0.15)"}`, borderRadius:8, color:h.reviewUnlocked?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        await firestore.update("history", h.id, { reviewUnlocked: !h.reviewUnlocked });
+                        showToast(h.reviewUnlocked?"Review hidden from players":"Review unlocked for players!");
+                      }}>{h.reviewUnlocked?"✓ Unlocked":"🔒 Locked"}</button>
+                    {h.reviewData&&<button style={{ padding:"7px 14px", background:"rgba(255,85,85,0.1)", border:"1px solid rgba(255,85,85,0.2)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      onClick={async()=>{
+                        if(!window.confirm("Delete the Year in Review card?")) return;
+                        await firestore.update("history", h.id, { reviewData: null, reviewUnlocked: false });
+                        showToast("Year in Review deleted.");
+                      }}>🗑 Delete</button>}
+                  </div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8 }}>
+                    {h.reviewData ? `Generated ${new Date(h.reviewData.generated).toLocaleDateString()}` : "Not generated yet"} · {h.reviewUnlocked ? "Visible to players" : "Hidden from players"}
+                  </div>
+                </div>
+
+                {/* Matches subsection */}
+                <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                  <MatchesEditor year={h} nukeNames={nukeNames} whaleNames={whaleNames} competitions={competitions} showToast={showToast}/>
+                </div>
+
+                {/* Superlatives subsection */}
+                <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.15)" }}>
+                  <SuperlativesEditor year={h} allPlayers={allYearPlayers} showToast={showToast}/>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ImportFromRounds({ year, rounds, showToast }) {
+  const [importing, setImporting] = useState(false);
+
+  const doImport = async () => {
+    const currentMatches = year.matches || [];
+    const newMatches = [];
+
+    rounds.forEach(round => {
+      (round.matchups || []).forEach(m => {
+        if (!m.nukes?.some(Boolean) && !m.whales?.some(Boolean)) return; // skip empty
+        // Check if this matchup already exists (by player names) to avoid double counting
+        const alreadyImported = currentMatches.some(em =>
+          JSON.stringify((em.nukes||[]).sort()) === JSON.stringify((m.nukes||[]).filter(Boolean).sort()) &&
+          JSON.stringify((em.whales||[]).sort()) === JSON.stringify((m.whales||[]).filter(Boolean).sort())
+        );
+        if (alreadyImported) return;
+        newMatches.push({
+          nukes: (m.nukes||[]).filter(Boolean),
+          whales: (m.whales||[]).filter(Boolean),
+          winner: m.winner || null,
+          roundName: m.competitionName || round.name || "",
+          pointsWorth: m.pointsWorth || round.pointsPerWin || 0,
+        });
+      });
+    });
+
+    if (newMatches.length === 0) {
+      showToast("No new matches to import — all already imported or rounds are empty", true);
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const allMatches = [...currentMatches, ...newMatches];
+      // Calculate points and winner from all matches
+      let nukesPts = 0, whalesPts = 0;
+      allMatches.forEach(m => {
+        if (!m.winner) return;
+        const pts = m.pointsWorth || 0;
+        const tie = pts / 2;
+        if (m.winner === "nukes") nukesPts += pts;
+        else if (m.winner === "whales") whalesPts += pts;
+        else if (m.winner === "tie") { nukesPts += tie; whalesPts += tie; }
+      });
+      const winner = nukesPts > whalesPts ? "THE NUKES" : whalesPts > nukesPts ? "THE WHALES" : "TBD";
+      await firestore.update("history", year.id, {
+        matches: allMatches,
+        nukes_pts: Math.round(nukesPts * 10) / 10,
+        whales_pts: Math.round(whalesPts * 10) / 10,
+        winner,
+      });
+      showToast(`Imported ${newMatches.length} match${newMatches.length!==1?"es":""}! Score: Nukes ${Math.round(nukesPts*10)/10} – Whales ${Math.round(whalesPts*10)/10}`);
+    } catch(e) { showToast("Error: " + e.message, true); }
+    setImporting(false);
+  };
+
+  return (
+    <div style={{ padding:"12px 16px", background:"rgba(74,222,128,0.06)", borderBottom:"1px solid rgba(74,222,128,0.15)" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>⬇ Import from Current Tournament</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
+            Pulls matchup results from Rounds into this year. Already-imported matches are skipped automatically.
+          </div>
+        </div>
+        <button style={{ padding:"8px 16px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
+          onClick={doImport} disabled={importing}>
+          {importing ? "Importing..." : "Import Matches"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast }) {
+  const blankMatch = { nukes:["",""], whales:["",""], winner:null, roundName:"", pointsWorth:"" };
+  const [form, setForm]       = useState(blankMatch);
+  const [adding, setAdding]   = useState(false);
+  const [editingMi, setEditingMi] = useState(null);
+  const [editForm, setEditForm]   = useState(null);
+  const [newHeading, setNewHeading] = useState("");
+  const [addingHeading, setAddingHeading] = useState(false);
+  const allPlayers = [...nukeNames,...whaleNames];
+  const compOptions = ["Round 1","Round 2","Round 3",...(competitions||[]).map(c=>c.name)];
+
+  const saveAll = async (newMatches) => {
+    await firestore.update("history", year.id, { matches: newMatches });
+  };
+
+  // Drag reorder — local state, save on drag end
+  const [localMatches, setLocalMatches] = useState(year.matches||[]);
+  useEffect(()=>{ setLocalMatches(year.matches||[]); }, [JSON.stringify(year.matches)]);
+  const matchDragIdx = useRef(null);
+  const [matchDragOver, setMatchDragOver] = useState(null);
+
+  const matchDragStart = (i) => { matchDragIdx.current = i; };
+  const matchDragEnter = (i) => {
+    if (matchDragIdx.current===null||matchDragIdx.current===i) return;
+    setLocalMatches(prev=>{
+      const arr=[...prev];
+      const [moved]=arr.splice(matchDragIdx.current,1);
+      arr.splice(i,0,moved);
+      matchDragIdx.current=i;
+      return arr;
+    });
+    setMatchDragOver(i);
+  };
+  const matchDragEnd = async () => {
+    matchDragIdx.current=null; setMatchDragOver(null);
+    await saveAll(localMatches);
+  };
+
+  // Add subheading (stored as a special match entry with type:"heading")
+  const addHeading = async () => {
+    if (!newHeading.trim()) return;
+    const arr = [...localMatches, { type:"heading", label:newHeading.trim() }];
+    setLocalMatches(arr);
+    await saveAll(arr);
+    setNewHeading(""); setAddingHeading(false); showToast("Subheading added!");
+  };
+
+  const addMatch = async () => {
+    if (!form.winner) return showToast("Please select a winner", true);
+    const arr = [...localMatches, { ...form, pointsWorth:Number(form.pointsWorth)||0 }];
+    setLocalMatches(arr);
+    await saveAll(arr);
+    setForm(blankMatch); setAdding(false); showToast("Match added!");
+  };
+
+  const startEdit = (mi) => {
+    const m = year.matches[mi];
+    setEditForm({ nukes:[...(m.nukes||["",""])], whales:[...(m.whales||["",""])], winner:m.winner||null, roundName:m.roundName||"", pointsWorth:m.pointsWorth||"" });
+    setEditingMi(mi);
+  };
+
+  const saveEdit = async () => {
+    const updated = localMatches.map((m,i)=>i===editingMi?{...editForm,pointsWorth:Number(editForm.pointsWorth)||0}:m);
+    setLocalMatches(updated);
+    await saveAll(updated);
+    setEditingMi(null); setEditForm(null); showToast("Match updated!");
+  };
+
+  const remove = async (mi) => {
+    if (!window.confirm("Remove this match?")) return;
+    const arr = localMatches.filter((_,i)=>i!==mi);
+    setLocalMatches(arr);
+    await saveAll(arr);
+  };
+
+  const updateWinnerOnly = async (mi, winner) => {
+    const updated = localMatches.map((m,i)=>i===mi?{...m,winner}:m);
+    setLocalMatches(updated);
+    await saveAll(updated);
+  };
+
+  const MatchForm = ({ vals, setVals, onSave, onCancel, saveLabel }) => (
+    <div style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, padding:14, marginBottom:12 }}>
+      <div style={s.grid2}>
+        <div>
+          <div style={{ fontSize:11, color:"#ff4500", fontWeight:700, marginBottom:6 }}>☢️ NUKES</div>
+          {[0,1].map(i=>(
+            <select key={i} style={{ ...s.select, marginBottom:6 }} value={vals.nukes[i]||""} onChange={e=>{const n=[...vals.nukes];n[i]=e.target.value;setVals(v=>({...v,nukes:n}));}}>
+              <option value="">— Player {i+1} —</option>
+              {(nukeNames.length>0?nukeNames:allPlayers).map(n=><option key={n}>{n}</option>)}
+            </select>
+          ))}
+        </div>
+        <div>
+          <div style={{ fontSize:11, color:"#00aaff", fontWeight:700, marginBottom:6 }}>🐋 WHALES</div>
+          {[0,1].map(i=>(
+            <select key={i} style={{ ...s.select, marginBottom:6 }} value={vals.whales[i]||""} onChange={e=>{const w=[...vals.whales];w[i]=e.target.value;setVals(v=>({...v,whales:w}));}}>
+              <option value="">— Player {i+1} —</option>
+              {(whaleNames.length>0?whaleNames:allPlayers).map(n=><option key={n}>{n}</option>)}
+            </select>
+          ))}
+        </div>
+        <div>
+          <div style={s.label}>Competition / Round</div>
+          <select style={s.select} value={vals.roundName} onChange={e=>setVals(v=>({...v,roundName:e.target.value}))}>
+            <option value="">— Select —</option>
+            {compOptions.map(name=><option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={s.label}>Points Worth</div>
+          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e=>setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em" }}>WINNER:</div>
+        {["nukes","tie","whales"].map(w=>(
+          <button key={w} onClick={()=>setVals(v=>({...v,winner:w}))}
+            style={{ padding:"5px 12px", borderRadius:8, border:`1px solid ${vals.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.12)"}`, background:vals.winner===w?"rgba(255,255,255,0.1)":"none", color:vals.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+            {w==="nukes"?"☢️ Nukes Win":w==="whales"?"🐋 Whales Win":"🤝 Tie"}
+          </button>
+        ))}
+      </div>
+      <div style={{ ...s.row, marginTop:12 }}>
+        <button style={s.btnFire} onClick={onSave}>{saveLabel}</button>
+        <button style={s.btnGhost} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
+          ⚔️ Match Results <span style={{ color:"rgba(255,255,255,0.25)", fontWeight:400 }}>({(year.matches||[]).length})</span>
+        </div>
+        {!adding&&editingMi===null&&<div style={{ display:"flex", gap:6 }}>
+          <button style={{ ...s.btnGhost, fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingHeading(a=>!a)}>+ Subheading</button>
+          <button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>
+        </div>}
+      </div>
+
+      {adding&&<MatchForm vals={form} setVals={setForm} onSave={addMatch} onCancel={()=>{setAdding(false);setForm(blankMatch);}} saveLabel="Save Match"/>}
+
+      {/* Add subheading UI */}
+      {addingHeading&&(
+        <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <input autoFocus style={{ flex:1, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:13, padding:"8px 10px", outline:"none" }}
+            value={newHeading} onChange={e=>setNewHeading(e.target.value)} placeholder="Subheading (e.g. Round 1, Day 1...)"
+            onKeyDown={e=>{ if(e.key==="Enter") addHeading(); if(e.key==="Escape") setAddingHeading(false); }}/>
+          <button style={s.btnFire} onClick={addHeading}>Add</button>
+          <button style={s.btnGhost} onClick={()=>setAddingHeading(false)}>Cancel</button>
+        </div>
+      )}
+
+      {(year.matches||[]).length===0&&!adding&&(
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.2)", textAlign:"center", padding:"16px 0" }}>No matches yet — tap + Add Match</div>
+      )}
+
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>⠿ Drag to reorder matches and subheadings</div>
+      {localMatches.map((m,mi)=>(
+        <div key={mi} draggable
+          onDragStart={()=>matchDragStart(mi)}
+          onDragEnter={()=>matchDragEnter(mi)}
+          onDragEnd={matchDragEnd}
+          onDragOver={e=>e.preventDefault()}>
+          {/* Subheading */}
+          {m.type==="heading"&&(
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:14, marginBottom:6 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.6)", letterSpacing:"0.08em", textTransform:"uppercase" }}>{m.label}</div>
+              <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.1)" }}/>
+              <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:10 }} onClick={()=>{ const arr=localMatches.filter((_,i)=>i!==mi); setLocalMatches(arr); saveAll(arr); }}>✕</button>
+            </div>
+          )}
+          {m.type!=="heading"&&editingMi===mi&&editForm
+            ? <MatchForm vals={editForm} setVals={setEditForm} onSave={saveEdit} onCancel={()=>{setEditingMi(null);setEditForm(null);}} saveLabel="Save Changes"/>
+            : m.type!=="heading"&&(
+              <div style={{ background:matchDragOver===mi?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.03)", border:`1px solid ${matchDragOver===mi?"rgba(255,255,255,0.3)":m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"flex-start", cursor:"grab" }}>
+                <span style={{ color:"rgba(255,255,255,0.15)", fontSize:16, paddingTop:4, cursor:"grab", flexShrink:0 }}>⠿</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
+                    <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:11, color:"#ff4500", marginBottom:3 }}>☢️</div>
+                      {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                      {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+                    </div>
+                    <div style={{ textAlign:"center", fontSize:11, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
+                    <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
+                      <div style={{ fontSize:11, color:"#00aaff", marginBottom:3 }}>🐋</div>
+                      {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.7)" }}>{n}</div>)}
+                      {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                    {m.roundName&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,255,255,0.06)", color:"rgba(255,255,255,0.5)" }}>🏅 {m.roundName}</span>}
+                    {m.pointsWorth>0&&<span style={{ fontSize:11, padding:"2px 8px", borderRadius:20, background:"rgba(255,200,0,0.08)", color:"rgba(255,200,0,0.7)" }}>{m.pointsWorth}pts</span>}
+                    {m.winner==="tie"&&<span style={{ fontSize:11, color:"#ffd700" }}>🤝 TIE</span>}
+                    <div style={{ marginLeft:"auto", display:"flex", gap:5, alignItems:"center" }}>
+                      {["nukes","tie","whales"].map(w=>(
+                        <button key={w} onClick={()=>updateWinnerOnly(mi,w)}
+                          style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":"#ffd700"):"rgba(255,255,255,0.08)"}`, background:"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:11, cursor:"pointer" }}>
+                          {w==="nukes"?"☢️":w==="whales"?"🐋":"🤝"}
+                        </button>
+                      ))}
+                      <button style={{ ...s.btnGhost, padding:"3px 10px", fontSize:11 }} onClick={()=>startEdit(mi)}>✏️ Edit</button>
+                      <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={()=>remove(mi)}>✕</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SuperlativesEditor({ year, allPlayers, showToast }) {
+  const [title, setTitle]   = useState("");
+  const [player, setPlayer] = useState("");
+
+  const add = async () => {
+    if (!title||!player) return showToast("Award name and player required", true);
+    await firestore.update("history",year.id,{superlatives:[...(year.superlatives||[]),{title,player}]});
+    setTitle(""); setPlayer(""); showToast("Award added!");
+  };
+  const remove = async (si) => {
+    await firestore.update("history",year.id,{superlatives:(year.superlatives||[]).filter((_,i)=>i!==si)});
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:12 }}>
+        🏅 Superlatives / Awards
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr auto", gap:8, marginBottom:10, alignItems:"end" }}>
+        <div>
+          <div style={s.label}>Award Name</div>
+          <input style={{ ...s.input, fontSize:13 }} value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. MVP, Most Improved"/>
+        </div>
+        <div>
+          <div style={s.label}>Player</div>
+          {allPlayers.length>0
+            ? <select style={{ ...s.select, fontSize:13 }} value={player} onChange={e=>setPlayer(e.target.value)}>
+                <option value="">— Select —</option>
+                {allPlayers.map(n=><option key={n}>{n}</option>)}
+              </select>
+            : <input style={{ ...s.input, fontSize:13 }} value={player} onChange={e=>setPlayer(e.target.value)} placeholder="Player name"/>
+          }
+        </div>
+        <button style={{ ...s.btnFire, padding:"9px 14px" }} onClick={add}>+ Add</button>
+      </div>
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+        {(year.superlatives||[]).map((sup,si)=>(
+          <div key={si} style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 8px 4px 12px", background:"rgba(255,200,0,0.08)", border:"1px solid rgba(255,200,0,0.2)", borderRadius:20 }}>
+            <span style={{ fontSize:12 }}>🏅 <strong>{sup.title}:</strong> {sup.player}</span>
+            <button onClick={()=>remove(si)} style={{ background:"none", border:"none", color:"rgba(255,80,80,0.6)", cursor:"pointer", fontSize:14, paddingLeft:4, lineHeight:1 }}>✕</button>
+          </div>
+        ))}
+        {(year.superlatives||[]).length===0&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>No awards yet</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── RULES ────────────────────────────────────────────────────────────────────
+function RulesSection({ rules, showToast }) {
+  const blank = { title:"", body:"", order:rules.length+1 };
+  const [form, setForm]     = useState(blank);
+  const [editing, setEditing] = useState(null);
+  const sortedRules = [...rules].sort((a,b)=>(a.order||0)-(b.order||0));
+  const { items:dragRules, dragOver:dragOverRule, onDragStart:ruleDragStart, onDragEnter:ruleDragEnter, onDragEnd:ruleDragEnd } = useDragList(sortedRules);
+  const sorted = dragRules;
+
+  const save = async () => {
+    if (!form.title||!form.body) return showToast("Title and body required",true);
+    try {
+      const maxOrder = rules.length ? Math.max(...rules.map(r=>r.order||0))+10 : 0;
+      if (editing) { await firestore.update("rules",editing,{...form,order:Number(form.order)||0}); showToast("Updated!"); setEditing(null); }
+      else { await firestore.add("rules",{...form,order:maxOrder}); showToast("Added!"); }
+      setForm({...blank,order:0});
+    } catch(e) { showToast(e.message,true); }
+  };
+
+  return (
+    <div>
+      <div style={s.sectionTitle}>📋 Rules</div>
+      <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:14 }}>Use ▲▼ to reorder</div>
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit":"➕ Add Rule"}</div>
+        <div><div style={s.label}>Title</div><input style={{...s.input,marginBottom:10}} value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}/></div>
+        <div><div style={s.label}>Body</div><textarea rows={3} value={form.body} onChange={e=>setForm(f=>({...f,body:e.target.value}))}/></div>
+        <div style={{ ...s.row, marginTop:14 }}>
+          <button style={s.btnFire} onClick={save}>{editing?"Save":"Add"}</button>
+          {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
+        </div>
+      </div>
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>⠿ Drag to reorder</div>
+      {sorted.map((r,ri)=>(
+        <div key={r.id} draggable
+          onDragStart={()=>ruleDragStart(ri)}
+          onDragEnter={()=>ruleDragEnter(ri)}
+          onDragEnd={()=>ruleDragEnd("rules")}
+          onDragOver={e=>e.preventDefault()}
+          style={{ ...s.card, padding:"12px 14px", cursor:"grab", opacity:dragOverRule===ri?0.5:1, borderColor:dragOverRule===ri?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <div style={{ flex:1, fontWeight:700 }}>{r.title}</div>
+            <button style={s.btnGhost} onClick={()=>{setEditing(r.id);setForm({title:r.title,body:r.body,order:r.order});}}>Edit</button>
+            <button style={s.btnDanger} onClick={async()=>{await firestore.delete("rules",r.id);}}>✕</button>
+          </div>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,0.45)", lineHeight:1.5, fontFamily:"'Barlow',sans-serif" }}>
+            {(r.body||"").split("\n").map((line,li)=>{
+              const isBullet = line.trimStart().startsWith("-") || line.trimStart().startsWith("•");
+              const text = isBullet ? line.trimStart().replace(/^[-•]\s*/,"") : line;
+              if (!text.trim()) return <div key={li} style={{ height:"0.5em" }}/>;
               return (
-                <div key={p.id} onClick={() => setSelections(s => ({ ...s, [cat]: selected ? null : p.name }))}
-                  style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px",
-                    background: selected ? "rgba(255,200,0,0.1)" : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${selected ? "rgba(255,200,0,0.4)" : "rgba(255,255,255,0.07)"}`,
-                    borderRadius:10, cursor:"pointer" }}>
-                  {p.photoURL
-                    ? <img src={p.photoURL} alt={p.name} style={{ width:38, height:38, borderRadius:"50%", objectFit:"cover" }}/>
-                    : <div style={{ width:38, height:38, borderRadius:"50%", background:"rgba(255,255,255,0.07)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:16 }}>{p.name?.[0]}</div>}
-                  <div style={{ flex:1, fontWeight:600, fontSize:14 }}>{p.name}</div>
-                  {selected && <div style={{ fontSize:20, color:"#ffd700" }}>✓</div>}
+                <div key={li} style={{ display:"flex", gap:8, marginBottom:2 }}>
+                  {isBullet&&<span style={{ color:"rgba(255,255,255,0.25)", flexShrink:0 }}>•</span>}
+                  <span>{text}</span>
                 </div>
               );
             })}
           </div>
         </div>
       ))}
-      <button onClick={handleSubmit} disabled={submitting}
-        style={{ width:"100%", padding:"14px", background:"linear-gradient(135deg,#ff8c00,#ff4500)", border:"none", borderRadius:12, color:"#fff", fontSize:16, fontWeight:800, cursor:"pointer", marginTop:8 }}>
-        {submitting ? "Submitting..." : "🏅 Submit My Votes"}
-      </button>
     </div>
   );
 }
 
-function CustomPicker({ label, value, options, onSelect, setModalPicker, color="rgba(255,255,255,0.5)" }) {
-  return (
-    <div style={{ marginBottom:6 }}>
-      <button onClick={()=>setModalPicker({label, options, onSelect, color, current:value})}
-        style={{ width:"100%", padding:"8px 10px", background:"rgba(255,255,255,0.06)", border:`1px solid ${value?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:8, color:value?color:"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:value?700:400, cursor:"pointer", textAlign:"left", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <span>{value ? (options.find(o=>o.value===value)?.label||value) : label}</span>
-        <span style={{ fontSize:10, opacity:0.5 }}>▼</span>
-      </button>
-    </div>
-  );
-}
+// ── SETTINGS ─────────────────────────────────────────────────────────────────
+// ── HOLE-IN-ONE POOL ─────────────────────────────────────────────────────────
+function HoleInOneSection({ roster, holePool, meta, showToast }) {
+  const currentYear = meta?.year || new Date().getFullYear();
+  const ledger = holePool?.find(h => h.id === "ledger");
 
-function PhotoAvatar({ name, roster, size=28 }) {
-  const p = roster?.find(r=>r.name===name);
-  return p?.photoURL
-    ? <img src={p.photoURL} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
-    : <div style={{width:size,height:size,borderRadius:"50%",background:"rgba(255,255,255,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.4,fontWeight:800,flexShrink:0}}>{name[0]}</div>;
-}
+  const [winnerYear, setWinnerYear]     = useState(String(currentYear));
+  const [winnerName, setWinnerName]     = useState("");
+  const [winnerDate, setWinnerDate]     = useState("");
+  const [showWinner, setShowWinner]     = useState(false);
+  const [editYear, setEditYear]         = useState(null);
+  const [editBuyIn, setEditBuyIn]       = useState("");
+  const [expanded, setExpanded]         = useState({});
+  const [editingWinner, setEditingWinner]   = useState(null);
+  const [editWinnerForm, setEditWinnerForm] = useState({}); // year → bool
 
-function SortSelect({ value, onChange }) {
-  return (
-    <select value={value} onChange={e=>onChange(e.target.value)}
-      style={{background:"#1a2235",border:"1px solid rgba(255,255,255,0.2)",borderRadius:6,color:"#e8edf3",fontFamily:"inherit",fontSize:11,padding:"4px 6px"}}>
-      <option value="hcp">By HCP</option>
-      <option value="alpha">A–Z</option>
-      <option value="record">By Record</option>
-      <option value="winRate">By Win%</option>
-      <option value="ptsRate">By Pts%</option>
-    </select>
-  );
-}
+  const yearEntries = (ledger?.yearEntries || []).sort((a,b)=>b.year-a.year);
+  const winners     = ledger?.winners || [];
+  const currentEntry = yearEntries.find(e => String(e.year) === String(currentYear));
 
-function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds }) {
+  // Financials — pool resets per winner year: total contributed up to & including winner year minus prior payouts
+  const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
+  const totalPaidOut     = winners.reduce((sum,w)=>sum+(w.amount||0),0);
+  const runningTotal     = totalContributed - totalPaidOut;
+
+  // Pool at a given year = contributions from all years up to & including that year minus prior payouts
+  const poolAtYear = (yr) => {
+    const contrib = yearEntries.filter(e=>e.year<=Number(yr)).reduce((s,e)=>s+(e.contributions||0),0);
+    const paid = winners.filter(w=>w.year<=Number(yr)).reduce((s,w)=>s+(w.amount||0),0);
+    return contrib - paid;
+  };
+
+  const currentOptedIn = currentEntry?.optedIn || [];
+  const currentContrib = currentOptedIn.length * (Number(currentEntry?.buyIn)||0);
+
+  const saveLedger = async (updates) => {
+    try {
+      if (ledger) { await firestore.update("holepool", "ledger", updates); }
+      else { await firestore.set("holepool", "ledger", { yearEntries:[], winners:[], ...updates }); }
+    } catch(e) { showToast(e.message, true); }
+  };
+
+  const upsertYearEntry = (year, patch) => {
+    const existing = yearEntries.find(e=>String(e.year)===String(year)) || { year:Number(year), buyIn:0, optedIn:[], contributions:0 };
+    const updated = { ...existing, ...patch };
+    updated.contributions = (updated.optedIn||[]).length * (Number(updated.buyIn)||0);
+    const rest = yearEntries.filter(e=>String(e.year)!==String(year));
+    return [...rest, updated].sort((a,b)=>b.year-a.year);
+  };
+
+  const togglePlayer = async (name, year) => {
+    const entry = yearEntries.find(e=>String(e.year)===String(year)) || { year:Number(year), buyIn:0, optedIn:[], contributions:0 };
+    const optedIn = entry.optedIn||[];
+    const newOptedIn = optedIn.includes(name) ? optedIn.filter(n=>n!==name) : [...optedIn, name];
+    await saveLedger({ yearEntries: upsertYearEntry(year, { optedIn: newOptedIn }) });
+  };
+
+  const addYear = async () => {
+    if (!editYear||!editBuyIn) return showToast("Year and buy-in required", true);
+    await saveLedger({ yearEntries: upsertYearEntry(editYear, { buyIn: Number(editBuyIn) }) });
+    showToast(`${editYear} added — toggle players below`);
+    setEditYear(null); setEditBuyIn("");
+  };
+
+  const recordWinner = async () => {
+    if (!winnerName.trim()) return showToast("Enter winner name", true);
+    const amount = poolAtYear(Number(winnerYear));
+    const winner = { name:winnerName.trim(), amount, year:Number(winnerYear), date:winnerDate ? new Date(winnerDate).toISOString() : null };
+    await saveLedger({ winners:[...winners, winner] });
+    setWinnerName(""); setWinnerDate(""); setShowWinner(false);
+    showToast(`🎉 ${winnerName} wins $${amount}!`);
+  };
+
   const sortedRoster = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-  const teamFormats = meta?.teamFormats || {};
-  const hcpAllowances = meta?.hcpAllowances || {};
-  const compOrder = competitions.reduce((acc,c,i)=>({...acc,[c.id]:i}),{});
-
-  // Scramble detection — group all scramble competitions
-  const scrambleComps = competitions.filter(c=>c.name?.toLowerCase().includes("scramble"));
-  const scrambleIds = scrambleComps.map(c=>c.id);
-  const isScrambleGroup = (id) => scrambleIds.includes(id);
-  const SCRAMBLE_KEY = "__scramble__";
-
-  // Team competitions sorted (scrambles last, grouped)
-  const nonScrambleTeamComps = competitions.filter(c=>teamFormats[c.id]&&!isScrambleGroup(c.id))
-    .sort((a,b)=>(compOrder[a.id]||0)-(compOrder[b.id]||0));
-  const hasScramble = scrambleComps.some(c=>teamFormats[c.id]);
-
-  // Board entries: non-scramble comps + optional scramble group
-  const boardEntries = [
-    ...nonScrambleTeamComps.map(c=>({type:"comp",comp:c,id:c.id})),
-    ...(hasScramble?[{type:"scramble",id:SCRAMBLE_KEY}]:[]),
-  ];
-
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [nukes, setNukes_] = useState([]);
-  const [whales, setWhales_] = useState([]);
-  const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
-  const [assignSort, setAssignSort] = useState("hcp");
-  const [selComp, setSelComp] = useState(null);
-  const [selNukes, setSelNukes] = useState([]);
-  const [selWhales, setSelWhales] = useState([]);
-  const [explorerSort, setExplorerSort] = useState("hcp");
-  const [savedMatchups, setSavedMatchups] = useState({});
-  const [ptsOverride, setPtsOverride] = useState({});
-  const [modalPicker, setModalPicker] = useState(null);
-
-  const setNukes = (v) => { const val=typeof v==="function"?v(nukes):v; setNukes_(val); try{sessionStorage.setItem("nwi_mock_nukes",JSON.stringify(val));}catch(e){} };
-  const setWhales = (v) => { const val=typeof v==="function"?v(whales):v; setWhales_(val); try{sessionStorage.setItem("nwi_mock_whales",JSON.stringify(val));}catch(e){} };
-
-  useEffect(()=>{
-    try {
-      const sn=JSON.parse(sessionStorage.getItem("nwi_mock_nukes")||"[]");
-      const sw=JSON.parse(sessionStorage.getItem("nwi_mock_whales")||"[]");
-      const ss=JSON.parse(sessionStorage.getItem("nwi_mock_saved")||"{}");
-      const sp=JSON.parse(sessionStorage.getItem("nwi_mock_pts")||"{}");
-      if(sn.length) setNukes_(sn);
-      if(sw.length) setWhales_(sw);
-      if(Object.keys(ss).length) setSavedMatchups(ss);
-      if(Object.keys(sp).length) setPtsOverride(sp);
-      if(sn.length||sw.length) setUnassigned(sortedRoster.map(p=>p.name).filter(n=>![...sn,...sw].includes(n)));
-    } catch(e) {}
-    try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
-  }, []);
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  const defaultPts = Number(meta?.defaultMatchPts)||2;
-
-  const teamHcp = (players, allowPct=100) => {
-    const pct=allowPct/100;
-    const hcps=players.filter(Boolean).map(n=>getHandicap(n)*pct).sort((a,b)=>a-b);
-    if(!hcps.length) return 18;
-    if(hcps.length===1) return Math.round(hcps[0]*0.5);
-    return Math.round(hcps[0]*0.35+hcps[1]*0.15);
-  };
-
-  const toOdds = p => {
-    p=Math.max(0.05,Math.min(0.95,p));
-    return p>=0.5?`-${Math.round((p/(1-p))*100)}`:`+${Math.round(((1-p)/p)*100)}`;
-  };
-
-  const getPlayerStats = (name) => {
-    let w=0,l=0,t=0,pts=0,ptsAvail=0;
-    (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
-      if(!m.winner) return;
-      const onN=(m.nukes||[]).includes(name),onW=(m.whales||[]).includes(name);
-      if(!onN&&!onW) return;
-      const pt=onN?"nukes":"whales",p=m.pointsWorth||defaultPts,tie=p/2;
-      if(m.winner===pt){w++;pts+=p;}else if(m.winner==="tie"){t++;pts+=tie;}else l++;
-      ptsAvail+=p;
-    }));
-    return {w,l,t,pts,ptsAvail,total:w+l+t};
-  };
-
-  const getBlendedStats = (players, compName) => {
-    let w=0,t=0,total=0;
-    players.forEach(name=>{
-      (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
-        if(!m.winner) return;
-        if(compName){const mc=(m.roundName||"").toLowerCase();if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;}
-        const onN=(m.nukes||[]).includes(name),onW=(m.whales||[]).includes(name);
-        if(!onN&&!onW) return;
-        const pt=onN?"nukes":"whales";
-        if(m.winner===pt) w++; else if(m.winner==="tie") t+=0.5;
-        total++;
-      }));
-    });
-    if(total<2) return null;
-    return {w:Math.round(w*10)/10,t:Math.round(t*10)/10,l:Math.round((total-w-t)*10)/10,total,pct:Math.round((w/total)*100)};
-  };
-
-  // ── Adaptive odds model ───────────────────────────────────────────────────
-  // Opponent-quality weighted win rate for a set of players
-  // compName: if provided, filter to that competition only
-  const getWeightedWinRate = (players, compName) => {
-    if(!players?.length) return null;
-    let weightedWins=0, totalWeight=0;
-    (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
-      if(m.type==="heading"||!m.winner) return;
-      if(compName){
-        const mc=(m.roundName||m.competitionName||"").toLowerCase();
-        if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;
-      }
-      const inN=players.some(p=>(m.nukes||[]).includes(p));
-      const inW=players.some(p=>(m.whales||[]).includes(p));
-      if(!inN&&!inW) return;
-      // Opponent quality weight — avg opponent HCP normalized around 18
-      const oppTeam=inN?"whales":"nukes";
-      const oppPlayers=m[oppTeam]||[];
-      const oppAvgHcp=oppPlayers.length>0
-        ? oppPlayers.map(n=>getHandicap(n)).reduce((s,h)=>s+h,0)/oppPlayers.length
-        : 18;
-      const weight=Math.max(0.5, 1+(18-oppAvgHcp)/18); // lower opp hcp = higher weight
-      const pt=inN?"nukes":"whales";
-      const won=m.winner===pt?1:m.winner==="tie"?0.5:0;
-      weightedWins+=won*weight;
-      totalWeight+=weight;
-    }));
-    if(totalWeight<2) return null; // not enough data
-    return weightedWins/totalWeight; // 0-1 win rate
-  };
-
-  // Convert two team win rates to a head-to-head probability
-  const winRateToProb = (nRate, wRate) => {
-    const tot=nRate+wRate;
-    return tot>0?nRate/tot:0.5;
-  };
-
-  const calcProb = (nPair, wPair, comp) => {
-    if(!comp) return 0.5;
-    const compId=comp.id===SCRAMBLE_KEY?scrambleComps[0]?.id:comp.id;
-    const compName=comp.id===SCRAMBLE_KEY?null:comp.name; // scramble uses all-time only
-    const allow=hcpAllowances[compId]||100;
-
-    // Factor 1: Team handicap (always present)
-    const nHcp=teamHcp(nPair,allow), wHcp=teamHcp(wPair,allow);
-    const hcpProb=Math.max(0.05,Math.min(0.95, 0.5+(wHcp-nHcp)*0.03));
-
-    // Factor 2: All-time opponent-weighted win rate
-    const nAllTime=getWeightedWinRate(nPair,null);
-    const wAllTime=getWeightedWinRate(wPair,null);
-    const hasAllTime=nAllTime!==null||wAllTime!==null;
-    const allTimeProb=hasAllTime?winRateToProb(nAllTime??0.5,wAllTime??0.5):null;
-
-    // Factor 3: Competition-specific win rate
-    const nCompSpec=compName?getWeightedWinRate(nPair,compName):null;
-    const wCompSpec=compName?getWeightedWinRate(wPair,compName):null;
-    const hasCompSpec=nCompSpec!==null||wCompSpec!==null;
-    const compSpecProb=hasCompSpec?winRateToProb(nCompSpec??0.5,wCompSpec??0.5):null;
-
-    // Blend based on available data
-    let prob;
-    if(hasCompSpec&&allTimeProb!==null) {
-      // All three factors: 50% hcp + 25% all-time + 25% comp-specific
-      prob=hcpProb*0.50+allTimeProb*0.25+compSpecProb*0.25;
-    } else if(allTimeProb!==null) {
-      // Two factors: 75% hcp + 25% all-time
-      prob=hcpProb*0.75+allTimeProb*0.25;
-    } else {
-      // Handicap only
-      prob=hcpProb;
-    }
-    return Math.max(0.1,Math.min(0.9,prob));
-  };
-
-  const getPairs = players => {
-    const p=[];
-    for(let i=0;i<players.length;i++) for(let j=i+1;j<players.length;j++) p.push([players[i],players[j]]);
-    return p;
-  };
-
-  const getCompPts = (comp) => {
-    if(!comp) return defaultPts;
-    if(ptsOverride[comp.id]) return Number(ptsOverride[comp.id]);
-    const r=(rounds||[]).find(r=>r.competitionName===comp.name||(r.matchups||[]).some(mu=>mu.competitionName===comp.name));
-    return r?.pointsPerWin||defaultPts;
-  };
-
-  // Dynamic max slots based on team size
-  const maxSlots = Math.max(1, Math.floor(Math.min(nukes.length||1, whales.length||1)/2));
-
-  // Players already used in saved matchups for current competition
-  const selCompIsScramble = selComp ? isScrambleGroup(selComp.id) : false;
-  const usedInSelComp = selComp ? (
-    selCompIsScramble
-      ? (savedMatchups[SCRAMBLE_KEY]||[]).flatMap(m=>[...(m.np||[]),...(m.wp||[])])
-      : (savedMatchups[selComp.id]||[]).flatMap(m=>[...(m.np||[]),...(m.wp||[])])
-  ) : [];
-
-  const checkPartnerRepeat = (p1, p2) => {
-    if(!p1||!p2) return false;
-    const key=[p1,p2].sort().join("|");
-    return Object.entries(savedMatchups).some(([,ms])=>
-      ms.some(m=>[...(m.np||[])].sort().join("|")===key||[...(m.wp||[])].sort().join("|")===key)
-    );
-  };
-
-  const checkRepeat = (np, wp, cid) => {
-    if(!np?.length||!wp?.length) return false;
-    try {
-      const nKey=[...np].sort().join("|"), wKey=[...wp].sort().join("|");
-      const pairKeys=Object.entries(savedMatchups).flatMap(([ocid,ms])=>ms.flatMap(m=>[
-        {key:[...(m.np||[])].sort().join("|"),cid:ocid},
-        {key:[...(m.wp||[])].sort().join("|"),cid:ocid}
-      ]));
-      return pairKeys.some(({key,cid:ocid})=>(key===nKey||key===wKey)&&ocid!==cid&&!(isScrambleGroup(cid)&&isScrambleGroup(ocid)));
-    } catch(e){return false;}
-  };
-
-  // Auto-compute suggestions
-  const suggestions = (() => {
-    if(!selComp) return null;
-    const np=selNukes.filter(Boolean), wp=selWhales.filter(Boolean);
-    if(np.length<2&&wp.length<2) return null;
-    const allow=hcpAllowances[selComp.id]||100;
-    if(np.length===2&&wp.length===2){
-      const prob=calcProb(np,wp,selComp);
-      const altPool=whales.length>=2?whales.filter(n=>!np.includes(n)):sortedRoster.map(p=>p.name).filter(n=>!np.includes(n));
-      const altPairs=getPairs(altPool).filter(p=>p.join("|")!==[...wp].sort().join("|"));
-      const ranked=altPairs.map(ap=>({pair:ap,prob:calcProb(np,ap,selComp),diff:Math.abs(calcProb(np,ap,selComp)-0.5)})).sort((a,b)=>a.diff-b.diff);
-      const nextBest=ranked[0]?{pair:ranked[0].pair,prob:ranked[0].prob,diffFromBest:Math.abs(ranked[0].prob-prob)}:null;
-      return [{label:"Projected Matchup",emoji:"🎯",np,wp,prob,nHcp:teamHcp(np,allow),wHcp:teamHcp(wp,allow),color:"rgba(255,200,0,0.8)",bg:"rgba(255,200,0,0.04)",border:"rgba(255,200,0,0.2)",nextBest}];
-    }
-    const knownIsNuke=np.length===2;
-    const known=knownIsNuke?np:wp;
-    const pool=knownIsNuke?(whales.length>=2?whales:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n))):(nukes.length>=2?nukes:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n)));
-    const filtered=selCompIsScramble?pool:pool.filter(n=>!usedInSelComp.includes(n));
-    const matchups=getPairs(filtered).map(op=>{
-      const nP=knownIsNuke?known:op, wP=knownIsNuke?op:known;
-      const prob=calcProb(nP,wP,selComp);
-      return {nPair:nP,wPair:wP,prob,diff:Math.abs(prob-0.5),nHcp:teamHcp(nP,allow),wHcp:teamHcp(wP,allow)};
-    });
-    if(!matchups.length) return [];
-    const byComp=[...matchups];
-    byComp.sort((a,b)=>a.diff-b.diff); const mostComp=byComp[0];
-    const byNuke=[...matchups].sort((a,b)=>b.prob-a.prob); const nukeStamp=byNuke[0];
-    const byWhale=[...matchups].sort((a,b)=>a.prob-b.prob); const whaleStamp=byWhale[0];
-    const nextFor=(base,sorted)=>{const alt=sorted.filter(m=>m!==base);if(!alt.length)return null;return{pair:knownIsNuke?alt[0].wPair:alt[0].nPair,prob:alt[0].prob,diffFromBest:Math.abs(alt[0].prob-base.prob)};};
-    return [
-      {label:"Most Competitive",emoji:"⚖️",np:mostComp.nPair,wp:mostComp.wPair,prob:mostComp.prob,nHcp:mostComp.nHcp,wHcp:mostComp.wHcp,color:"rgba(74,222,128,0.8)",bg:"rgba(74,222,128,0.04)",border:"rgba(74,222,128,0.2)",nextBest:nextFor(mostComp,byComp)},
-      {label:nukeStamp.prob>=0.6?"☢️ Nuke Stomp":"Most Nuke-Favored",emoji:"☢️",np:nukeStamp.nPair,wp:nukeStamp.wPair,prob:nukeStamp.prob,nHcp:nukeStamp.nHcp,wHcp:nukeStamp.wHcp,color:"rgba(255,69,0,0.8)",bg:"rgba(255,69,0,0.04)",border:"rgba(255,69,0,0.2)",nextBest:nextFor(nukeStamp,byNuke)},
-      {label:whaleStamp.prob<=0.4?"🐋 Whale Stomp":"Most Whale-Favored",emoji:"🐋",np:whaleStamp.nPair,wp:whaleStamp.wPair,prob:whaleStamp.prob,nHcp:whaleStamp.nHcp,wHcp:whaleStamp.wHcp,color:"rgba(0,170,255,0.8)",bg:"rgba(0,170,255,0.04)",border:"rgba(0,170,255,0.2)",nextBest:nextFor(whaleStamp,byWhale)},
-    ];
-  })();
-
-  const saveMatchup = (m) => {
-    if(!selComp) return;
-    try {
-      const isScr=isScrambleGroup(selComp.id);
-      const cid=isScr?SCRAMBLE_KEY:selComp.id;
-      const current=savedMatchups[cid]||[];
-      if(current.length>=maxSlots) return;
-      const pts=getCompPts(selComp);
-      const entry={np:m.np,wp:m.wp,prob:m.prob,nHcp:m.nHcp,wHcp:m.wHcp,label:m.label,compId:cid,pointsWorth:pts,isScramble:isScr};
-      setSavedMatchups(s=>{const next={...s,[cid]:[...current,entry]};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
-      setSelNukes([]); setSelWhales([]); // clear after save
-    } catch(e){console.log("save error:",e);}
-  };
-
-  const deleteMatchup=(cid,idx)=>setSavedMatchups(s=>{const next={...s,[cid]:(s[cid]||[]).filter((_,i)=>i!==idx)};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
-
-  const assign=(name,team)=>{
-    setUnassigned(u=>u.filter(n=>n!==name));
-    setNukes(n=>n.filter(n2=>n2!==name));
-    setWhales(w=>w.filter(n=>n!==name));
-    if(team==="nukes") setNukes(n=>[...n,name]);
-    if(team==="whales") setWhales(w=>[...w,name]);
-    if(team==="none") setUnassigned(u=>[...u,name]);
-    setSelNukes([]); setSelWhales([]);
-  };
-
-  const sortPlayers=(players,by)=>[...players].sort((a,b)=>{
-    if(by==="alpha") return a.localeCompare(b);
-    if(by==="hcp") return getHandicap(a)-getHandicap(b);
-    const sa=getPlayerStats(a),sb=getPlayerStats(b);
-    if(by==="record") return sb.w-sa.w||sb.t-sa.t||sa.l-sb.l;
-    if(by==="winRate") return (sb.total?(sb.w+sb.t*0.5)/sb.total:0)-(sa.total?(sa.w+sa.t*0.5)/sa.total:0);
-    if(by==="ptsRate") return (sb.ptsAvail?sb.pts/sb.ptsAvail:0)-(sa.ptsAvail?sa.pts/sa.ptsAvail:0);
-    return 0;
-  });
-
-  // PhotoAvatar and SortSelect defined at top level (outside component)
-
-  // Sort non-scramble comps by order they appear in rounds/matchups tab
-  const roundsCompNames = [];
-  (rounds||[]).forEach(r=>{
-    const n=r.competitionName||"";
-    if(n&&!roundsCompNames.includes(n)) roundsCompNames.push(n);
-    (r.matchups||[]).forEach(m=>{
-      const mn=m.competitionName||"";
-      if(mn&&!roundsCompNames.includes(mn)) roundsCompNames.push(mn);
-    });
-  });
-  const sortedNonScramble = [...nonScrambleTeamComps].sort((a,b)=>{
-    const ai=roundsCompNames.indexOf(a.name);
-    const bi=roundsCompNames.indexOf(b.name);
-    const ao=ai>=0?ai:(compOrder[a.id]??999);
-    const bo=bi>=0?bi:(compOrder[b.id]??999);
-    return ao-bo;
-  });
-  // Explorer competition options (non-scramble + single "Scramble" entry)
-  const explorerComps=[
-    ...sortedNonScramble,
-    ...(hasScramble?[{id:SCRAMBLE_KEY,name:"Scramble",icon:"🏌️",_scramble:true}]:[]),
-  ];
-  // When scramble is selected in explorer, use first scramble comp for hcp calc
-  const effectiveComp = selComp?.id===SCRAMBLE_KEY ? scrambleComps[0] : selComp;
+  const toggleExpanded = (yr) => setExpanded(e=>({...e,[yr]:!e[yr]}));
 
   return (
     <div>
-      {/* ── HEADER ── */}
-      <div style={{fontSize:22,fontWeight:900,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>🃏 Mock Draft</div>
-      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:20}}>Build your mock draft and explore optimal matchups. Nothing saves to the app.</div>
+      <div style={s.sectionTitle}>⛳ Hole-in-One Pool</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>
+        Rolls over every year. Full cumulative pot goes to whoever hits a hole-in-one.
+      </div>
 
-      {/* ══ STEP 1 ══════════════════════════════════════════════════════════ */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px",marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <div>
-            <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase"}}>Step 1 — Assign Players</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>Assign everyone to a team before exploring matchups</div>
-          </div>
-          <SortSelect value={assignSort} onChange={setAssignSort}/>
+      {/* Running total */}
+      <div style={{ ...s.card, background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.2)", textAlign:"center", marginBottom:16 }}>
+        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>💰 Total Pool (All Years)</div>
+        <div style={{ fontSize:52, fontWeight:900, color:"#4ade80", lineHeight:1 }}>${Math.round(runningTotal)}</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:6 }}>${Math.round(totalContributed)} contributed · ${Math.round(totalPaidOut)} paid out</div>
+      </div>
+
+      {/* Add historical year */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>📋 Add / Edit a Year</div>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Year</div><input style={s.input} type="number" value={editYear||""} onChange={e=>setEditYear(e.target.value)} placeholder={String(currentYear-1)}/></div>
+          <div><div style={s.label}>Buy-In Per Player ($)</div><input style={s.input} type="number" step="1" value={editBuyIn} onChange={e=>setEditBuyIn(e.target.value)} placeholder="e.g. 20"/></div>
         </div>
+        <button style={{ ...s.btnFire, marginTop:12 }} onClick={addYear}>Save Year</button>
+      </div>
 
-        {unassigned.length>0&&(
-          <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:4}}>
-            {sortPlayers(unassigned,assignSort).map(name=>{
-              const s=getPlayerStats(name);
-              return (
-                <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8}}>
-                  <PhotoAvatar roster={roster} name={name} size={26}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600}}>{name}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W{s.t>0?` · ${s.t}T`:""} · {s.l}L</div>
+      {/* Per-year opt-in toggles — collapsible */}
+      {yearEntries.map(entry=>{
+        const isCurrentYear = String(entry.year)===String(currentYear);
+        // Current year expanded by default; historical collapsed by default
+        const isExpanded = isCurrentYear ? (expanded[entry.year] !== false) : !!expanded[entry.year];
+        const isCollapsed = !isExpanded;
+        return (
+          <div key={entry.year} style={s.card}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <div style={{ flex:1, cursor:"pointer", display:"flex", alignItems:"center", gap:8 }} onClick={()=>toggleExpanded(entry.year)}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700 }}>
+                    {isCurrentYear?`⭐ ${entry.year} (Current Year)`:String(entry.year)}
+                    <span style={{ fontSize:12, fontWeight:400, color:"rgba(255,255,255,0.35)", marginLeft:8 }}>${entry.buyIn||0}/player · {(entry.optedIn||[]).length} players · ${entry.contributions||0}</span>
                   </div>
-                  <button onClick={()=>assign(name,"nukes")} style={{padding:"3px 8px",background:"rgba(255,69,0,0.15)",border:"1px solid rgba(255,69,0,0.3)",borderRadius:5,color:"#ff4500",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>☢️</button>
-                  <button onClick={()=>assign(name,"whales")} style={{padding:"3px 8px",background:"rgba(0,170,255,0.15)",border:"1px solid rgba(0,170,255,0.3)",borderRadius:5,color:"#00aaff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>🐋</button>
                 </div>
-              );
-            })}
+                <span style={{ color:"rgba(255,255,255,0.3)", fontSize:12 }}>{isCollapsed?"▶ Show":"▼ Hide"}</span>
+              </div>
+              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11, flexShrink:0 }} onClick={async()=>{
+                if(window.confirm(`Delete ${entry.year} from the pool? This cannot be undone.`)) {
+                  await saveLedger({ yearEntries: yearEntries.filter(e=>String(e.year)!==String(entry.year)) });
+                  showToast(`${entry.year} removed`);
+                }
+              }}>✕</button>
+            </div>
+            {!isCollapsed&&(
+              <div style={{ marginTop:12 }}>
+                {!entry.buyIn&&<div style={{ fontSize:12, color:"rgba(255,200,0,0.7)", marginBottom:8 }}>⚠️ Set a buy-in amount first</div>}
+                <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                  {sortedRoster.map(p=>{
+                    const inPool = (entry.optedIn||[]).includes(p.name);
+                    return (
+                      <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:inPool?"rgba(74,222,128,0.07)":"rgba(255,255,255,0.02)", border:`1px solid ${inPool?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.06)"}`, borderRadius:8 }}>
+                        {p.photoURL?<img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:12 }}>{p.name?.[0]}</div>}
+                        <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{p.name}</div>
+                        {inPool&&<div style={{ fontSize:11, color:"#4ade80" }}>${entry.buyIn||0}</div>}
+                        <button onClick={()=>togglePlayer(p.name, entry.year)}
+                          style={{ padding:"4px 12px", borderRadius:8, border:`1px solid ${inPool?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.12)"}`, background:inPool?"rgba(74,222,128,0.12)":"none", color:inPool?"#4ade80":"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                          {inPool?"✓ In":"Out"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Record winner — toggle with year selector */}
+      <div style={s.card}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontSize:14, fontWeight:700, color:"#ffd700" }}>🏆 Record Hole-in-One Winner</div>
+          <button style={{ ...s.btnGhost, fontSize:11 }} onClick={()=>setShowWinner(w=>!w)}>{showWinner?"Cancel":"Record Winner"}</button>
+        </div>
+        {showWinner&&(
+          <div style={{ marginTop:14 }}>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginBottom:12 }}>
+              The pool amount is calculated based on all contributions up to the selected year, minus prior payouts.
+            </div>
+            <div style={s.grid2}>
+              <div>
+                <div style={s.label}>Winner Year</div>
+                <select style={s.select} value={winnerYear} onChange={e=>setWinnerYear(e.target.value)}>
+                  {yearEntries.map(e=><option key={e.year} value={e.year}>{e.year}</option>)}
+                </select>
+                <div style={{ fontSize:11, color:"#4ade80", marginTop:4 }}>Pool at {winnerYear}: ${Math.round(poolAtYear(Number(winnerYear)))}</div>
+              </div>
+              <div>
+                <div style={s.label}>Winner (from roster)</div>
+                <select style={s.select} value={winnerName} onChange={e=>setWinnerName(e.target.value)}>
+                  <option value="">— Select player —</option>
+                  {sortedRoster.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ marginTop:10 }}>
+              <div style={s.label}>Date (optional)</div>
+              <input style={s.input} type="date" value={winnerDate} onChange={e=>setWinnerDate(e.target.value)}/>
+            </div>
+            <button style={{ ...s.btnFire, width:"100%", marginTop:12 }} onClick={recordWinner} disabled={!winnerName}>
+              Confirm — Pay ${Math.round(poolAtYear(Number(winnerYear)))} to {winnerName||"..."}
+            </button>
           </div>
         )}
+      </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-          {[["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nukes],["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.2)",whales]].map(([team,label,color,bg,border,players])=>(
-            <div key={team} style={{padding:"8px 10px",background:bg,border:`1px solid ${border}`,borderRadius:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</div><div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{players.length} players</div></div>
-              {players.length===0?<div style={{fontSize:11,color:"rgba(255,255,255,0.2)"}}>None yet</div>:players.map(name=>(
-                <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <PhotoAvatar roster={roster} name={name} size={18}/>
-                    <span style={{fontSize:11,fontWeight:600}}>{name}</span>
+      {/* Past payouts */}
+      {winners.length>0&&(
+        <div style={s.card}>
+          <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>🎉 Past Payouts</div>
+          {[...winners].reverse().map((w,i)=>{
+            const realIdx = winners.length - 1 - i;
+            const isEditing = editingWinner === realIdx;
+            return (
+              <div key={i} style={{ background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:10, padding:"10px 12px", marginBottom:6 }}>
+                {isEditing ? (
+                  <div>
+                    <div style={s.grid2}>
+                      <div>
+                        <div style={s.label}>Winner</div>
+                        <select style={s.select} value={editWinnerForm.name} onChange={e=>setEditWinnerForm(f=>({...f,name:e.target.value}))}>
+                          {sortedRoster.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <div style={s.label}>Year</div>
+                        <select style={s.select} value={editWinnerForm.year} onChange={e=>setEditWinnerForm(f=>({...f,year:Number(e.target.value)}))}>
+                          {yearEntries.map(e=><option key={e.year} value={e.year}>{e.year}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ marginTop:10 }}>
+                      <div style={s.label}>Date (optional)</div>
+                      <input style={s.input} type="date" value={editWinnerForm.date||""} onChange={e=>setEditWinnerForm(f=>({...f,date:e.target.value}))}/>
+                    </div>
+                    <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                      <button style={s.btnFire} onClick={async()=>{
+                        const updated = winners.map((w2,i2)=>i2===realIdx?{...w2,...editWinnerForm}:w2);
+                        await saveLedger({winners:updated});
+                        setEditingWinner(null); showToast("Updated!");
+                      }}>Save</button>
+                      <button style={s.btnGhost} onClick={()=>setEditingWinner(null)}>Cancel</button>
+                    </div>
                   </div>
-                  <button onClick={()=>assign(name,"none")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:11}}>✕</button>
-                </div>
-              ))}
+                ) : (
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ fontSize:20 }}>⛳</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700 }}>{w.name}</div>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year}{w.date?` · ${new Date(w.date).toLocaleDateString()}`:""}</div>
+                    </div>
+                    <div style={{ fontSize:18, fontWeight:900, color:"#ffd700" }}>${Math.round(w.amount||0)}</div>
+                    <button style={{ ...s.btnGhost, padding:"3px 8px", fontSize:11 }} onClick={()=>{setEditingWinner(realIdx);setEditWinnerForm({name:w.name,year:w.year,date:w.date?new Date(w.date).toISOString().split("T")[0]:""});}}>✏️</button>
+                    <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={async()=>{
+                      if(window.confirm("Remove this winner?")) {
+                        await saveLedger({winners:winners.filter((_,i2)=>i2!==realIdx)});
+                        showToast("Removed!");
+                      }
+                    }}>✕</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── LOCATION AUTOCOMPLETE ─────────────────────────────────────────────────
+function LocationAutocomplete({ value, onChange }) {
+  const [query, setQuery] = useState(value||"");
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useState(null);
+
+  const search = async (q) => {
+    if (q.length < 3) { setSuggestions([]); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&format=json`);
+      const data = await res.json();
+      setSuggestions((data.results||[]).map(r => ({
+        label: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
+      })));
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const handleChange = (e) => {
+    const q = e.target.value;
+    setQuery(q);
+    onChange(q);
+    setOpen(true);
+    clearTimeout(debounceRef[0]);
+    debounceRef[0] = setTimeout(() => search(q), 400);
+  };
+
+  const select = (label) => {
+    setQuery(label);
+    onChange(label);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position:"relative" }}>
+      <input style={s.input} value={query} onChange={handleChange}
+        onFocus={()=>query.length>=3&&setOpen(true)}
+        onBlur={()=>setTimeout(()=>setOpen(false),200)}
+        placeholder="e.g. Pebble Beach, CA"/>
+      {loading && <div style={{ position:"absolute", right:10, top:10, fontSize:11, color:"rgba(255,255,255,0.3)" }}>...</div>}
+      {open && suggestions.length>0 && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:100, background:"#1a2235", border:"1px solid rgba(255,255,255,0.15)", borderRadius:8, marginTop:4, overflow:"hidden", boxShadow:"0 8px 24px rgba(0,0,0,0.4)" }}>
+          {suggestions.map((s,i)=>(
+            <div key={i} onMouseDown={()=>select(s.label)}
+              style={{ padding:"10px 12px", fontSize:13, color:"rgba(255,255,255,0.8)", cursor:"pointer", borderBottom:"1px solid rgba(255,255,255,0.06)", lineHeight:1.4 }}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.08)"}
+              onMouseLeave={e=>e.currentTarget.style.background="none"}>
+              📍 {s.label}
             </div>
           ))}
         </div>
-
-        <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSelNukes([]);setSelWhales([]);setSavedMatchups({});setPtsOverride({});try{["nwi_mock_saved","nwi_mock_nukes","nwi_mock_whales","nwi_mock_pts"].forEach(k=>sessionStorage.removeItem(k));}catch(e){}}}
-          style={{width:"100%",padding:"8px",background:"rgba(255,140,0,0.12)",border:"1px solid rgba(255,140,0,0.35)",borderRadius:8,color:"#ff8c00",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-          🔄 Reset All Players
-        </button>
-      </div>
-
-      {/* ══ STEP 2 ══════════════════════════════════════════════════════════ */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px",marginBottom:20}}>
-        <div style={{marginBottom:12}}>
-          <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase"}}>Step 2 — Matchup Explorer</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:2}}>Select a competition, then tap up to 2 players per side to build a matchup or choose from suggested pairings below</div>
-        </div>
-
-        {explorerComps.length===0?(
-          <div style={{fontSize:12,color:"rgba(255,255,255,0.3)"}}>No team competitions flagged — set them in Admin → Settings</div>
-        ):(
-          <div style={{marginBottom:12}}>
-            <CustomPicker setModalPicker={setModalPicker}
-              label="— Select competition —"
-              value={selComp?.id||""}
-              options={explorerComps.map(c=>({value:c.id,label:`${c.icon||"🏅"} ${c.name} · ${c.id===SCRAMBLE_KEY?((Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2))+" pts (F9+B9+18)":getCompPts(c)+" pts"}`}))}
-              onSelect={v=>{
-                const found=explorerComps.find(c=>c.id===v)||null;
-                setSelComp(found); setSelNukes([]); setSelWhales([]);
-              }}
-              color="#ffd700"
-            />
-          </div>
-        )}
-
-        {selComp&&(
-          <>
-            {selComp.id===SCRAMBLE_KEY&&(
-              <div style={{marginBottom:10,padding:"8px 12px",background:"rgba(255,200,0,0.06)",border:"1px solid rgba(255,200,0,0.2)",borderRadius:8}}>
-                <div style={{fontSize:11,color:"#ffd700",fontWeight:700,marginBottom:4}}>🏌️ Scramble — One pairing, three sub-matches</div>
-                <div style={{display:"flex",gap:12,fontSize:11,color:"rgba(255,255,255,0.5)"}}>
-                  <span>Front 9: {defaultPts} pts</span>
-                  <span>Back 9: {defaultPts} pts</span>
-                  <span>Full 18: {defaultPts*2} pts</span>
-                  <span style={{color:"#ffd700",fontWeight:700}}>Total: {defaultPts*4} pts</span>
-                </div>
-              </div>
-            )}
-
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Tap to select · max 2 per side</div>
-              <SortSelect value={explorerSort} onChange={setExplorerSort}/>
-            </div>
-
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-              {[
-                ["nukes","☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.2)",nukes.length>0?nukes:sortedRoster.map(p=>p.name),selNukes,setSelNukes],
-                ["whales","🐋 Whales","#00aaff","rgba(0,170,255,0.06)","rgba(0,170,255,0.15)",whales.length>0?whales:sortedRoster.map(p=>p.name),selWhales,setSelWhales],
-              ].map(([team,label,color,bg,border,players,sel,setSel])=>(
-                <div key={team} style={{background:bg,border:`1px solid ${border}`,borderRadius:10,overflow:"hidden"}}>
-                  <div style={{padding:"8px 10px",borderBottom:`1px solid ${border}`,fontSize:10,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase"}}>{label}</div>
-                  <div style={{padding:"6px",display:"flex",flexDirection:"column",gap:3,maxHeight:260,overflowY:"auto"}}>
-                    {sortPlayers(players,explorerSort).map(name=>{
-                      const isSelected=sel.includes(name);
-                      const isUsed=!selCompIsScramble&&usedInSelComp.includes(name);
-                      const canSelect=!isUsed&&(isSelected||sel.length<2);
-                      const s=getPlayerStats(name);
-                      const partnerWarn=sel.length===1&&!isSelected&&checkPartnerRepeat(sel[0],name);
-                      return (
-                        <div key={name} onClick={()=>{if(isUsed)return;if(isSelected)setSel(v=>v.filter(n=>n!==name));else if(sel.length<2)setSel(v=>[...v,name]);}}
-                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 7px",borderRadius:7,
-                            background:isSelected?`${color}22`:isUsed?"rgba(255,255,255,0.01)":"rgba(255,255,255,0.03)",
-                            border:`1px solid ${isSelected?color:"rgba(255,255,255,0.05)"}`,
-                            opacity:isUsed?0.3:canSelect?1:0.5,cursor:isUsed?"not-allowed":canSelect?"pointer":"default"}}>
-                          <PhotoAvatar roster={roster} name={name} size={24}/>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:11,fontWeight:700,color:isSelected?color:"#e8edf3",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
-                            <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>
-                              HCP {getHandicap(name)}&nbsp;<span style={{opacity:0.4}}>|</span>&nbsp;{s.w}W{s.t>0?` · ${s.t}T`:""} · {s.l}L
-                            </div>
-                          </div>
-                          {isSelected&&<div style={{fontSize:13,color,flexShrink:0}}>✓</div>}
-                          {isUsed&&<div style={{fontSize:9,color:"rgba(255,85,85,0.6)",flexShrink:0}}>used</div>}
-                          {partnerWarn&&<div style={{fontSize:10,flexShrink:0}}>⚠️</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Live suggestions */}
-            {suggestions&&suggestions.length>0&&suggestions.map((s,si)=>{
-              const cid=selCompIsScramble?SCRAMBLE_KEY:selComp.id;
-              const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
-              const compSlots=(savedMatchups[cid]||[]).length;
-              const playerConflict=!alreadySaved&&!selCompIsScramble&&[...s.np,...s.wp].some(p=>usedInSelComp.includes(p));
-              const repeat=checkRepeat(s.np,s.wp,cid);
-              const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
-              const partnerRepeatWhale=checkPartnerRepeat(s.wp[0],s.wp[1]);
-              const nHist=getBlendedStats(s.np,effectiveComp?.name);
-              const wHist=getBlendedStats(s.wp,effectiveComp?.name);
-              const compPtsDisplay=selComp.id===SCRAMBLE_KEY?`${defaultPts}+${defaultPts}+${defaultPts*2} pts`:getCompPts(selComp)+" pts/win";
-              return (
-                <div key={si} style={{padding:"10px 12px",background:s.bg,border:`2px solid ${repeat?"rgba(255,200,0,0.5)":s.border}`,borderRadius:10,marginBottom:8}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <div>
-                      <div style={{fontSize:13,color:s.color,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.emoji} {s.label}</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1}}>{compPtsDisplay}</div>
-                    </div>
-                    <button onClick={()=>{if(!alreadySaved&&!playerConflict&&compSlots<maxSlots) saveMatchup(s);}}
-                      style={{padding:"5px 12px",background:alreadySaved?"rgba(74,222,128,0.15)":playerConflict?"rgba(255,85,85,0.1)":"rgba(255,255,255,0.08)",border:`1px solid ${alreadySaved?"rgba(74,222,128,0.3)":playerConflict?"rgba(255,85,85,0.3)":"rgba(255,255,255,0.15)"}`,borderRadius:6,color:alreadySaved?"#4ade80":playerConflict?"#ff5555":"rgba(255,255,255,0.7)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:alreadySaved||playerConflict||compSlots>=maxSlots?"default":"pointer",flexShrink:0}}>
-                      {alreadySaved?"✓ Saved":playerConflict?"Player used":compSlots>=maxSlots?"Full":"+ Save"}
-                    </button>
-                  </div>
-                  {repeat&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ Repeat pairing detected</div>}
-                  {partnerRepeatNuke&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.np[0]} & {s.np[1]} have been paired before</div>}
-                  {partnerRepeatWhale&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.wp[0]} & {s.wp[1]} have been paired before</div>}
-                  {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
-                  <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
-                      {s.np.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#ff4500",lineHeight:1.3}}>{n}</div>)}
-                      <div style={{fontSize:17,fontWeight:900,color:"#ff4500",marginTop:3,lineHeight:1}}>{toOdds(s.prob)}</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round(s.prob*100)}% win · HCP {s.nHcp}</div>
-                      {nHist&&<div style={{fontSize:9,color:"rgba(255,69,0,0.6)",marginTop:2}}>{nHist.w}W·{nHist.l}L ({nHist.pct}%){effectiveComp?` in ${effectiveComp.name}`:""}</div>}
-                    </div>
-                    <div style={{fontSize:10,fontWeight:900,color:"rgba(255,255,255,0.15)"}}>VS</div>
-                    <div style={{textAlign:"center"}}>
-                      <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.wp.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
-                      {s.wp.map(n=><div key={n} style={{fontSize:11,fontWeight:700,color:"#00aaff",lineHeight:1.3}}>{n}</div>)}
-                      <div style={{fontSize:17,fontWeight:900,color:"#00aaff",marginTop:3,lineHeight:1}}>{toOdds(1-s.prob)}</div>
-                      <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginTop:2}}>{Math.round((1-s.prob)*100)}% win · HCP {s.wHcp}</div>
-                      {wHist&&<div style={{fontSize:9,color:"rgba(0,170,255,0.6)",marginTop:2}}>{wHist.w}W·{wHist.l}L ({wHist.pct}%){effectiveComp?` in ${effectiveComp.name}`:""}</div>}
-                    </div>
-                  </div>
-                  {s.nextBest&&(
-                    <div style={{marginTop:8,padding:"5px 8px",background:"rgba(255,255,255,0.04)",borderRadius:6,fontSize:10,color:"rgba(255,255,255,0.35)"}}>
-                      Next best: {s.nextBest.pair.join(" & ")} → {toOdds(s.nextBest.prob)} ({s.nextBest.diffFromBest<0.01?"similar":Math.round(s.nextBest.diffFromBest*100)+"% shift"})
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {suggestions&&suggestions.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.3)",textAlign:"center",padding:10}}>Not enough players to generate suggestions</div>}
-            {!suggestions&&(selNukes.length>0||selWhales.length>0)&&<div style={{fontSize:12,color:"rgba(255,255,255,0.35)",textAlign:"center",padding:10}}>Select 2 players on at least one side</div>}
-          </>
-        )}
-      </div>
-
-      {/* ══ MATCHUP BOARD ═══════════════════════════════════════════════════ */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"14px"}}>
-        <div style={{fontSize:16,fontWeight:800,letterSpacing:"0.04em",textTransform:"uppercase",marginBottom:4}}>📋 Matchup Board</div>
-        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:14}}>{maxSlots} slot{maxSlots!==1?"s":""} per competition · based on {Math.min(nukes.length,whales.length)||"?"} players per team</div>
-
-        {boardEntries.map(entry=>{
-          if(entry.type==="scramble"){
-            const ms=savedMatchups[SCRAMBLE_KEY]||[];
-            const slots=Math.max(maxSlots,ms.length);
-            return (
-              <div key="scramble" style={{marginBottom:14}}>
-                <div style={{marginBottom:8}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>🏌️ Scramble</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                    {[["Front 9",`${SCRAMBLE_KEY}_f9`,defaultPts],["Back 9",`${SCRAMBLE_KEY}_b9`,defaultPts],["18-Holes",`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>(
-                      <div key={key} style={{display:"flex",alignItems:"center",gap:4}}>
-                        <span style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>{lbl}:</span>
-                        <input type="number" min="0" step="0.5"
-                          value={ptsOverride[key]!==undefined?ptsOverride[key]:def}
-                          onChange={e=>setPtsOverride(p=>({...p,[key]:e.target.value}))}
-                          style={{width:36,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px"}}/>
-                        <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
-                  {Array.from({length:slots}).map((_,i)=>{
-                    const m=ms[i];
-                    if(!m) return (
-                      <div key={i} style={{padding:"10px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",minHeight:80}}>
-                        <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
-                      </div>
-                    );
-                    const f9Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts;
-                    const b9Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts;
-                    const full18Pts=Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2;
-                    const totalPts=f9Pts+b9Pts+full18Pts;
-                    const nExp=(m.prob*totalPts).toFixed(1);
-                    const wExp=((1-m.prob)*totalPts).toFixed(1);
-                    return (
-                      <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,position:"relative"}}>
-                        <button onClick={()=>deleteMatchup(SCRAMBLE_KEY,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
-                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                        {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                        <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
-                        <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
-                        {[[`Front 9`,`${SCRAMBLE_KEY}_f9`,defaultPts],[`Back 9`,`${SCRAMBLE_KEY}_b9`,defaultPts],[`18-Holes`,`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>{
-                          const pts=Number(ptsOverride[key]||"")||def;
-                          return (
-                            <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.35)",marginBottom:1}}>
-                              <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{pts}pts</span>
-                            </div>
-                          );
-                        })}
-                        <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"2px 0"}}>vs</div>
-                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                        <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
-                        <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          }
-          // Regular competition
-          const comp=entry.comp;
-          const ms=savedMatchups[comp.id]||[];
-          const slots=Math.max(maxSlots,ms.length);
-          return (
-            <div key={comp.id} style={{marginBottom:14}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#ffd700",letterSpacing:"0.06em",textTransform:"uppercase"}}>{comp.icon||"🏅"} {comp.name}</div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win:</span>
-                  <input type="number" min="0" step="0.5"
-                    value={ptsOverride[comp.id]!==undefined?ptsOverride[comp.id]:getCompPts(comp)}
-                    onChange={e=>setPtsOverride(p=>({...p,[comp.id]:e.target.value}))}
-                    style={{width:38,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:4,color:"#ffd700",fontFamily:"inherit",fontSize:11,fontWeight:700,textAlign:"center",padding:"2px 4px"}}/>
-                </div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(slots,4)},1fr)`,gap:6}}>
-                {Array.from({length:slots}).map((_,i)=>{
-                  const m=ms[i];
-                  if(!m) return (
-                    <div key={i} style={{padding:"10px",background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.1)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",minHeight:80}}>
-                      <span style={{fontSize:16,color:"rgba(255,255,255,0.12)"}}>+</span>
-                    </div>
-                  );
-                  const repeat=checkRepeat(m.np||[],m.wp||[],comp.id);
-                  const allOther=ms.filter((_,idx)=>idx!==i).flatMap(x=>[...(x.np||[]),...(x.wp||[])]);
-                  const conflict=[...(m.np||[]),...(m.wp||[])].some(p=>allOther.includes(p));
-                  return (
-                    <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${conflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
-                      {conflict&&<div style={{fontSize:8,color:"#ff8c00",marginBottom:2}}>⚠️ Conflict</div>}
-                      {repeat&&!conflict&&<div style={{fontSize:8,color:"#ffd700",marginBottom:2}}>⚠️ Repeat</div>}
-                      {(()=>{const pts=Number(ptsOverride[comp.id]||"")||getCompPts(comp);const nExp=(m.prob*pts).toFixed(1);const wExp=((1-m.prob)*pts).toFixed(1);return(<>
-                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                      {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                      <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
-                      <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
-                      <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                      <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                      {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                      <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
-                      <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
-                      </>);})()}
-                      <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Team probability */}
-        {(()=>{
-          const all=Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
-          if(!all.length) return null;
-          let nExp=0,wExp=0,tPts=0;
-          all.forEach(m=>{
-            const isScr=m.isScramble||m.cid===SCRAMBLE_KEY;
-            const scrPts=(Number(ptsOverride[`${SCRAMBLE_KEY}_f9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_b9`]||"")||defaultPts)+(Number(ptsOverride[`${SCRAMBLE_KEY}_18`]||"")||defaultPts*2);
-            const pts=isScr?scrPts:(Number(ptsOverride[m.cid]||"")||Number(m.pointsWorth)||defaultPts);
-            nExp+=m.prob*pts; wExp+=(1-m.prob)*pts; tPts+=pts;
-          });
-          const nPct=tPts>0?Math.round((nExp/tPts)*100):50;
-          return (
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>📊 Projected Outcome</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                {[["☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nPct,nExp],["🐋 Whales","#00aaff","rgba(0,170,255,0.08)","rgba(0,170,255,0.25)",100-nPct,wExp]].map(([label,color,bg,border,pct,exp])=>(
-                  <div key={label} style={{padding:"12px",background:bg,border:`1px solid ${border}`,borderRadius:12,textAlign:"center"}}>
-                    <div style={{fontSize:11,color,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>{label}</div>
-                    <div style={{fontSize:30,fontWeight:900,color,lineHeight:1}}>{pct}%</div>
-                    <div style={{fontSize:12,color,fontWeight:700,marginTop:3}}>{exp.toFixed(1)} pts</div>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>projected</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{height:8,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",display:"flex"}}>
-                <div style={{width:`${nPct}%`,background:"#ff4500",transition:"width 0.5s"}}/>
-                <div style={{flex:1,background:"#00aaff"}}/>
-              </div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center"}}>Based on {all.length} saved matchup{all.length!==1?"s":""}</div>
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Modal picker */}
-      {modalPicker&&(
-        <div style={{position:"fixed",inset:0,zIndex:1000,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>setModalPicker(null)}>
-          <div style={{background:"#0d1520",borderRadius:"16px",width:"100%",maxWidth:480,maxHeight:"75vh",overflow:"hidden",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
-            <div style={{padding:"16px 16px 10px",borderBottom:"1px solid rgba(255,255,255,0.08)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontSize:14,fontWeight:700,color:modalPicker.color||"#e8edf3"}}>{modalPicker.label}</div>
-              <button onClick={()=>setModalPicker(null)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {modalPicker.current&&<div onClick={()=>{modalPicker.onSelect("");setModalPicker(null);}} style={{padding:"14px 16px",fontSize:13,color:"rgba(255,255,255,0.4)",borderBottom:"1px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>— Clear selection —</div>}
-              {modalPicker.options.map(opt=>(
-                <div key={opt.value} onClick={()=>{modalPicker.onSelect(opt.value);setModalPicker(null);}}
-                  style={{padding:"14px 16px",fontSize:13,fontWeight:600,color:opt.value===modalPicker.current?"#ffd700":"rgba(255,255,255,0.85)",background:opt.value===modalPicker.current?"rgba(255,200,0,0.08)":"transparent",borderBottom:"1px solid rgba(255,255,255,0.04)",cursor:"pointer"}}>
-                  {opt.label}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
 }
 
-function WeatherWidget({ location, tournamentDate }) {
-  const [weather, setWeather] = useState(null);
-  const [loading, setLoading] = useState(false);
+function SettingsSection({ meta, history, competitions, showToast }) {
+  const { data: votes } = useCollection("votes");
+  const [form, setForm] = useState({ name:"", year:"", date:"", startTime:"10:00", location:"", tagline:"" });
+  const [loaded, setLoaded] = useState(false);
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifBody, setNotifBody]   = useState("");
+  const [sending, setSending]       = useState(false);
+  const { data: fcmTokens } = useCollection("fcm_tokens");
 
-  useEffect(() => {
-    if (!location) return;
-    setLoading(true);
-    setWeather(null);
-    const fetchWeather = async () => {
-      try {
-        const parts = location.split(",").map(s => s.trim());
-        const city  = parts[0] || "";
-        const state = parts[1] || "";
+  if (meta&&!loaded) {
+    const hcpFields = {};
+    (competitions||[]).forEach(c => {
+      hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
+      hcpFields[`teamFormat_${c.id}`] = meta?.teamFormats?.[c.id] ?? false;
+    });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", defaultMatchPts:meta.defaultMatchPts||"2", dynamicColors:meta.dynamicColors||false, ...hcpFields });
+    setLoaded(true);
+  }
 
-        let lat = null, lon = null, matchedName = location;
-
-        // Try US Census Bureau geocoder first — covers every US city/town
-        if (city) {
-          const censusUrl = `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&country=US&format=json&limit=1`;
-          const censusRes = await fetch(censusUrl, { headers: { "User-Agent": "NuclearWhaleInvitational/1.0 contact@nwi.app" } });
-          const censusData = await censusRes.json();
-          if (censusData.length) {
-            lat = parseFloat(censusData[0].lat);
-            lon = parseFloat(censusData[0].lon);
-            matchedName = censusData[0].display_name.split(",").slice(0,2).join(",").trim();
-          }
-        }
-
-        // Fallback to Open-Meteo geocoding
-        if (!lat) {
-          const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=10&language=en&format=json`);
-          const geoData = await geoRes.json();
-          if (geoData.results?.length) {
-            const stateMatch = state ? geoData.results.find(r =>
-              r.country_code === "US" &&
-              r.admin1?.toLowerCase().includes(state.toLowerCase())
-            ) : null;
-            const best = stateMatch || geoData.results.find(r => r.country_code === "US") || geoData.results[0];
-            lat = best.latitude;
-            lon = best.longitude;
-            matchedName = `${best.name}, ${best.admin1}`;
-          }
-        }
-
-        if (!lat) { setLoading(false); return; }
-
-        const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode&current_weather=true&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=7`);
-        const wxData = await wxRes.json();
-        setWeather({ ...wxData, matchedCity: matchedName });
-      } catch(e) { console.log("Weather error:", e); }
-      setLoading(false);
-    };
-    fetchWeather();
-  }, [location]);
-
-  const wxIcon = code => {
-    if (code === 0) return "☀️";
-    if (code <= 2) return "⛅";
-    if (code <= 3) return "☁️";
-    if (code <= 49) return "🌫️";
-    if (code <= 59) return "🌦️";
-    if (code <= 69) return "🌧️";
-    if (code <= 79) return "🌨️";
-    if (code <= 84) return "🌧️";
-    if (code <= 99) return "⛈️";
-    return "🌡️";
-  };
-
-  const wxDesc = code => {
-    if (code === 0) return "Clear";
-    if (code <= 2) return "Partly Cloudy";
-    if (code <= 3) return "Cloudy";
-    if (code <= 49) return "Foggy";
-    if (code <= 59) return "Drizzle";
-    if (code <= 69) return "Rain";
-    if (code <= 79) return "Snow";
-    if (code <= 84) return "Showers";
-    if (code <= 99) return "Thunderstorm";
-    return "Unknown";
-  };
-
-  if (!location) return null;
-
-  return (
-    <div style={{ textAlign:"left", marginBottom:24 }}>
-      <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>
-        🌤️ Weather · {weather?.matchedCity || location}
-      </div>
-      {loading ? (
-        <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>Loading forecast...</div>
-      ) : weather ? (
-        <div>
-          <div className="card" style={{ padding:"14px 16px", marginBottom:8, display:"flex", alignItems:"center", gap:14 }}>
-            <div style={{ fontSize:40 }}>{wxIcon(weather.current_weather?.weathercode)}</div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 }}>{Math.round(weather.current_weather?.temperature)}°F</div>
-              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginTop:2 }}>{wxDesc(weather.current_weather?.weathercode)} · Wind {Math.round(weather.current_weather?.windspeed)} mph</div>
-            </div>
-          </div>
-          <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4, scrollbarWidth:"none" }}>
-            {(weather.daily?.time||[]).map((date, i) => {
-              const isTournament = tournamentDate && date === tournamentDate;
-              const hi = Math.round(weather.daily.temperature_2m_max[i]);
-              const lo = Math.round(weather.daily.temperature_2m_min[i]);
-              const rain = weather.daily.precipitation_probability_max[i];
-              const code = weather.daily.weathercode[i];
-              const dayName = i === 0 ? "Today" : new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday:"short" });
-              return (
-                <div key={date} className="card" style={{ flex:"0 0 auto", width:72, padding:"10px 6px", textAlign:"center",
-                  borderColor:isTournament?"rgba(255,200,0,0.4)":undefined,
-                  background:isTournament?"rgba(255,200,0,0.06)":undefined }}>
-                  {isTournament && <div style={{ fontSize:8, color:"#ffd700", fontWeight:700, letterSpacing:"0.05em", marginBottom:3 }}>⛳ TRN</div>}
-                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginBottom:4 }}>{dayName}</div>
-                  <div style={{ fontSize:20 }}>{wxIcon(code)}</div>
-                  <div style={{ fontSize:12, fontWeight:700, marginTop:4 }}>{hi}°</div>
-                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)" }}>{lo}°</div>
-                  {rain > 0 && <div style={{ fontSize:9, color:"#00aaff", marginTop:3 }}>💧{rain}%</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="card" style={{ padding:16, textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.3)" }}>
-          Could not load weather for "{location}"<br/>
-          <span style={{ fontSize:11 }}>Try a city + state format, e.g. "Myrtle Beach, SC"</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function PublicApp({ onGoAdmin }) {
-  const [tab, setTab]               = useState(()=>{ try{ return sessionStorage.getItem("nwi_pub_tab")||"leaderboard"; }catch(e){ return "leaderboard"; } });
-  const [countdown, setCountdown]   = useState({});
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [lbTab, setLbTab]           = useState(()=>{ try{ return sessionStorage.getItem("nwi_pub_lbtab")||"team"; }catch(e){ return "team"; } });
-  const [expandedHistory, setExpandedHistory] = useState(null);
-  const [atSort, setAtSort]         = useState("ptsWinPct");
-  const [atDir, setAtDir]           = useState("desc");
-  const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
-  const [indSort, setIndSort]       = useState("ptsWon");
-  const [indDir, setIndDir]         = useState("desc");
-  const indSortLabels = { ptsWon:"points won", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
-  const [playersSort, setPlayersSort] = useState("alpha");
-
-  const { data: roster }       = useCollection("roster");       // master player profiles
-  const { data: rounds }       = useCollection("rounds");
-  const { data: schedule }     = useCollection("schedule");
-  const { data: competitions } = useCollection("competitions");
-  const { data: history }      = useCollection("history");
-  const { data: rules }        = useCollection("rules", "order");
-  const { data: holePool }     = useCollection("holepool");
-  const { data: meta }         = useDocument("meta", "tournament");
-  const { data: drafts }       = useCollection("drafts");
-  const { data: fcmTokens }    = useCollection("fcm_tokens");
-  const { data: votes }        = useCollection("votes");
-
-  // Current year draft — maps playerName → team
-  const currentYear = meta?.year || 2026;
-  const currentDraft = drafts.find(d => d.year === currentYear) || drafts.find(d => d.year === String(currentYear));
-  const teamAssign = currentDraft?.assignments || {};
-
-  // Players active this tournament = those in the draft assignments
-  const activePlayers = roster.filter(p => teamAssign[p.name]); // includes tbd
-
-  const tournamentDate = new Date((meta?.date || "2026-08-13") + "T" + (meta?.startTime || "10:00") + ":00");
-
-  // ── Analytics tracking ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const sessionKey = "nwi_session_id";
-    const sessionStartKey = "nwi_session_start";
-    const sessionTabsKey = "nwi_session_tabs";
-    const now = Date.now();
-    const ua = navigator.userAgent;
-    const deviceType = /iPhone|iPad|iPod/.test(ua) ? "ios" : /Android/.test(ua) ? "android" : "desktop";
-
-    // Get or create session (30 min timeout)
-    let sessionId = sessionStorage.getItem(sessionKey);
-    const sessionStart = parseInt(sessionStorage.getItem(sessionStartKey) || "0");
-    const isNewSession = !sessionId || (now - sessionStart) > 30 * 60 * 1000;
-
-    if (isNewSession) {
-      sessionId = Math.random().toString(36).slice(2);
-      sessionStorage.setItem(sessionKey, sessionId);
-      sessionStorage.setItem(sessionStartKey, String(now));
-      sessionStorage.setItem(sessionTabsKey, "[]");
-      // Log new session
-      const logSession = async () => {
-        try {
-          const { db } = await import("../firebase/config");
-          const { doc, setDoc } = await import("firebase/firestore");
-          await setDoc(doc(db, "analytics", sessionId), {
-            deviceId,
-            deviceType,
-            sessionId,
-            startedAt: new Date().toISOString(),
-            lastActiveAt: new Date().toISOString(),
-            tabsVisited: ["leaderboard"],
-            duration: 0,
-          });
-          console.log("analytics session logged:", sessionId);
-        } catch(e) { console.log("analytics session error:", e); }
-      };
-      logSession();
-    }
-  }, []);
-
-  // Track tab changes — use set (merge) so it works even if doc doesn't exist yet
-  useEffect(() => {
-    const sessionId = sessionStorage.getItem("nwi_session_id");
-    if (!sessionId) return;
-    (async () => {
-      try {
-        const { db } = await import("../firebase/config");
-        const { doc, setDoc } = await import("firebase/firestore");
-        const tabs = JSON.parse(sessionStorage.getItem("nwi_session_tabs") || "[]");
-        if (!tabs.includes(tab)) tabs.push(tab);
-        sessionStorage.setItem("nwi_session_tabs", JSON.stringify(tabs));
-        const start = parseInt(sessionStorage.getItem("nwi_session_start") || "0");
-        const duration = Math.round((Date.now() - start) / 1000);
-        await setDoc(doc(db, "analytics", sessionId), {
-          tabsVisited: tabs,
-          lastActiveAt: new Date().toISOString(),
-          duration,
-        }, { merge: true });
-      } catch(e) { console.log("analytics tab update error:", e); }
-    })();
-  }, [tab]);
-
-  // ── Countdown ───────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const tick = () => {
-      const diff = tournamentDate - new Date();
-      if (diff <= 0) { setCountdown({ over: true }); return; }
-      setCountdown({
-        days:    Math.floor(diff / 86400000),
-        hours:   Math.floor((diff % 86400000) / 3600000),
-        minutes: Math.floor((diff % 3600000)  / 60000),
-        seconds: Math.floor((diff % 60000)    / 1000),
+  const save = async () => {
+    try {
+      const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+      // Build hcpAllowances map from per-competition fields
+      const hcpAllowances = {};
+      (competitions||[]).forEach(c => {
+        const val = form[`hcpAllowance_${c.id}`];
+        if (val !== "" && val !== undefined) hcpAllowances[c.id] = Number(val);
       });
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [tournamentDate]);
-
-  const [notifEnabled, setNotifEnabled] = useState(null);
-  const [selectedMatchup, setSelectedMatchup] = useState(null);
-  const [showReview, setShowReview] = useState(null);
-  const [notifToken, setNotifToken]     = useState(null);
-  const [tokenKey, setTokenKey]         = useState(null);
-
-  useEffect(() => {
-    if (!messaging) return;
-
-    // Stable device ID — never changes
-    let deviceId = localStorage.getItem("nwi_device_id");
-    if (!deviceId) { deviceId = Math.random().toString(36).slice(2); localStorage.setItem("nwi_device_id", deviceId); }
-
-    // Instantly restore bell state from Firestore using stable device ID
-    import("../firebase/hooks").then(({ firestore }) => {
-      firestore.getDoc("notif_prefs", deviceId).then(pref => {
-        setNotifEnabled(pref?.enabled !== false); // default true if no pref
-      }).catch(() => setNotifEnabled(true));
-    });
-
-    const init = async () => {
-      try {
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") { setNotifEnabled(false); return; }
-        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-        if (!token) return;
-        setNotifToken(token);
-        const key = token.slice(-20);
-        setTokenKey(key);
-        localStorage.setItem("nwi_token_key", key);
-        const { firestore } = await import("../firebase/hooks");
-        // Check pref using stable device ID
-        const pref = await firestore.getDoc("notif_prefs", deviceId);
-        if (pref?.enabled === false) {
-          // User turned off — remove token, don't re-add
-          try { await firestore.delete("fcm_tokens", key); } catch(e) {}
-          setNotifEnabled(false);
-        } else {
-          // On — register token
-          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString(), deviceId });
-          await firestore.set("notif_prefs", deviceId, { enabled: true });
-          setNotifEnabled(true);
-        }
-      } catch(e) {
-        console.log("Notification init:", e.message);
-      }
-    };
-    init();
-    if (onMessage) onMessage(messaging, payload => console.log("Foreground:", payload));
-  }, []);
-
-  const toggleNotifications = async () => {
-    const { firestore } = await import("../firebase/hooks");
-    const deviceId = localStorage.getItem("nwi_device_id");
-    if (notifEnabled) {
-      if (tokenKey) {
-        try { await firestore.delete("fcm_tokens", tokenKey); } catch(e) {}
-      }
-      if (deviceId) await firestore.set("notif_prefs", deviceId, { enabled: false });
-      setNotifEnabled(false);
-    } else {
-      if (tokenKey && notifToken) {
-        await firestore.set("fcm_tokens", tokenKey, { token: notifToken, updatedAt: new Date().toISOString(), deviceId });
-      } else {
-        const sw = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { updateViaCache:"none" });
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: sw });
-        if (token) {
-          const key = token.slice(-20);
-          setNotifToken(token);
-          setTokenKey(key);
-          localStorage.setItem("nwi_token_key", key);
-          await firestore.set("fcm_tokens", key, { token, updatedAt: new Date().toISOString(), deviceId });
-        }
-      }
-      if (deviceId) await firestore.set("notif_prefs", deviceId, { enabled: true });
-      setNotifEnabled(true);
+      const teamFormats = {};
+      (competitions||[]).forEach(c => {
+        if (form[`teamFormat_${c.id}`]) teamFormats[c.id] = true;
+      });
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,defaultMatchPts:Number(form.defaultMatchPts)||2});
+      showToast("Saved!");
     }
+    catch(e) { showToast(e.message,true); }
   };
 
-  // ── Points engine ───────────────────────────────────────────────────────────
-  const teamPoints = { nukes: 0, whales: 0 };
-  const teamPtsAvail = { nukes: 0, whales: 0 };
-  const playerStats = {};
-  activePlayers.forEach(p => {
-    playerStats[p.name] = { wins:0, losses:0, ties:0, ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
-  });
-
-  rounds.forEach(round => {
-    (round.matchups || []).forEach(m => {
-      const pts = (m.pointsWorth > 0 ? m.pointsWorth : round.pointsPerWin) || 0;
-      const tiePts = pts / 2;
-      const nk = m.nukes || [], wh = m.whales || [];
-      const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
-      // Always count team pts available for clinch/elimination math
-      teamPtsAvail.nukes += pts; teamPtsAvail.whales += pts;
-      // Only count player ptsAvail and stats for completed matches
-      if (hasResult) {
-        nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
-        wh.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
-      }
-      if (m.winner === "nukes") {
-        teamPoints.nukes += pts;
-        nk.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
-        wh.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
-      } else if (m.winner === "whales") {
-        teamPoints.whales += pts;
-        wh.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
-        nk.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
-      } else if (m.winner === "tie") {
-        teamPoints.nukes += tiePts; teamPoints.whales += tiePts;
-        [...nk, ...wh].forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += tiePts; playerStats[n].ties++; playerStats[n].matchTies++; } });
-      }
-    });
-  });
-
-  const individualLb = activePlayers.map(p => {
-    const st = playerStats[p.name] || {};
-    const tot = st.matchWins + st.matchLosses + st.matchTies;
-    const assignedTeam = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
-    return { ...p, team: assignedTeam, ...st,
-      ptsWinPct:   st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0,
-      matchWinPct: tot > 0 ? Math.round((st.matchWins / tot) * 100) : 0,
-    };
-  }).sort((a, b) => b.ptsWon - a.ptsWon || b.ptsWinPct - a.ptsWinPct);
-
-  // All-time stats
-  const allTimeStats = {};
-  history.forEach(yr => {
-    (yr.matches || []).forEach(m => {
-      if (m.type === "heading") return; // skip headings
-      const pts = m.pointsWorth || 0, tiePts = pts / 2;
-      const nk = m.nukes || [], wh = m.whales || [];
-      const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
-      if (!hasResult) return; // skip pending matches entirely
-      [...nk, ...wh].forEach(n => { if (!allTimeStats[n]) allTimeStats[n] = { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 }; allTimeStats[n].ptsAvail += pts; });
-      if (m.winner === "nukes")  { nk.forEach(n => { if (allTimeStats[n]) { allTimeStats[n].ptsWon += pts; allTimeStats[n].matchWins++; } }); wh.forEach(n => { if (allTimeStats[n]) allTimeStats[n].matchLosses++; }); }
-      else if (m.winner === "whales") { wh.forEach(n => { if (allTimeStats[n]) { allTimeStats[n].ptsWon += pts; allTimeStats[n].matchWins++; } }); nk.forEach(n => { if (allTimeStats[n]) allTimeStats[n].matchLosses++; }); }
-      else if (m.winner === "tie")  { [...nk, ...wh].forEach(n => { if (allTimeStats[n]) { allTimeStats[n].ptsWon += tiePts; allTimeStats[n].matchTies++; } }); }
-    });
-  });
-  Object.entries(playerStats).forEach(([name, st]) => {
-    if (!allTimeStats[name]) allTimeStats[name] = { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
-    allTimeStats[name].ptsWon += st.ptsWon || 0; allTimeStats[name].ptsAvail += st.ptsAvail || 0;
-    allTimeStats[name].matchWins += st.matchWins || 0; allTimeStats[name].matchLosses += st.matchLosses || 0; allTimeStats[name].matchTies += st.matchTies || 0;
-  });
-  const allTimeLb = Object.entries(allTimeStats).map(([name, st]) => {
-    const tot = st.matchWins + st.matchLosses + st.matchTies;
-    return { name, ...st, ptsWinPct: st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0, matchWinPct: tot > 0 ? Math.round((st.matchWins / tot) * 100) : 0, totalMatches: tot };
-  }).filter(p => p.totalMatches > 0).sort((a, b) => b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon);
-
-  // Projections
-  const totalPtsAvail = teamPtsAvail.nukes;
-  const playedPts = teamPoints.nukes + teamPoints.whales;
-  const remainingPts = totalPtsAvail - playedPts;
-  const nukeWinPts  = Math.max(0, Math.ceil(totalPtsAvail / 2 + 0.5 - teamPoints.nukes));
-  const whaleWinPts = Math.max(0, Math.ceil(totalPtsAvail / 2 + 0.5 - teamPoints.whales));
-  const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
-  const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
-  const nukesElim  = teamPoints.nukes  + remainingPts <= teamPoints.whales;
-  const whalesElim = teamPoints.whales + remainingPts <= teamPoints.nukes;
-  const nukeWins  = history.filter(h => h.winner === "THE NUKES").length;
-  const whaleWins = history.filter(h => h.winner === "THE WHALES").length;
-
-  // ── Styles ──────────────────────────────────────────────────────────────────
-
-  // ── Dynamic team colors ────────────────────────────────────────────────────
-  const dynamicColors = (() => {
-    if (!meta?.dynamicColors) return null;
-    const nPts = teamPoints.nukes, wPts = teamPoints.whales;
-    if (nPts === wPts) return { leading:"tied",   accent:"rgba(255,200,0,1)",    glow:"rgba(255,200,0,0.2)",   border:"rgba(255,200,0,0.5)",   bg:"rgba(255,200,0,0.06)" };
-    if (nPts > wPts)  return { leading:"nukes",  accent:"rgba(255,69,0,1)",     glow:"rgba(255,69,0,0.25)",   border:"rgba(255,69,0,0.6)",    bg:"rgba(255,69,0,0.08)" };
-    return                   { leading:"whales", accent:"rgba(0,170,255,1)",    glow:"rgba(0,170,255,0.25)",  border:"rgba(0,170,255,0.6)",   bg:"rgba(0,170,255,0.08)" };
-  })();
-
-  const css = `
-    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0;}
-    .tab-bar{display:flex;overflow-x:auto;gap:6px;padding:10px 12px;justify-content:flex-start;scrollbar-width:none;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1520,#07090e);border-bottom:1px solid rgba(255,255,255,0.06);}
-    .tab-bar::-webkit-scrollbar{display:none;}
-    @media(min-width:600px){.tab-bar{justify-content:center;flex-wrap:wrap;}}
-    .tab-btn{flex-shrink:0;padding:7px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:rgba(255,255,255,0.45);font-family:inherit;font-size:12px;font-weight:600;letter-spacing:0.04em;cursor:pointer;transition:all 0.15s;white-space:nowrap;touch-action:manipulation;}
-    .tab-btn.active{background:${dynamicColors ? dynamicColors.glow : 'rgba(255,255,255,0.12)'};border-color:${dynamicColors ? dynamicColors.accent : 'rgba(255,255,255,0.25)'};color:#fff;}
-    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;}
-    .nuke-card{border-color:rgba(255,69,0,0.3)!important;box-shadow:0 0 20px rgba(255,69,0,0.1);}
-    .whale-card{border-color:rgba(0,170,255,0.25)!important;box-shadow:0 0 20px rgba(0,170,255,0.08);}
-    @keyframes flicker{0%,100%{text-shadow:0 0 6px rgba(255,69,0,0.4);}50%{text-shadow:0 0 3px rgba(255,106,0,0.3);}}
-    @keyframes wave{0%,100%{text-shadow:0 0 6px rgba(0,170,255,0.4);}50%{text-shadow:0 0 3px rgba(0,204,255,0.3);}}
-    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
-    @keyframes slideIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-    .live-dot{width:7px;height:7px;border-radius:50%;background:${dynamicColors ? dynamicColors.accent : '#4ade80'};animation:pulse 1.5s infinite;display:inline-block;margin-right:6px;}
-    .ghost-btn{padding:7px 14px;background:none;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:rgba(255,255,255,0.5);font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;}
-    .lb-tab{padding:6px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:20px;color:rgba(255,255,255,0.4);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
-    .lb-tab.active{background:${dynamicColors ? dynamicColors.glow : 'rgba(255,255,255,0.1)'};border-color:${dynamicColors ? dynamicColors.accent : 'rgba(255,255,255,0.2)'};color:#fff;}
-    table{width:100%;border-collapse:collapse;}
-    th{font-size:10px;color:rgba(255,255,255,0.35);letter-spacing:0.1em;text-transform:uppercase;padding:8px 8px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.07);}
-    td{font-size:13px;padding:9px 8px;border-bottom:1px solid rgba(255,255,255,0.05);}
-    tr:last-child td{border-bottom:none;}
-    .player-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:0;}
-    @media(min-width:500px){.player-modal-backdrop{align-items:center;padding:20px;}}
-    .player-modal{background:#0d1520;border:1px solid rgba(255,255,255,0.1);border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:24px;max-height:85vh;overflow-y:auto;}
-    @media(min-width:500px){.player-modal{border-radius:16px;}}
-  `;
+  const sendNotification = async () => {
+    if (!notifTitle.trim()) return showToast("Title is required", true);
+    const tokens = (fcmTokens||[]).map(t=>t.token).filter(Boolean);
+    if (tokens.length === 0) return showToast("No subscribers yet — no one has allowed notifications", true);
+    const workerUrl = meta?.workerUrl;
+    const workerSecret = meta?.workerSecret;
+    if (!workerUrl) return showToast("Cloudflare Worker URL not set — add it in Settings", true);
+    setSending(true);
+    try {
+      const res = await fetch(workerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerSecret||""}` },
+        body: JSON.stringify({ tokens, title: notifTitle.trim(), message: notifBody.trim() }),
+      });
+      const data = await res.json();
+      await firestore.add("notifications", { title:notifTitle.trim(), body:notifBody.trim(), sentAt:new Date().toISOString(), sentTo:data.sent||0 });
+      showToast(`📬 Sent to ${data.sent} subscriber${data.sent!==1?"s":""}!`);
+      setNotifTitle(""); setNotifBody("");
+    } catch(e) { showToast("Failed: " + e.message, true); }
+    setSending(false);
+  };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
-      <style>{css}</style>
-
-      {/* Header */}
-      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, ${dynamicColors.bg})` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"20px 16px 14px", transition:"all 1s ease" }}>
-        <div style={{ maxWidth:680, margin:"0 auto" }}>
-          <div style={{ textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <span><span className="live-dot"/>LIVE · {meta?.year || 2026}</span>
-              {messaging && notifEnabled !== null && (
-                <button onClick={toggleNotifications} title={notifEnabled?"Turn off notifications":"Turn on notifications"}
-                  style={{ background:"none", border:"none", cursor:"pointer", fontSize:16, opacity:notifEnabled?1:0.35, padding:0, lineHeight:1 }}>
-                  {notifEnabled ? "🔔" : "🔕"}
-                </button>
-              )}
-            </div>
-            <h1 style={{ fontWeight:900, fontSize:"clamp(24px,6vw,46px)", letterSpacing:"0.04em", textTransform:"uppercase", lineHeight:1.05, background:"linear-gradient(90deg,#ff4500,#ff8c00 35%,#fff 50%,#00aaff 65%,#0066cc)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
-              NUCLEAR WHALE<br/>INVITATIONAL
-            </h1>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
-            <div className="card nuke-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="nukes" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>☢️ NUKES</div>
-              <div style={{ fontSize:32, fontWeight:900, color:"#ff4500", lineHeight:1, animation:"flicker 3s infinite" }}>{teamPoints.nukes}</div>
-              <div style={{ fontSize:10, color:"rgba(255,80,0,0.5)", marginTop:1 }}>POINTS</div>
-            </div>
-            <div style={{ textAlign:"center", fontSize:14, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
-            <div className="card whale-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="whales" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
-              <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>🐋 WHALES</div>
-              <div style={{ fontSize:32, fontWeight:900, color:"#00aaff", lineHeight:1, animation:"wave 3s infinite" }}>{teamPoints.whales}</div>
-              <div style={{ fontSize:10, color:"rgba(0,150,255,0.5)", marginTop:1 }}>POINTS</div>
-            </div>
-          </div>
+    <div>
+      <div style={s.sectionTitle}>⚙️ Settings</div>
+      <div style={s.card}>
+        <div style={s.grid2}>
+          <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
+          <div><div style={s.label}>Tournament Date</div><input style={s.input} type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
+          <div><div style={s.label}>Countdown Start Time</div><input style={s.input} type="time" value={form.startTime||"10:00"} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))}/></div>
+          <div style={{ display:"flex", alignItems:"flex-end" }}><div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", lineHeight:1.5 }}>Time is based on each viewer's device timezone</div></div>
         </div>
-      </div>
-
-      {/* Tab bar — full width, centered on desktop, scrollable on mobile */}
-      <div className="tab-bar">
-        {TABS.map(t => (
-          <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>{ try{sessionStorage.setItem("nwi_pub_tab",t.id);}catch(e){} setTab(t.id); }}>
-            {t.icon} {t.label}
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Location</div>
+          <input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Thornton, NH"/>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Golf Course</div>
+          <input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Whittaker Woods Golf Club"/>
+        </div>
+        <div style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600 }}>Dynamic Team Colors</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>App accent colors shift based on which team is winning</div>
+          </div>
+          <button style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${form.dynamicColors?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:form.dynamicColors?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:form.dynamicColors?"#4ade80":"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}
+            onClick={()=>setForm(f=>({...f,dynamicColors:!f.dynamicColors}))}>
+            {form.dynamicColors?"✓ On":"Off"}
           </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div style={{ maxWidth:680, margin:"0 auto", padding:"20px 16px 80px", animation:"slideIn 0.2s ease" }} key={tab}>
-
-        {/* ── LEADERBOARD ── */}
-        {tab==="leaderboard" && (
-          <div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>Standings</div>
-              <button className="ghost-btn" onClick={onGoAdmin}>Admin</button>
-            </div>
-            <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
-              {[["team","🏆 Team"],["individual","👤 Individual"],["alltime","📜 All-Time"]].map(([id,label])=>(
-                <button key={id} className={`lb-tab${lbTab===id?" active":""}`} onClick={()=>{ try{sessionStorage.setItem("nwi_pub_lbtab",id);}catch(e){} setLbTab(id); }}>{label}</button>
-              ))}
-            </div>
-
-            {lbTab==="team" && (
-              <div>
-                <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
-                  {[{team:"nukes",pts:teamPoints.nukes},{team:"whales",pts:teamPoints.whales}].sort((a,b)=>b.pts-a.pts).map((t,i)=>{
-                    const clinched=t.team==="nukes"?nukesClinched:whalesClinched;
-                    const elim=t.team==="nukes"?nukesElim:whalesElim;
-                    const needed=t.team==="nukes"?nukeWinPts:whaleWinPts;
-                    const magicNumber = Math.floor(totalPtsAvail/2)+1;
-                    return (
-                      <div key={t.team} className={`card ${t.team==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:"16px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                          <div style={{ fontSize:24, fontWeight:900, color:i===0?"#ffd700":"rgba(255,255,255,0.2)" }}>{i+1}</div>
-                          <div style={{ fontSize:28 }}>{TEAMS[t.team].emoji}</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t.team].color }}>{TEAMS[t.team].name}</div>
-                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>{activePlayers.filter(p=>teamAssign[p.name]===t.team).length} players</div>
-                          </div>
-                          <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:36, fontWeight:900, color:TEAMS[t.team].color, lineHeight:1 }}>{t.pts}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>PTS</div>
-                          </div>
-                        </div>
-                        {totalPtsAvail>0&&(
-                          <div style={{ marginTop:12 }}>
-                            {clinched ? (
-                              <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>🏆 CLINCHED!</div>
-                            ) : elim ? (
-                              <div style={{ fontSize:13, fontWeight:700, color:"#ff5555" }}>❌ Eliminated</div>
-                            ) : (
-                              <div>
-                                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:5 }}>
-                                  <span style={{ fontSize:12, fontWeight:600 }}>{t.pts} pts · Need {magicNumber} to clinch · {Math.round((t.pts/totalPtsAvail)*100)}% of pts won</span>
-                                </div>
-                                <div style={{ height:8, background:"rgba(255,255,255,0.07)", borderRadius:4, overflow:"hidden" }}>
-                                  <div style={{ height:"100%", borderRadius:4, transition:"width 0.5s",
-                                    background:TEAMS[t.team].color,
-                                    width:`${Math.min(100, Math.round((t.pts/magicNumber)*100))}%`
-                                  }}/>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                {totalPtsAvail>0&&(
-                  <div className="card" style={{ padding:"12px 16px" }}>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, textAlign:"center" }}>
-                      {[["Total Pts",totalPtsAvail,"#ffd700"],["Pts Played",playedPts,"#4ade80"],["Pts Left",remainingPts,"#00aaff"]].map(([l,v,c])=>(
-                        <div key={l} style={{ background:"rgba(255,255,255,0.04)", borderRadius:8, padding:"8px 4px" }}>
-                          <div style={{ fontSize:20, fontWeight:900, color:c }}>{v}</div>
-                          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{l}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
-                  </div>
-                )}
-            </div>
-          )}
-
-                        {lbTab==="individual" && (
-              <div>
-                {(() => {
-                  const handleIndSort = (col) => {
-                    if (indSort===col) setIndDir(d=>d==="desc"?"asc":"desc");
-                    else { setIndSort(col); setIndDir("desc"); }
-                  };
-                  const sorted = [...individualLb].sort((a,b) => {
-                    let diff = 0;
-                    if (indSort==="ptsWon")    diff = b.ptsWon - a.ptsWon;
-                    if (indSort==="ptsWinPct") diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
-                    if (indSort==="record")    diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
-                    if (indSort==="winPct")    diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
-                    return indDir==="asc" ? -diff : diff;
-                  });
-                  const thS = (col) => ({ cursor:"pointer", userSelect:"none", color:indSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
-                  const arr = (col) => indSort===col ? (indDir==="desc"?" ▼":" ▲") : " ↕";
-                  return (
-                    <>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Sorted by <span style={{ color:"#ffd700" }}>{indSortLabels[indSort]}</span> ({indDir==="desc"?"highest first":"lowest first"}) · tap column to sort</div>
-                      <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
-                        <table>
-                          <thead><tr>
-                            <th>#</th>
-                            <th>Player</th>
-                            <th style={thS("ptsWon")} onClick={()=>handleIndSort("ptsWon")}>Pts{arr("ptsWon")}</th>
-                            <th style={thS("ptsWinPct")} onClick={()=>handleIndSort("ptsWinPct")}>Pts%{arr("ptsWinPct")}</th>
-                            <th style={thS("record")} onClick={()=>handleIndSort("record")}>W-T-L{arr("record")}</th>
-                            <th style={thS("winPct")} onClick={()=>handleIndSort("winPct")}>Win%{arr("winPct")}</th>
-                          </tr></thead>
-                          <tbody>
-                            {sorted.map((p,i)=>{
-                              const tc = (p.team && p.team!=="tbd") ? TEAMS[p.team] : null;
-                              const totalM = p.matchWins+p.matchTies+p.matchLosses;
-                              return (
-                                <tr key={p.id||p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>setSelectedPlayer(p)}>
-                                  <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                                  <td>
-                                    <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                                      {p.photoURL
-                                        ? <img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                        : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
-                                      <div>
-                                        <div style={{ fontWeight:700 }}>{p.name}</div>
-                                        <div style={{ fontSize:10, color:tc?tc.color:"rgba(255,255,255,0.3)" }}>{tc?`${tc.emoji} ${p.team}`:"—"}</div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
-                                  <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                  <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
-                                  <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-
-            {lbTab==="alltime" && (
-              <div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>All-time across all tournaments · Pts% = pts won ÷ pts competed · Win% = match wins ÷ matches played · Sorted by <span style={{ color:"#ffd700" }}>{atSortLabels[atSort]}</span> ({atDir==="desc"?"highest first":"lowest first"}) · tap column to sort</div>
-                {allTimeLb.length===0
-                  ? <div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.2)" }}>No historical match data yet — add matches in Admin → History</div>
-                  : (() => {
-                      const handleSort = (col) => {
-                        if (atSort===col) setAtDir(d=>d==="desc"?"asc":"desc");
-                        else { setAtSort(col); setAtDir("desc"); }
-                      };
-                      const sorted = [...allTimeLb].sort((a,b) => {
-                        let diff = 0;
-                        if (atSort==="ptsWon")    diff = b.ptsWon - a.ptsWon;
-                        if (atSort==="ptsWinPct") diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
-                        if (atSort==="record")    diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
-                        if (atSort==="winPct")    diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
-                        return atDir==="asc" ? -diff : diff;
-                      });
-                      const thStyle = (col) => ({ cursor:"pointer", userSelect:"none", color:atSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
-                      const arrow = (col) => atSort===col ? (atDir==="desc"?" ▼":" ▲") : " ↕";
-                      return (
-                        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
-                          <table>
-                            <thead><tr>
-                              <th>#</th>
-                              <th>Player</th>
-                              <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
-                              <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
-                              <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
-                              <th style={thStyle("winPct")} onClick={()=>handleSort("winPct")}>Win%{arrow("winPct")}</th>
-                            </tr></thead>
-                            <tbody>
-                              {sorted.map((p,i)=>{
-                                const rp = roster.find(r=>r.name===p.name);
-                                return (
-                                  <tr key={p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>rp&&setSelectedPlayer({...rp,...p})}>
-                                    <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
-                                    <td>
-                                      <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-                                        {rp?.photoURL
-                                          ? <img src={rp.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                          : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
-                                        <div style={{ fontWeight:700 }}>{p.name}</div>
-                                      </div>
-                                    </td>
-                                    <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
-                                    <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                    <td>
-                                      <span style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</span>
-                                      {" "}<span style={{ fontWeight:700, color:"#ffd700" }}>{p.matchTies}T</span>
-                                      {" "}<span style={{ fontWeight:700, color:"#ff5555" }}>{p.matchLosses}L</span>
-                                    </td>
-                                    <td style={{ fontWeight:700, color:"#00aaff" }}>{p.totalMatches>0?p.matchWinPct+"%":"—"}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()
-                }
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── MATCHUPS ── */}
-        {tab==="matchups" && (() => {
-          // ── Odds Model ──────────────────────────────────────────────────────
-          // Get player handicap — default to 25-30 range if below 1
-          const getHandicap = (name) => {
-            const p = roster.find(r => r.name === name);
-            const h = parseFloat(p?.handicap);
-            if (!h || isNaN(h) || h <= 1) return 27; // scratch/plus default
-            if (h > 50) return 36; // very high handicap default
-            return h;
-          };
-
-          // Team handicap = 35% of lower + 15% of higher, adjusted by allowance %
-          const teamHandicap = (players, allowancePct) => {
-            if (!players?.length) return 18;
-            const pct = (allowancePct || 100) / 100;
-            const hcaps = players.map(n => getHandicap(n) * pct).sort((a,b)=>a-b);
-            if (hcaps.length === 1) return Math.round(hcaps[0] * 0.5);
-            return Math.round(hcaps[0] * 0.35 + hcaps[1] * 0.15);
-          };
-
-          // Get opponent-quality weighted win rate for a set of players
-          // compName: if provided, filter to that competition only
-          const getWeightedWinRateMatchups = (players, compName) => {
-            if (!players?.length) return null;
-            let weightedWins = 0, totalWeight = 0;
-            history.forEach(yr => {
-              (yr.matches||[]).forEach(m => {
-                if (m.type === "heading" || !m.winner) return;
-                if (compName) {
-                  const mc = (m.roundName||m.competitionName||"").toLowerCase();
-                  if (!mc.includes(compName.toLowerCase().split(" ")[0])) return;
-                }
-                const inN = players.some(p => (m.nukes||[]).includes(p));
-                const inW = players.some(p => (m.whales||[]).includes(p));
-                if (!inN && !inW) return;
-                const oppTeam = inN ? "whales" : "nukes";
-                const oppPlayers = m[oppTeam] || [];
-                const oppAvgHcp = oppPlayers.length > 0
-                  ? oppPlayers.map(n => getHandicap(n)).reduce((s,h)=>s+h,0) / oppPlayers.length
-                  : 18;
-                const weight = Math.max(0.5, 1 + (18 - oppAvgHcp) / 18);
-                const pt = inN ? "nukes" : "whales";
-                const won = m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0;
-                weightedWins += won * weight;
-                totalWeight += weight;
-              });
-            });
-            return totalWeight >= 2 ? weightedWins / totalWeight : null;
-          };
-
-          // Convert probability to American odds
-          const toAmericanOdds = (prob) => {
-            prob = Math.max(0.05, Math.min(0.95, prob));
-            if (prob >= 0.5) {
-              return `-${Math.round((prob / (1 - prob)) * 100)}`;
-            } else {
-              return `+${Math.round(((1 - prob) / prob) * 100)}`;
-            }
-          };
-
-          // Adaptive odds model: blends handicap + all-time + competition-specific history
-          const calcOdds = (nukes, whales, allowancePct, compName) => {
-            const nukeHcp  = teamHandicap(nukes, allowancePct);
-            const whaleHcp = teamHandicap(whales, allowancePct);
-            const hcpDiff  = whaleHcp - nukeHcp;
-            const hcpProb  = 0.5 + (hcpDiff * 0.03);
-
-            // All-time opponent-weighted win rate
-            const nAllTime = getWeightedWinRateMatchups(nukes, null);
-            const wAllTime = getWeightedWinRateMatchups(whales, null);
-            const hasAllTime = nAllTime !== null || wAllTime !== null;
-            const nA = nAllTime ?? 0.5, wA = wAllTime ?? 0.5;
-            const allTimeProb = hasAllTime ? (nA + wA > 0 ? nA / (nA + wA) : 0.5) : null;
-
-            // Competition-specific win rate
-            const nComp = compName ? getWeightedWinRateMatchups(nukes, compName) : null;
-            const wComp = compName ? getWeightedWinRateMatchups(whales, compName) : null;
-            const hasCompSpec = nComp !== null || wComp !== null;
-            const nC = nComp ?? 0.5, wC = wComp ?? 0.5;
-            const compSpecProb = hasCompSpec ? (nC + wC > 0 ? nC / (nC + wC) : 0.5) : null;
-
-            // Blend based on available data
-            let nukeProb;
-            if (hasCompSpec && allTimeProb !== null) {
-              nukeProb = hcpProb * 0.50 + allTimeProb * 0.25 + compSpecProb * 0.25;
-            } else if (allTimeProb !== null) {
-              nukeProb = hcpProb * 0.75 + allTimeProb * 0.25;
-            } else {
-              nukeProb = hcpProb;
-            }
-
-            const clampedProb = Math.max(0.1, Math.min(0.9, nukeProb));
-            return {
-              nukeProb: clampedProb,
-              whaleProb: 1 - clampedProb,
-              nukeOdds: toAmericanOdds(clampedProb),
-              whaleOdds: toAmericanOdds(1 - clampedProb),
-              nukeFav: clampedProb >= 0.5,
-            };
-          };
-
-          return (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Round Matchups</div>
-            {rounds.filter(r=>r.type!=="segment").length===0&&<div style={{ textAlign:"center", padding:"40px 0", color:"rgba(255,255,255,0.25)" }}>No rounds set up yet</div>}
-            {/* Render rounds in order, segments as subheadings */}
-            {[...rounds].sort((a,b)=>(a.order??0)-(b.order??0)).map(round=>{
-              if (round.type==="segment") return (
-                <div key={round.id} style={{ display:"flex", alignItems:"center", gap:10, marginTop:20, marginBottom:12 }}>
-                  <div style={{ fontSize:16, fontWeight:900, letterSpacing:"0.06em", textTransform:"uppercase", color:"#e8edf3" }}>{round.label}</div>
-                  <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
-                </div>
-              );
-              return (
-                <div key={round.id} style={{ marginBottom:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
-                    <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
-                    {round.day&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:20 }}>{round.day}</div>}
-                    {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginLeft:"auto" }}>Win={round.pointsPerWin}pts</div>
-                  </div>
-                  {(round.matchups||[]).map((m,mi)=>(
-                    <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
-                      onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
-                      {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {m.pointsWorth||round.pointsPerWin}pts</div>}
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
-                        <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
-                          <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
-                          {(m.nukes||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
-                            const p = roster.find(r=>r.name===n);
-                            return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?6:0 }}>
-                                {p?.photoURL
-                                  ? <img src={p.photoURL} alt={n} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                  : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,69,0,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#ff4500", flexShrink:0 }}>{n?.[0]}</div>}
-                                <div style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>
-                              </div>
-                            );
-                          })}
-                          {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
-                          {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
-                        </div>
-                        <div style={{ textAlign:"center" }}>
-                          <div style={{ fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
-                        </div>
-                        <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
-                          <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
-                          {(m.whales||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
-                            const p = roster.find(r=>r.name===n);
-                            return (
-                              <div key={ni} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:ni>0?6:0 }}>
-                                {p?.photoURL
-                                  ? <img src={p.photoURL} alt={n} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
-                                  : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(0,170,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#00aaff", flexShrink:0 }}>{n?.[0]}</div>}
-                                <div style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>
-                              </div>
-                            );
-                          })}
-                          {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
-                          {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
-                        </div>
-                      </div>
-                      {(m.nukes||[]).length > 0 && (m.whales||[]).length > 0 && (() => {
-                        const hasPlayers = (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0;
-                        if (!hasPlayers) return null;
-                        const allowance = (() => {
-                          const comp = competitions?.find(c => c.name === round.competitionName || c.name === m.competitionName);
-                          if (comp && meta?.hcpAllowances?.[comp.id] !== undefined) return meta.hcpAllowances[comp.id];
-                          return 100;
-                        })();
-                        const isAdj = Number(allowance) < 100;
-                        const odds = calcOdds(m.nukes, m.whales, Number(allowance), m.competitionName||round.competitionName||"");
-                        const nukeHcp = teamHandicap(m.nukes, Number(allowance));
-                        const whaleHcp = teamHandicap(m.whales, Number(allowance));
-                        return (
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
-                            <div style={{ textAlign:"center", flex:1 }}>
-                              <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {nukeHcp}{isAdj?` (${allowance}%)`:"" }</div>
-                            </div>
-                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS</div>
-                            <div style={{ textAlign:"center", flex:1 }}>
-                              <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {whaleHcp}{isAdj?` (${allowance}%)`:"" }</div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                      {/* Player records panel — shows on tap */}
-                      {selectedMatchup===`${round.id}-${mi}` && (m.nukes||[]).filter(n=>n&&n.trim()).length > 0 && (m.whales||[]).filter(n=>n&&n.trim()).length > 0 && (() => {
-                        const allPlayers = [...(m.nukes||[]), ...(m.whales||[])];
-                        const playerStats = allPlayers.map(name => {
-                          let w=0,l=0,t=0;
-                          history.forEach(yr => {
-                            (yr.matches||[]).forEach(hm => {
-                              if (hm.type==="heading"||!hm.winner) return;
-                              const onNukes = (hm.nukes||[]).includes(name);
-                              const onWhales = (hm.whales||[]).includes(name);
-                              if (!onNukes && !onWhales) return;
-                              const playerTeam = onNukes?"nukes":"whales";
-                              if (hm.winner===playerTeam) w++;
-                              else if (hm.winner==="tie") t++;
-                              else l++;
-                            });
-                          });
-                          return { name, w, l, t, total:w+l+t };
-                        }).filter(p=>p.total>0);
-                        if (!playerStats.length) return <div style={{ marginTop:8, fontSize:12, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>No historical data yet</div>;
-                        return (
-                          <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>
-                              <span>Player</span>
-                              <span>W · T · L</span>
-                            </div>
-                            {playerStats.map(p => (
-                              <div key={p.name} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:4 }}>
-                                <span style={{ color:"rgba(255,255,255,0.7)" }}>
-                                  {p.name}
-                                  <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginLeft:6 }}>HCP {getHandicap(p.name)}</span>
-                                </span>
-                                <span style={{ color:"rgba(255,255,255,0.4)" }}>{p.w} · {p.t} · {p.l}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}>PENDING · tap for stats</div>}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-          );
-        })()}
-
-        {/* ── COUNTDOWN ── */}
-        {tab==="countdown" && (
-          <div style={{ textAlign:"center", padding:"20px 0" }}>
-            <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
-            {(meta?.course || meta?.location) && (
-              <div style={{ marginBottom:28, fontSize:13, color:"rgba(255,255,255,0.45)" }}>
-                {meta?.course && <div style={{ fontWeight:700, color:"rgba(255,255,255,0.65)" }}>⛳ {meta.course}</div>}
-                {meta?.location && <div style={{ marginTop:2 }}>📍 {meta.location}</div>}
-              </div>
-            )}
-            {countdown.over
-              ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
-              : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
-                  {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
-                    <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
-                      <div style={{ fontSize:"clamp(28px,8vw,46px)", fontWeight:900, color:k==="seconds"?"#ff4500":"#e8edf3", lineHeight:1 }}>{String(countdown[k]??0).padStart(2,"0")}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginTop:4 }}>{label}</div>
-                    </div>
-                  ))}
-                </div>
-            }
-            <WeatherWidget location={meta?.weatherLocation || meta?.location} tournamentDate={meta?.date}/>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {["nukes","whales"].map(t=>(
-                <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:18 }}>
-                  <div style={{ fontSize:32 }}>{TEAMS[t].emoji}</div>
-                  <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t].color, marginTop:8 }}>{TEAMS[t].name}</div>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{t==="nukes"?`${nukeWins} titles`:`${whaleWins} titles`}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── SCHEDULE ── */}
-        {tab==="schedule" && (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament Schedule</div>
-            {meta?.location&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>📍 {meta.location}</div>}
-            {(() => {
-              const parseTime = t => { if(!t) return 0; const m=t.match(/(\d+):(\d+)\s*(AM|PM)?/i); if(!m) return 0; let h=parseInt(m[1]),min=parseInt(m[2]); const p=(m[3]||"").toUpperCase(); if(p==="PM"&&h!==12)h+=12; if(p==="AM"&&h===12)h=0; return h*60+min; };
-              const days = [...new Set(schedule.map(s=>s.day))];
-              return days.map(day=>{
-                const items = [...schedule.filter(s=>s.day===day)].sort((a,b)=>parseTime(a.time)-parseTime(b.time));
-                if(!items.length) return null;
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Weather City</div>
+          <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Default Points Per Match</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:6 }}>Used when a competition isn't assigned to a round (e.g. Stableford)</div>
+          <input style={{ ...s.input, width:80 }} type="number" min="0" step="0.5"
+            value={form.defaultMatchPts||"2"}
+            onChange={e=>setForm(f=>({...f,defaultMatchPts:e.target.value}))}
+            placeholder="2"/>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Handicap Allowance % by Competition</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:10 }}>Set the handicap allowance % for each competition format. Used by the odds model.</div>
+          {(competitions||[]).length === 0 ? (
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No competitions set up yet — add them in the Competitions tab</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {(competitions||[]).map(c => {
+                const key = `hcpAllowance_${c.id}`;
+                const teamKey = `teamFormat_${c.id}`;
+                const val = form[key] ?? (meta?.hcpAllowances?.[c.id] || "");
+                const isTeam = form[teamKey] ?? (meta?.teamFormats?.[c.id] || false);
                 return (
-                  <div key={day} style={{ marginBottom:20 }}>
-                    <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.14em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>{day}</div>
-                    {items.map((s,i)=>(
-                      <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-                        <div style={{ minWidth:68, fontSize:13, fontWeight:700, color:"#ff8c00" }}>{s.time}</div>
-                        <div style={{ width:1, height:24, background:"rgba(255,255,255,0.07)" }}/>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:14, fontWeight:600 }}>{s.icon&&<span style={{ marginRight:5 }}>{s.icon}</span>}{s.event}</div>
-                          {s.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:2 }}>📍 {s.course}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        )}
-
-        {/* ── COMPETITIONS ── */}
-        {tab==="competitions" && (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Side Competitions</div>
-            {competitions.map(c=>(
-              <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
-                <div style={{ display:"flex", gap:12 }}>
-                  <div style={{ fontSize:28 }}>{c.icon}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── PLAYERS ── */}
-        {tab==="players" && (
-          <div>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-              <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase" }}>Player Profiles</div>
-              <select value={playersSort||"alpha"} onChange={e=>setPlayersSort(e.target.value)}
-                style={{ background:"#1a2235", border:"1px solid rgba(255,255,255,0.2)", borderRadius:6, color:"#e8edf3", fontFamily:"inherit", fontSize:11, padding:"4px 6px" }}>
-                <option value="alpha">A–Z</option>
-                <option value="hcp">By HCP</option>
-              </select>
-            </div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginBottom:20 }}>Tap any player to see their full profile</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {[...roster].sort((a,b)=>{
-                if((playersSort||"alpha")==="hcp"){
-                  const ha=parseFloat(a.handicap)||99, hb=parseFloat(b.handicap)||99;
-                  return ha-hb;
-                }
-                return a.name.localeCompare(b.name);
-              }).map(p=>{
-                const team = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
-                const tc = team ? TEAMS[team] : null;
-                const at = allTimeStats[p.name];
-                return (
-                  <div key={p.id||p.name} className="card" style={{ padding:"12px 14px", cursor:"pointer" }} onClick={()=>setSelectedPlayer({...p, team})}>
-                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                      {p.photoURL
-                        ? <img src={p.photoURL} alt={p.name} style={{ width:46, height:46, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.12)" }}/>
-                        : <div style={{ width:46, height:46, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:800, color:"rgba(255,255,255,0.3)" }}>{p.name?.[0]}</div>
-                      }
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:15, fontWeight:700 }}>{p.name}</div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
-                          {p.handicap!=null&&p.handicap!==""&&<span>HCP {p.handicap}</span>}
-                          {p.hometown&&<span>{p.handicap!=null&&p.handicap!==""?" · ":""}{p.hometown}</span>}
-                        </div>
-                        {tc&&<div style={{ fontSize:10, color:tc.color, marginTop:2 }}>{tc.emoji} {tc.name} {currentYear}</div>}
-                      </div>
-                      {at&&at.totalMatches>0&&(
-                        <div style={{ textAlign:"right" }}>
-                          <div style={{ fontSize:14, fontWeight:800, color:"#ff8c00" }}>{at.ptsWinPct}%</div>
-                          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>all-time</div>
-                        </div>
-                      )}
+                  <div key={c.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+                    <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{c.icon||"🏅"} {c.name}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                      <input style={{ ...s.input, width:55, textAlign:"center" }} type="number" step="5" min="0" max="100"
+                        value={val} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                        placeholder="100"/>
+                      <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>%</span>
                     </div>
+                    <button style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${isTeam?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:isTeam?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:isTeam?"#4ade80":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}
+                      onClick={()=>setForm(f=>({...f,[teamKey]:!isTeam}))}>
+                      {isTeam?"✓ Team":"Team?"}
+                    </button>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
-
-        {/* ── HISTORY ── */}
-        {tab==="history" && (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament History</div>
-            {/* Series record */}
-            <div className="card" style={{ padding:"12px 16px", marginBottom:20, display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:12, alignItems:"center", textAlign:"center" }}>
-              <div><div style={{ fontSize:26, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>☢️ TITLES</div></div>
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", fontWeight:700 }}>ALL TIME</div>
-              <div><div style={{ fontSize:26, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>🐋 TITLES</div></div>
-            </div>
-
-            {[...history].sort((a,b)=>b.year-a.year).map(h=>{
-              const isNuke=h.winner==="THE NUKES";
-              const isWhale=h.winner==="THE WHALES";
-              const isTBD=!h.winner||h.winner==="TBD";
-              const isExp=expandedHistory===h.id;
-              const matchCount=(h.matches||[]).filter(m=>m.type!=="heading").length;
-              const nukePts=h.nukes_pts??0, whalePts=h.whales_pts??0;
-              return (
-                <div key={h.id} style={{ marginBottom:10 }}>
-                  {/* Year header - always visible */}
-                  <div style={{ background:isNuke?"rgba(255,69,0,0.08)":isWhale?"rgba(0,170,255,0.06)":"rgba(255,255,255,0.04)", border:`1px solid ${isNuke?"rgba(255,69,0,0.25)":isWhale?"rgba(0,170,255,0.2)":"rgba(255,255,255,0.1)"}`, borderRadius:isExp?"12px 12px 0 0":"12px", padding:"14px 16px", cursor:"pointer" }} onClick={()=>setExpandedHistory(isExp?null:h.id)}>
-                    <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                      <div style={{ fontSize:28, fontWeight:900, color:"rgba(255,255,255,0.1)", minWidth:52, lineHeight:1 }}>{h.year}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:16, fontWeight:800, color:isNuke?"#ff4500":isWhale?"#00aaff":"rgba(255,255,255,0.4)" }}>{isNuke?"☢️ ":isWhale?"🐋 ":"⏳ "}{isTBD?"In Progress":h.winner}</div>
-                        <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
-                          <span style={{ fontSize:12, color:"rgba(255,69,0,0.7)" }}>{nukePts}</span>
-                          <span style={{ fontSize:12, color:"rgba(255,255,255,0.2)" }}>–</span>
-                          <span style={{ fontSize:12, color:"rgba(0,170,255,0.7)" }}>{whalePts}</span>
-                          {matchCount>0&&<span style={{ fontSize:11, color:"rgba(255,255,255,0.25)" }}>· {matchCount} matches</span>}
-                        </div>
-                        {(h.course||h.location)&&(
-                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>
-                            {h.course&&<span>⛳ {h.course}</span>}
-                            {h.course&&h.location&&<span style={{ margin:"0 6px", opacity:0.4 }}>·</span>}
-                            {h.location&&<span>📍 {h.location}</span>}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)" }}>{isExp?"▲":"▼"}</div>
-                    </div>
-                    {h.reviewUnlocked && (
-                      <div style={{ marginTop:10 }} onClick={e=>e.stopPropagation()}>
-                        <button onClick={()=>setShowReview(h.id)}
-                          style={{ width:"100%", padding:"8px", background:"linear-gradient(135deg,rgba(255,200,0,0.12),rgba(255,140,0,0.08))", border:"1px solid rgba(255,200,0,0.25)", borderRadius:8, color:"#ffd700", fontFamily:"inherit", fontSize:12, fontWeight:800, cursor:"pointer" }}>
-                          🏆 {h.year} Year in Review
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Expanded content */}
-                  {isExp&&(
-                    <div style={{ border:`1px solid ${isNuke?"rgba(255,69,0,0.2)":isWhale?"rgba(0,170,255,0.15)":"rgba(255,255,255,0.08)"}`, borderTop:"none", borderRadius:"0 0 12px 12px", overflow:"hidden" }}>
-
-                      {/* Notes */}
-                      {h.notes&&<div style={{ padding:"10px 16px", background:"rgba(255,255,255,0.02)", borderBottom:"1px solid rgba(255,255,255,0.06)", fontSize:13, color:"rgba(255,255,255,0.4)", fontStyle:"italic" }}>{h.notes}</div>}
-
-                      {/* Superlatives */}
-                      {(h.superlatives||[]).length>0&&(
-                        <div style={{ padding:"12px 16px", background:"rgba(255,200,0,0.04)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-                          <div style={{ fontSize:11, color:"rgba(255,200,0,0.6)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>🏅 Awards</div>
-                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                            {h.superlatives.map((sup,si)=>(
-                              <div key={si} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,200,0,0.1)", border:"1px solid rgba(255,200,0,0.2)", color:"rgba(255,220,0,0.8)" }}>🏅 {sup.title}: <strong>{sup.player}</strong></div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Matches */}
-                      {matchCount>0&&(
-                        <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)" }}>
-                          <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>⚔️ Match Results</div>
-                          {h.matches.map((m,mi)=>(
-                            <div key={mi}>
-                              {/* Subheading */}
-                              {m.type==="heading"&&(
-                                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, marginBottom:8 }}>
-                                  <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.06em", textTransform:"uppercase" }}>{m.label}</div>
-                                  <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
-                                </div>
-                              )}
-                              {/* Match */}
-                              {m.type!=="heading"&&(
-                                <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
-                                  {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
-                                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
-                                    <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                      <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
-                                      {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                      {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5 }}>✓ WIN</div>}
-                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
-                                    </div>
-                                    <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
-                                    <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                      <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
-                                      {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                      {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5 }}>✓ WIN</div>}
-                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {matchCount===0&&<div style={{ padding:"20px", textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.2)" }}>No match data entered yet</div>}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {tab==="media" && <MediaGallery/>}
-{tab==="hole" && (() => {
-          const currentYear = meta?.year || new Date().getFullYear();
-          const ledger = holePool?.find(h=>h.id==="ledger");
-          const yearEntries = ledger?.yearEntries || [];
-          const winners = ledger?.winners || [];
-          const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
-          const totalPaidOut = winners.reduce((sum,w)=>sum+(w.amount||0),0);
-          const runningTotal = totalContributed - totalPaidOut;
-
-          // Only show owed amounts for years AFTER the last payout
-          const lastPaidYear = winners.length > 0
-            ? Math.max(...winners.map(w=>w.year))
-            : 0;
-
-          const playerOwed = {};
-          yearEntries.forEach(e => {
-            if (e.year > lastPaidYear) {
-              (e.optedIn||[]).forEach(name => {
-                playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
-              });
-            }
-          });
-          const playersInPool = Object.keys(playerOwed).sort((a,b)=>playerOwed[b]-playerOwed[a]);
-          const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-
-          return (
-            <div>
-              <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One Pool</div>
-              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Rolls over every year — whoever hits a hole-in-one takes the full cumulative pot.</div>
-
-              {/* Big green total */}
-              <div className="card" style={{ padding:"28px 20px", marginBottom:20, textAlign:"center", background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.25)" }}>
-                <div style={{ fontSize:15, color:"rgba(255,255,255,0.4)", letterSpacing:"0.12em", textTransform:"uppercase", marginBottom:10 }}>Current Pool</div>
-                <div style={{ fontSize:64, fontWeight:900, color:"#4ade80", lineHeight:1 }}>💰 ${Math.round(runningTotal)}</div>
-                <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)", marginTop:10 }}>
-                  ${Math.round(totalContributed)} total contributed · ${Math.round(totalPaidOut)} paid out
-                </div>
-              </div>
-
-              {/* Past payouts */}
-              {winners.length>0&&(
-                <div style={{ marginBottom:20 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>🏆 Past Winners</div>
-                  {[...winners].reverse().map((w,i)=>(
-                    <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
-                      <div style={{ fontSize:24 }}>⛳</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontWeight:800, fontSize:15 }}>{w.name}</div>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{w.year}{w.date?` · ${new Date(w.date).toLocaleDateString()}`:""}</div>
-                      </div>
-                      <div style={{ fontSize:22, fontWeight:900, color:"#ffd700" }}>${Math.round(w.amount||0)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Individual ledger - who owes what */}
-              {playersInPool.length>0&&(
-                <div style={{ marginBottom:20 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:"rgba(74,222,128,0.7)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>💵 Individual Ledger</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Total each player has contributed across all years</div>
-                  {playersInPool.map(name=>{
-                    const p = roster.find(r=>r.name===name);
-                    const owed = playerOwed[name]||0;
-                    // Show per-year breakdown
-                    const years = yearEntries.filter(e=>(e.optedIn||[]).includes(name)).sort((a,b)=>a.year-b.year);
-                    return (
-                      <div key={name} className="card" style={{ padding:"12px 14px", marginBottom:8, borderColor:"rgba(74,222,128,0.12)", background:"rgba(74,222,128,0.03)" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          {p?.photoURL?<img src={p.photoURL} alt={name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15 }}>{name?.[0]}</div>}
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
-                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
-                              {years.map(e=>`${e.year}: $${e.buyIn}`).join(" · ")}
-                            </div>
-                          </div>
-                          <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(owed)}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* Total row */}
-                  <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 14px", borderTop:"1px solid rgba(255,255,255,0.07)", marginTop:4 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>{playersInPool.length} players total</div>
-                    <div style={{ fontSize:15, fontWeight:900, color:"#4ade80" }}>${Math.round(runningTotal)}</div>
-                  </div>
-                </div>
-              )}
-
-
-            </div>
-          );
-        })()}
-
-        {/* ── SUPERLATIVES ── */}
-        {tab==="superlatives" && (
-          <SuperlativesTab meta={meta} roster={roster} votes={votes} drafts={drafts}/>
-        )}
-
-                {tab==="rules" && (
-          <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Rules & Format</div>
-            {rules.map((r,i)=>(
-              <div key={r.id} className="card" style={{ padding:"14px 16px", marginBottom:8 }}>
-                <div style={{ fontSize:13, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", color:i%2===0?"#ff8c00":"#00aaff", marginBottom:6 }}>{r.title}</div>
-                <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.65, fontFamily:"'Barlow',sans-serif" }}>
-                  {(r.body||"").split("\n").map((line,li)=>{
-                    const isBullet = line.trimStart().startsWith("-") || line.trimStart().startsWith("•");
-                    const text = isBullet ? line.trimStart().replace(/^[-•]\s*/,"") : line;
-                    if (!text.trim()) return <div key={li} style={{ height:"0.5em" }}/>;
-                    return (
-                      <div key={li} style={{ display:"flex", gap:8, marginBottom:2 }}>
-                        {isBullet&&<span style={{ color:"rgba(255,255,255,0.3)", flexShrink:0, marginTop:2 }}>•</span>}
-                        <span>{text}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab==="mockdraft" && (
-          <MockDraftTab roster={roster} competitions={competitions} meta={meta} history={history} rounds={rounds} getHandicap={n=>{const p=roster.find(r=>r.name===n);const h=parseFloat(p?.handicap);if(!h||isNaN(h)||h<=1)return 27;if(h>50)return 36;return h;}}/>
-        )}
+          )}
+        </div>
+        <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
+          <div style={s.label}>Admin Codes</div>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}><strong style={{ color:"#ff4500" }}>nuke2026</strong> · <strong style={{ color:"#00aaff" }}>whale2026</strong> · <strong style={{ color:"#ffd700" }}>admin2026</strong></div>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Cloudflare Worker URL (for push notifications)</div>
+          <input style={s.input} value={form.workerUrl||""} onChange={e=>setForm(f=>({...f,workerUrl:e.target.value}))} placeholder="https://nwi-notif.your-name.workers.dev"/>
+        </div>
+        <div style={{ marginTop:10 }}>
+          <div style={s.label}>Worker Secret</div>
+          <input style={s.input} type="password" value={form.workerSecret||""} onChange={e=>setForm(f=>({...f,workerSecret:e.target.value}))} placeholder="The secret you set in Cloudflare"/>
+        </div>
+        <button style={{ ...s.btnFire, marginTop:14 }} onClick={save}>Save Settings</button>
       </div>
 
-      {/* Player profile modal */}
-      {selectedPlayer && (
-        <div className="player-modal-backdrop" onClick={()=>setSelectedPlayer(null)}>
-          <div className="player-modal" onClick={e=>e.stopPropagation()}>
-            {/* Header */}
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em" }}>PLAYER PROFILE</div>
-              <button onClick={()=>setSelectedPlayer(null)} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+      {/* Superlatives voting */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>🏅 Superlatives Voting</div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:600 }}>Voting Status</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{form.votingOpen?"Players can currently submit votes":"Voting is closed"}</div>
+          </div>
+          <button style={{ padding:"8px 18px", borderRadius:10, border:`1px solid ${form.votingOpen?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.15)"}`, background:form.votingOpen?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.05)", color:form.votingOpen?"#4ade80":"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}
+            onClick={async()=>{
+              const newVal = !form.votingOpen;
+              setForm(f=>({...f,votingOpen:newVal}));
+              await firestore.set("meta","tournament",{...meta,votingOpen:newVal});
+              showToast(newVal?"Voting opened!":"Voting closed!");
+            }}>
+            {form.votingOpen?"✓ Open":"Closed"}
+          </button>
+        </div>
+        <div>
+          <div style={s.label}>Superlative Categories (one per line)</div>
+          <textarea rows={6} value={form.superlativeCategories||""} onChange={e=>setForm(f=>({...f,superlativeCategories:e.target.value}))}
+            placeholder={"Biggest Choke\nMost Clutch\nBest Shot of the Tournament\nMost Improved\nBiggest Trash Talker\nMVP"}/>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4, marginBottom:10 }}>Each line becomes a voting category.</div>
+          <button style={s.btnFire} onClick={async()=>{
+            const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+            await firestore.set("meta","tournament",{...meta,superlativeCategories:cats});
+            showToast("Superlatives saved!");
+          }}>Save Superlatives</button>
+        </div>
+      </div>
+
+      {/* Vote results */}
+      {(votes||[]).length > 0 && (meta?.superlativeCategories||[]).length > 0 && (
+        <div style={s.card}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>📊 Vote Results</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{(votes||[]).length} submission{(votes||[]).length!==1?"s":""}</div>
             </div>
-
-            {/* Photo + name */}
-            <div style={{ display:"flex", gap:16, alignItems:"flex-start", marginBottom:20 }}>
-              {selectedPlayer.photoURL
-                ? <img src={selectedPlayer.photoURL} alt={selectedPlayer.name} style={{ width:80, height:80, borderRadius:"50%", objectFit:"cover", border:"2px solid rgba(255,255,255,0.15)", flexShrink:0 }}/>
-                : <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, fontWeight:900, color:"rgba(255,255,255,0.25)", flexShrink:0 }}>{selectedPlayer.name?.[0]}</div>
-              }
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:22, fontWeight:900, lineHeight:1.1 }}>{selectedPlayer.name}</div>
-                {selectedPlayer.nickname&&<div style={{ fontSize:14, color:"rgba(255,255,255,0.45)", fontStyle:"italic", marginTop:2 }}>"{selectedPlayer.nickname}"</div>}
-                {selectedPlayer.team&&selectedPlayer.team!=="tbd"&&TEAMS[selectedPlayer.team]&&(
-                  <div style={{ fontSize:12, color:TEAMS[selectedPlayer.team].color, marginTop:4 }}>{TEAMS[selectedPlayer.team].emoji} {TEAMS[selectedPlayer.team].name} · {currentYear}</div>
-                )}
-                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:6 }}>
-                  {selectedPlayer.hometown&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>📍 {selectedPlayer.hometown}</span>}
-                  {selectedPlayer.handicap!=null&&selectedPlayer.handicap!==""&&<span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>⛳ HCP {selectedPlayer.handicap}</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Bio */}
-            {selectedPlayer.bio&&(
-              <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.6, fontFamily:"'Barlow',sans-serif", marginBottom:14, padding:"11px 13px", background:"rgba(255,255,255,0.03)", borderRadius:10 }}>
-                {selectedPlayer.bio}
-              </div>
-            )}
-
-            {/* Golf profile fields */}
-            {(selectedPlayer.favoriteClub||selectedPlayer.golferComparison||selectedPlayer.strengths||selectedPlayer.weaknesses)&&(
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
-                {selectedPlayer.favoriteClub&&(
-                  <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"10px 12px" }}>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:4 }}>FAVORITE CLUB</div>
-                    <div style={{ fontSize:13, fontWeight:600, color:"#e8edf3" }}>🏌️ {selectedPlayer.favoriteClub}</div>
-                  </div>
-                )}
-                {selectedPlayer.golferComparison&&(
-                  <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:10, padding:"10px 12px" }}>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:4 }}>GOLFER COMPARISON</div>
-                    <div style={{ fontSize:13, fontWeight:600, color:"#ffd700" }}>⭐ {selectedPlayer.golferComparison}</div>
-                  </div>
-                )}
-                {selectedPlayer.strengths&&(
-                  <div style={{ background:"rgba(74,222,128,0.06)", borderRadius:10, padding:"10px 12px" }}>
-                    <div style={{ fontSize:10, color:"rgba(74,222,128,0.5)", letterSpacing:"0.08em", marginBottom:4 }}>STRENGTHS</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)" }}>✅ {selectedPlayer.strengths}</div>
-                  </div>
-                )}
-                {selectedPlayer.weaknesses&&(
-                  <div style={{ background:"rgba(255,80,80,0.06)", borderRadius:10, padding:"10px 12px" }}>
-                    <div style={{ fontSize:10, color:"rgba(255,80,80,0.5)", letterSpacing:"0.08em", marginBottom:4 }}>WEAKNESSES</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)" }}>⚠️ {selectedPlayer.weaknesses}</div>
-                  </div>
-                )}
-                {selectedPlayer.bestPartOfGame&&(
-                  <div style={{ background:"rgba(74,222,128,0.06)", borderRadius:10, padding:"10px 12px", gridColumn:"1 / -1" }}>
-                    <div style={{ fontSize:10, color:"rgba(74,222,128,0.5)", letterSpacing:"0.08em", marginBottom:4 }}>BEST PART OF GOLF GAME</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.7)" }}>⛳ {selectedPlayer.bestPartOfGame}</div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* All-time stats */}
-            {(() => {
-              const at = allTimeStats[selectedPlayer.name];
-              if (!at || at.ptsAvail === 0) return null;
-              const pct = Math.round((at.ptsWon/at.ptsAvail)*100);
-              return (
-                <div style={{ marginBottom:14 }}>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:8 }}>ALL-TIME STATS</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#ff8c00" }}>{at.ptsWon}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WON</div>
-                    </div>
-                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#ffd700" }}>{pct}%</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WIN%</div>
-                    </div>
-                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:13, fontWeight:800, lineHeight:1.4 }}>
-                        <span style={{ color:"#4ade80" }}>{at.matchWins}W</span>{" "}
-                        <span style={{ color:"#ffd700" }}>{at.matchTies}T</span>{" "}
-                        <span style={{ color:"#ff5555" }}>{at.matchLosses}L</span>
-                      </div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>RECORD</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Titles Won + Tournament appearances */}
-            {(() => {
-              const appearances = history.filter(h => (h.matches||[]).some(m=>m.type!=="heading"&&[...(m.nukes||[]),...(m.whales||[])].includes(selectedPlayer.name))).sort((a,b)=>b.year-a.year);
-              const titles = history.filter(h => {
-                const draft = drafts.find(d=>String(d.year)===String(h.year));
-                const assign = draft?.assignments || {};
-                const playerTeam = assign[selectedPlayer.name];
-                return playerTeam && h.winner === (playerTeam==="nukes"?"THE NUKES":"THE WHALES");
-              });
-              // Awards from superlatives across all years
-              const awards = [];
-              history.forEach(h => {
-                (h.superlatives||[]).forEach(sup => {
-                  if (sup.player === selectedPlayer.name) {
-                    awards.push({ year: h.year, title: sup.title });
+            <div style={{ display:"flex", gap:8 }}>
+              <button style={{ ...s.btnFire, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
+                // Find the current year in history
+                const currentYear = meta?.year;
+                const histYear = (history||[]).find(h => String(h.year) === String(currentYear));
+                if (!histYear) { showToast(`No history entry for ${currentYear} — add it in History tab first`, true); return; }
+                if (!window.confirm(`Import superlative winners into ${currentYear} history? This will replace existing superlatives for that year.`)) return;
+                // Calculate winners from votes
+                const cats = meta?.superlativeCategories || [];
+                const newSuperlatives = [];
+                cats.forEach(cat => {
+                  const tally = {};
+                  (votes||[]).forEach(v => { const pick = v.votes?.[cat]; if (pick) tally[pick] = (tally[pick]||0) + 1; });
+                  const sorted = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+                  if (sorted.length > 0) {
+                    const topCount = sorted[0][1];
+                    const winners = sorted.filter(([,c]) => c === topCount).map(([n]) => n);
+                    // Only import if clear winner (no tie)
+                    if (winners.length === 1) {
+                      newSuperlatives.push({ title: cat, player: winners[0] });
+                    }
+                    // Skip ties — those need manual resolution
                   }
                 });
-              });
-              awards.sort((a,b)=>b.year-a.year);
-              // Hole-in-one wins
-              const ledger = holePool?.find(h=>h.id==="ledger");
-              const holeWins = (ledger?.winners||[]).filter(w=>w.name===selectedPlayer.name).sort((a,b)=>b.year-a.year);
-              return (
-                <div>
-                  {holeWins.length>0&&(
-                    <div style={{ marginBottom:14 }}>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>⛳ HOLE-IN-ONE ({holeWins.length})</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {holeWins.map((w,i)=>(
-                          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(74,222,128,0.06)", border:"1px solid rgba(74,222,128,0.2)", borderRadius:8, padding:"7px 12px" }}>
-                            <span style={{ fontSize:14 }}>⛳</span>
-                            <span style={{ fontSize:13, color:"#4ade80", fontWeight:700, flex:1 }}>Hole-in-One — ${Math.round(w.amount||0)}</span>
-                            <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>{w.year}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {titles.length>0&&(
-                    <div style={{ marginBottom:14 }}>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏆 TITLES WON ({titles.length})</div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                        {titles.map(t=><span key={t.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,200,0,0.12)", border:"1px solid rgba(255,200,0,0.25)", color:"#ffd700", fontWeight:700 }}>🏆 {t.year}</span>)}
-                      </div>
-                    </div>
-                  )}
-                  {awards.length>0&&(
-                    <div style={{ marginBottom:14 }}>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>🏅 AWARDS ({awards.length})</div>
-                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                        {awards.map((a,i)=>(
-                          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:8, padding:"7px 12px" }}>
-                            <span style={{ fontSize:13, color:"#ffd700", fontWeight:700, flex:1 }}>🏅 {a.title}</span>
-                            <span style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>{a.year}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {appearances.length>0&&(
-                    <div>
-                      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>TOURNAMENT APPEARANCES</div>
-                      <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                        {appearances.map(h=><span key={h.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)" }}>{h.year}</span>)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+                await firestore.update("history", histYear.id, { superlatives: newSuperlatives });
+                showToast(`✅ Imported ${newSuperlatives.length} superlatives into ${currentYear} history!`);
+              }}>⬆ Import to History</button>
+              <button style={{ ...s.btnDanger, fontSize:11, padding:"4px 10px" }} onClick={async()=>{
+                if(!window.confirm("Clear ALL votes? This cannot be undone.")) return;
+                for(const v of (votes||[])) await firestore.delete("votes", v.id);
+                showToast("All votes cleared!");
+              }}>Clear All Votes</button>
+            </div>
           </div>
+          {(meta.superlativeCategories||[]).map(cat => {
+            const tally = {};
+            const totalVoters = (votes||[]).length;
+            (votes||[]).forEach(v => {
+              const pick = v.votes?.[cat];
+              if (pick) tally[pick] = (tally[pick]||0) + 1;
+            });
+            const votesForCat = Object.values(tally).reduce((s,n)=>s+n,0);
+            const sorted = Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+            return (
+              <div key={cat} style={{ marginBottom:18, paddingBottom:18, borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase" }}>{cat}</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>{votesForCat}/{totalVoters} voted</div>
+                </div>
+                {sorted.length === 0 ? (
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No votes yet</div>
+                ) : sorted.map(([name, count], i) => {
+                  const pct = Math.round((count / totalVoters) * 100);
+                  const isWinner = i === 0 && (sorted.length === 1 || sorted[1][1] < count);
+                  const isTied = i === 0 && sorted.length > 1 && sorted[1][1] === count;
+                  return (
+                    <div key={name} style={{ marginBottom:6 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                        <span style={{ fontWeight:isWinner||isTied?700:400, color:isWinner?"#4ade80":isTied?"#ffd700":"rgba(255,255,255,0.6)" }}>
+                          {isWinner?"🏅 ":isTied?"🤝 ":""}{name}
+                        </span>
+                        <span style={{ color:"rgba(255,255,255,0.4)" }}>{count}/{totalVoters} · {pct}%</span>
+                      </div>
+                      <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${pct}%`, background:isWinner?"#4ade80":isTied?"#ffd700":"rgba(255,255,255,0.2)", borderRadius:3, transition:"width 0.4s" }}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ── YEAR IN REVIEW MODAL ── */}
-      {showReview && (() => {
-        const histYear = history?.find(h => h.id === showReview);
-        if (!histYear) return null;
-        const reviewYear = histYear.year;
-        const review = histYear?.reviewData || {};
+      {/* Send Notification */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>🔔 Send Push Notification</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>
+          {(fcmTokens||[]).length} subscriber{(fcmTokens||[]).length!==1?"s":""} · Sends to everyone who allowed notifications
+        </div>
+        <div><div style={s.label}>Title</div><input style={{ ...s.input, marginBottom:10 }} value={notifTitle} onChange={e=>setNotifTitle(e.target.value)} placeholder="e.g. Day 1 Results Are In!"/></div>
+        <div><div style={s.label}>Message</div><textarea rows={2} value={notifBody} onChange={e=>setNotifBody(e.target.value)} placeholder="e.g. Nukes lead 18-12 after Day 1. Check the leaderboard!"/></div>
+        <button style={{ ...s.btnFire, marginTop:12, width:"100%" }} onClick={sendNotification} disabled={sending||!notifTitle.trim()}>
+          {sending ? "Sending..." : `📬 Send to ${(fcmTokens||[]).length} Subscriber${(fcmTokens||[]).length!==1?"s":""}`}
+        </button>
+      </div>
 
-        // Calculate stats from current data
-        const isNukeWin = histYear?.winner === "THE NUKES";
-        const isWhaleWin = histYear?.winner === "THE WHALES";
-        const winnerColor = isNukeWin ? "#ff4500" : isWhaleWin ? "#00aaff" : "#ffd700";
-        const winnerEmoji = isNukeWin ? "☢️" : isWhaleWin ? "🐋" : "⏳";
-
-        // Best/worst record from individual leaderboard for this specific year
-        const yearMatches = histYear?.matches || [];
-        const yearStats = {};
-        yearMatches.forEach(m => {
-          if (!m.winner) return;
-          [...(m.nukes||[]), ...(m.whales||[])].filter(Boolean).forEach(name => {
-            if (!yearStats[name]) yearStats[name] = { w:0, t:0, l:0 };
-            const onNukes = (m.nukes||[]).includes(name);
-            const playerTeam = onNukes ? "nukes" : "whales";
-            if (m.winner === playerTeam) yearStats[name].w++;
-            else if (m.winner === "tie") yearStats[name].t++;
-            else yearStats[name].l++;
-          });
-        });
-        const yearPlayers = Object.entries(yearStats).map(([name,s])=>({ name, ...s, total:s.w+s.t+s.l, pct: s.total>0?((s.w+s.t*0.5)/s.total):0 }))
-          .filter(p=>p.total>0).sort((a,b)=>b.w-a.w||b.t-a.t||a.l-b.l);
-        const bestPct = yearPlayers[0]?.pct;
-        const worstPct = yearPlayers[yearPlayers.length-1]?.pct;
-        const bestPlayers = yearPlayers.filter(p=>p.pct===bestPct);
-        const worstPlayers = bestPct !== worstPct ? yearPlayers.filter(p=>p.pct===worstPct) : [];
-        const getTeamEmoji = (name) => {
-          // Look up team from the year's draft
-          const yearDraft = drafts?.find(d => String(d.year) === String(reviewYear));
-          const t = yearDraft?.assignments?.[name] || teamAssign[name];
-          return t === "nukes" ? "☢️" : t === "whales" ? "🐋" : "";
-        };
-
-        // Hole in one winners this year
-        const ledger = holePool?.find(h => h.id === "ledger");
-        const holeWinners = (ledger?.winners || []).filter(w => String(w.year) === String(reviewYear));
-
-        // Superlatives
-        const superlatives = histYear?.superlatives || [];
-
-        // Match counts
-        const matches = histYear?.matches || [];
-        const nukeWins = matches.filter(m => m.winner === "nukes").length;
-        const whaleWins = matches.filter(m => m.winner === "whales").length;
-        const ties = matches.filter(m => m.winner === "tie").length;
-        const totalMatches = matches.filter(m => m.winner).length;
-
-        return (
-          <div className="player-modal-backdrop" onClick={()=>setShowReview(null)}>
-            <div className="player-modal" onClick={e=>e.stopPropagation()} style={{ background:"#0a0f1a", border:"1px solid rgba(255,200,0,0.2)" }}>
-              {/* Header */}
-              <div style={{ textAlign:"center", marginBottom:20 }}>
-                <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:6 }}>Nuclear Whale Invitational</div>
-                <div style={{ fontSize:32, fontWeight:900, letterSpacing:"0.04em", background:"linear-gradient(90deg,#ff4500,#ffd700,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>{reviewYear} YEAR IN REVIEW</div>
-                {(histYear?.course || histYear?.location) && (
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:6 }}>
-                    {histYear.course && <span>⛳ {histYear.course}</span>}
-                    {histYear.course && histYear.location && <span style={{ margin:"0 8px", opacity:0.4 }}>·</span>}
-                    {histYear.location && <span>📍 {histYear.location}</span>}
-                  </div>
-                )}
+      {/* Subscriber management */}
+      {(fcmTokens||[]).length>0&&(
+        <div style={s.card}>
+          <div style={{ fontSize:14, fontWeight:700, marginBottom:10 }}>📱 Subscribers ({(fcmTokens||[]).length})</div>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:12 }}>Tokens are anonymous. Remove stale ones if someone stopped using the app.</div>
+          {[...(fcmTokens||[])].sort((a,b)=>b.updatedAt?.localeCompare(a.updatedAt||"")||0).map((t,i)=>(
+            <div key={t.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8, marginBottom:6 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)", fontFamily:"monospace" }}>...{(t.token||"").slice(-16)}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginTop:2 }}>Added {t.updatedAt ? new Date(t.updatedAt).toLocaleDateString() : "unknown"}</div>
               </div>
+              <button style={{ ...s.btnDanger, padding:"3px 8px", fontSize:11 }} onClick={async()=>{
+                if(window.confirm("Remove this subscriber?")) {
+                  await firestore.delete("fcm_tokens", t.id);
+                  showToast("Subscriber removed");
+                }
+              }}>✕</button>
+            </div>
+          ))}
+          <button style={{ ...s.btnDanger, marginTop:8, width:"100%" }} onClick={async()=>{
+            if(window.confirm(`Remove ALL ${(fcmTokens||[]).length} subscribers? They will need to re-allow notifications.`)) {
+              for (const t of (fcmTokens||[])) await firestore.delete("fcm_tokens", t.id);
+              showToast("All subscribers removed");
+            }
+          }}>Remove All Subscribers</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {/* Winner */}
-              <div style={{ textAlign:"center", padding:"16px", background:`rgba(${isNukeWin?"255,69,0":isWhaleWin?"0,170,255":"255,200,0"},0.08)`, border:`1px solid rgba(${isNukeWin?"255,69,0":isWhaleWin?"0,170,255":"255,200,0"},0.25)`, borderRadius:12, marginBottom:12 }}>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:4 }}>🏆 Tournament Champion</div>
-                <div style={{ fontSize:24, fontWeight:900, color:winnerColor }}>{winnerEmoji} {histYear?.winner || "TBD"}</div>
-                <div style={{ fontSize:18, fontWeight:700, color:"rgba(255,255,255,0.6)", marginTop:4 }}>
-                  <span style={{ color:"#ff4500" }}>{histYear?.nukes_pts || 0}</span>
-                  <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 8px" }}>–</span>
-                  <span style={{ color:"#00aaff" }}>{histYear?.whales_pts || 0}</span>
+function AnalyticsSection({ sessions: rawSessions }) {
+  const [filter, setFilter] = useState("today");
+  const [customMonths, setCustomMonths] = useState(3);
+
+  // Normalize dates from Firestore
+  const sessions = (rawSessions||[]).map(s => {
+    let startedAt = s.startedAt;
+    if (!startedAt) return { ...s, startedAt: null };
+    if (typeof startedAt === "object" && startedAt.toDate) startedAt = startedAt.toDate().toISOString();
+    else if (typeof startedAt === "object" && startedAt.seconds) startedAt = new Date(startedAt.seconds*1000).toISOString();
+    return { ...s, startedAt };
+  }).sort((a,b) => (b.startedAt||"").localeCompare(a.startedAt||""));
+  
+  const loading = rawSessions === null || rawSessions === undefined;
+
+  // Filter sessions
+  const getFiltered = () => {
+    const now = Date.now();
+    const localDate = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    };
+    const todayStr = localDate(new Date().toISOString());
+    return sessions.filter(s => {
+      if (!s.startedAt) return filter === "all";
+      const ms = new Date(s.startedAt).getTime();
+      if (isNaN(ms)) return filter === "all";
+      if (filter === "today") return localDate(s.startedAt) === todayStr;
+      if (filter === "week") return ms >= now - 7 * 864e5;
+      if (filter === "custom") return ms >= now - customMonths * 30 * 864e5;
+      return true;
+    });
+  };
+
+  // Debug: show what we have
+  const debugInfo = sessions.length > 0 ? `${sessions.length} total · sample: ${sessions[0]?.startedAt?.slice(0,19)}` : "no sessions loaded";
+
+  const filtered = getFiltered();
+  const uniqueDevices = new Set(filtered.map(s => s.deviceId)).size;
+  const avgDur = filtered.length ? Math.round(filtered.reduce((a,s) => a + (s.duration||0), 0) / filtered.length) : 0;
+  const fmtDur = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+  const fmt12 = h => `${h%12||12}${h>=12?"pm":"am"}`;
+  const localDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+
+  const TAB_LABELS = {
+    leaderboard:"Leaderboard", individual:"Individual", alltime:"All-Time",
+    matchups:"Matchups", countdown:"Countdown", schedule:"Schedule",
+    competitions:"Competitions", "hole-in-one":"Hole-in-One", superlatives:"Superlatives",
+    players:"Players", history:"History", media:"Media", rules:"Rules", mockdraft:"Mock Draft"
+  };
+
+  const tabCounts = {};
+  filtered.forEach(s => (s.tabsVisited||[]).forEach(t => { tabCounts[t] = (tabCounts[t]||0)+1; }));
+  const tabsSorted = Object.entries(tabCounts).sort((a,b) => b[1]-a[1]);
+  const maxTab = tabsSorted[0]?.[1] || 1;
+
+  const deviceCounts = { ios:0, android:0, desktop:0 };
+  filtered.forEach(s => { if(s.deviceType) deviceCounts[s.deviceType] = (deviceCounts[s.deviceType]||0)+1; });
+
+  const useHourChart = filter === "today" || filter === "week";
+  const hourCounts = Array(24).fill(0);
+  filtered.forEach(s => { if(s.startedAt){ const h = new Date(s.startedAt).getHours(); if(!isNaN(h)) hourCounts[h]++; }});
+  const maxHour = Math.max(...hourCounts, 1);
+  const peakHour = hourCounts.indexOf(maxHour);
+
+  const dateCounts = {};
+  filtered.forEach(s => { const d = localDate(s.startedAt); if(d) dateCounts[d] = (dateCounts[d]||0)+1; });
+  const dates = Object.keys(dateCounts).sort();
+  const maxDate = Math.max(...Object.values(dateCounts), 1);
+
+  const st = {
+    card: { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px", marginBottom:12 },
+    lbl: { fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 },
+    val: { fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 },
+    sub: { fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:3 },
+  };
+
+  return (
+    <div>
+      <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:16}}>📊 Analytics</div>
+
+      <div style={{display:"flex",gap:6,marginBottom:filter==="custom"?8:16,flexWrap:"wrap"}}>
+        {[["today","Today"],["week","This Week"],["custom","Last X Months"],["all","All Time"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)}
+            style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===v?"rgba(255,200,0,0.5)":"rgba(255,255,255,0.1)"}`,background:filter===v?"rgba(255,200,0,0.1)":"transparent",color:filter===v?"#ffd700":"rgba(255,255,255,0.5)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {filter==="custom"&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Show last</span>
+          {[1,2,3,6,12].map(m=>(
+            <button key={m} onClick={()=>setCustomMonths(m)}
+              style={{padding:"4px 10px",borderRadius:16,border:`1px solid ${customMonths===m?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.1)"}`,background:customMonths===m?"rgba(255,200,0,0.08)":"transparent",color:customMonths===m?"#ffd700":"rgba(255,255,255,0.4)",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {m}mo
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginBottom:8,fontFamily:"monospace"}}>{debugInfo}</div>
+
+      {loading ? (
+        <div style={{color:"rgba(255,255,255,0.3)",textAlign:"center",padding:40}}>Loading...</div>
+      ) : (
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            {[
+              ["Sessions", filtered.length, "opens"],
+              ["Unique Devices", uniqueDevices, "distinct users"],
+              ["Avg Duration", fmtDur(avgDur), "per session"],
+              ["Devices", `📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}`, "mobile · desktop"],
+            ].map(([label,val,sub])=>(
+              <div key={label} style={st.card}>
+                <div style={st.lbl}>{label}</div>
+                <div style={st.val}>{val}</div>
+                <div style={st.sub}>{sub}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>Tab Popularity</div>
+            {tabsSorted.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data</div>:
+              tabsSorted.map(([t,count])=>(
+                <div key={t} style={{marginBottom:7}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                    <span style={{fontSize:12,fontWeight:600}}>{TAB_LABELS[t]||t}</span>
+                    <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{count}</span>
+                  </div>
+                  <div style={{height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${(count/maxTab)*100}%`,background:"linear-gradient(90deg,#ff8c00,#ffd700)",borderRadius:3}}/>
+                  </div>
                 </div>
-              </div>
+              ))
+            }
+          </div>
 
-              {/* Match record */}
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-                {[["☢️ Wins", nukeWins, "#ff4500"], ["🤝 Ties", ties, "#ffd700"], ["🐋 Wins", whaleWins, "#00aaff"]].map(([l,v,c])=>(
-                  <div key={l} style={{ textAlign:"center", padding:"10px 6px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10 }}>
-                    <div style={{ fontSize:22, fontWeight:900, color:c }}>{v}</div>
-                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Player Records */}
-              {yearPlayers.length > 0 && (
-                <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>👤 Player Records</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                    <div style={{ padding:"10px 12px", background:"rgba(255,69,0,0.06)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:10 }}>
-                      <div style={{ fontSize:10, color:"#ff4500", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>☢️ Nukes</div>
-                      {yearPlayers.filter(p => {
-                        const d = drafts?.find(d=>String(d.year)===String(reviewYear));
-                        return d?.assignments?.[p.name] === "nukes";
-                      }).map(p=>(
-                        <div key={p.name} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, fontWeight:600 }}>{p.name}</span>
-                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ padding:"10px 12px", background:"rgba(0,170,255,0.06)", border:"1px solid rgba(0,170,255,0.2)", borderRadius:10 }}>
-                      <div style={{ fontSize:10, color:"#00aaff", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>🐋 Whales</div>
-                      {yearPlayers.filter(p => {
-                        const d = drafts?.find(d=>String(d.year)===String(reviewYear));
-                        return d?.assignments?.[p.name] === "whales";
-                      }).map(p=>(
-                        <div key={p.name} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                          <span style={{ fontSize:12, fontWeight:600 }}>{p.name}</span>
-                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{p.w}-{p.t}-{p.l}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Superlatives */}
-              {superlatives.length > 0 && (
-                <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>🏅 Superlatives</div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    {superlatives.map((s,i) => (
-                      <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
-                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>{s.title}</div>
-                        <div style={{ fontSize:13, fontWeight:700 }}>{getTeamEmoji(s.player)} {s.player}</div>
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>{useHourChart?"Opens by Hour":"Opens by Date"}</div>
+            {filtered.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data for this period</div>:
+              useHourChart?(
+                <>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:2,height:56,marginBottom:4}}>
+                    {hourCounts.map((count,h)=>(
+                      <div key={h} style={{flex:1,height:"100%",display:"flex",alignItems:"flex-end"}}>
+                        <div style={{width:"100%",height:`${Math.max(count?4:1,(count/maxHour)*52)}px`,
+                          background:count?h===peakHour?"#ffd700":"rgba(255,140,0,0.7)":"rgba(255,255,255,0.05)",borderRadius:2}}/>
                       </div>
                     ))}
                   </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(255,255,255,0.3)"}}>
+                    {[0,6,12,18,23].map(h=><span key={h}>{fmt12(h)}</span>)}
+                  </div>
+                  {maxHour>0&&<div style={{fontSize:11,color:"#ffd700",marginTop:6}}>Peak: {fmt12(peakHour)} · {hourCounts[peakHour]} session{hourCounts[peakHour]!==1?"s":""}</div>}
+                </>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {dates.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data</div>:
+                    dates.map(d=>(
+                      <div key={d} style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",width:95,flexShrink:0}}>
+                          {new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                        </div>
+                        <div style={{flex:1,height:14,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${(dateCounts[d]/maxDate)*100}%`,background:"rgba(255,140,0,0.7)",borderRadius:3}}/>
+                        </div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",width:16,textAlign:"right"}}>{dateCounts[d]}</div>
+                      </div>
+                    ))
+                  }
                 </div>
-              )}
-
-              {/* Hole in one */}
-              {holeWinners.length > 0 && (
-                <div style={{ marginBottom:12, padding:"12px", background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.2)", borderRadius:10 }}>
-                  <div style={{ fontSize:11, color:"rgba(255,200,0,0.7)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One</div>
-                  {holeWinners.map((w,i) => (
-                    <div key={i} style={{ fontSize:13, fontWeight:700, color:"#ffd700" }}>{w.name} · ${w.amount}</div>
-                  ))}
-                </div>
-              )}
-
-              <button onClick={()=>setShowReview(null)} style={{ width:"100%", padding:"12px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:10, color:"rgba(255,255,255,0.5)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginTop:4 }}>Close</button>
-            </div>
+              )
+            }
           </div>
-        );
-      })()}
+
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>Recent Sessions ({filtered.length})</div>
+            {filtered.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center",padding:"12px 0"}}>No sessions in this period</div>:
+              filtered.slice(0,25).map(sess=>{
+                const dt = sess.startedAt ? new Date(sess.startedAt) : null;
+                const timeStr = dt&&!isNaN(dt) ? dt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—";
+                const icon = sess.deviceType==="ios"?"📱":sess.deviceType==="android"?"🤖":"💻";
+                return (
+                  <div key={sess.id} style={{padding:"7px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                        <span style={{fontSize:13,marginTop:1}}>{icon}</span>
+                        <div>
+                          <div style={{fontSize:11,fontWeight:600}}>{timeStr}</div>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1}}>{fmtDur(sess.duration||0)} · {(sess.tabsVisited||[]).map(t=>TAB_LABELS[t]||t).join(" → ")}</div>
+                        </div>
+                      </div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>{sess.deviceId?.slice(0,6)}</div>
+                    </div>
+                  </div>
+                );
+              })
+            }
+          </div>
+        </>
+      )}
     </div>
   );
 }
