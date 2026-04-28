@@ -2177,8 +2177,16 @@ function AnalyticsSection() {
         const { db } = await import("../firebase/config");
         const { collection, getDocs } = await import("firebase/firestore");
         const snap = await getDocs(collection(db, "analytics"));
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const docs = snap.docs.map(d => {
+          const data = d.data();
+          // Normalize startedAt to ISO string regardless of Firestore format
+          let startedAt = data.startedAt;
+          if(startedAt?.toDate) startedAt = startedAt.toDate().toISOString();
+          else if(startedAt?.seconds) startedAt = new Date(startedAt.seconds*1000).toISOString();
+          return { id: d.id, ...data, startedAt };
+        });
         docs.sort((a,b) => (b.startedAt||"").localeCompare(a.startedAt||""));
+        console.log("analytics loaded:", docs.length, "first:", docs[0]?.startedAt);
         setSessions(docs);
       } catch(e) { console.log("analytics load error:", e); }
       setLoading(false);
@@ -2189,24 +2197,22 @@ function AnalyticsSection() {
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
 
-  // Parse startedAt handling both ISO strings and Firestore Timestamps
-  const parseDate = (startedAt) => {
-    if(!startedAt) return null;
-    if(typeof startedAt === "string") return new Date(startedAt);
-    if(startedAt.toDate) return startedAt.toDate(); // Firestore Timestamp
-    if(startedAt.seconds) return new Date(startedAt.seconds * 1000); // Timestamp object
-    return new Date(startedAt);
+  const toLocalDateStr = (iso) => {
+    if(!iso) return "";
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   };
-
-  const toLocalDateStr = (d) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}` : "";
+  // parseDate still needed for hour chart
+  const parseDate = (s) => s ? new Date(s) : null;
 
   const filtered = sessions.filter(s => {
-    const d = parseDate(s.startedAt);
-    if(!d||isNaN(d.getTime())) return filter==="all";
-    if(filter==="today") return toLocalDateStr(d)===todayStr;
-    if(filter==="week") return d.getTime() >= now.getTime()-7*24*60*60*1000;
-    if(filter==="custom") return d.getTime() >= now.getTime()-customMonths*30*24*60*60*1000;
-    return true; // all
+    if(!s.startedAt) return filter==="all";
+    const ms = new Date(s.startedAt).getTime();
+    if(isNaN(ms)) return filter==="all";
+    if(filter==="today") return toLocalDateStr(s.startedAt)===todayStr;
+    if(filter==="week") return ms >= now.getTime()-7*24*60*60*1000;
+    if(filter==="custom") return ms >= now.getTime()-customMonths*30*24*60*60*1000;
+    return true;
   });
 
   const uniqueDevices = new Set(filtered.map(s=>s.deviceId)).size;
@@ -2309,10 +2315,11 @@ function AnalyticsSection() {
             }
           </div>
 
-          {/* Usage by hour */}
+          {/* Usage chart — by hour for today/week, by date for all/custom */}
           <div style={s.card}>
-            <div style={{...s.label,marginBottom:12}}>Opens by Hour of Day</div>
-            {filtered.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data for this period</div>:(
+            <div style={{...s.label,marginBottom:12}}>{filter==="today"||filter==="week"?"Opens by Hour of Day":"Opens by Date"}</div>
+            {filtered.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data for this period</div>:
+              (filter==="today"||filter==="week") ? (
               <>
                 <div style={{display:"flex",alignItems:"flex-end",gap:2,height:60,marginBottom:4}}>
                   {hourCounts.map((count,h)=>(
@@ -2329,7 +2336,31 @@ function AnalyticsSection() {
                 </div>
                 {maxHour>0&&<div style={{fontSize:11,color:"#ffd700",marginTop:6}}>Peak: {fmt12(peakHour)} ({hourCounts[peakHour]} open{hourCounts[peakHour]!==1?"s":""})</div>}
               </>
-            )}
+            ) : (()=>{
+              // Opens by date
+              const dateCounts = {};
+              filtered.forEach(s=>{
+                const d=toLocalDateStr(s.startedAt);
+                if(d) dateCounts[d]=(dateCounts[d]||0)+1;
+              });
+              const dates=Object.keys(dateCounts).sort();
+              const maxD=Math.max(...Object.values(dateCounts),1);
+              return (
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  {dates.map(d=>(
+                    <div key={d} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",width:90,flexShrink:0}}>
+                        {new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                      </div>
+                      <div style={{flex:1,height:16,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${(dateCounts[d]/maxD)*100}%`,background:"rgba(255,140,0,0.7)",borderRadius:3}}/>
+                      </div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",width:20,textAlign:"right"}}>{dateCounts[d]}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Recent sessions */}
