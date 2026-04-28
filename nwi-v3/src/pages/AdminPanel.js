@@ -2207,7 +2207,7 @@ function AnalyticsSection({ sessions: rawSessions }) {
   const debugInfo = `${sessions.length} total · ${withDate.length} with date · sample: ${withDate[0]?.startedAt?.slice(0,19)||"none"}`;
 
   const filtered = getFiltered();
-  const uniqueDevices = new Set(filtered.map(s => s.deviceId)).size;
+  const uniqueDevices = new Set(filtered.map(s => s.deviceId).filter(Boolean)).size;
   const avgDur = filtered.length ? Math.round(filtered.reduce((a,s) => a + (s.duration||0), 0) / filtered.length) : 0;
   const fmtDur = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
   const fmt12 = h => `${h%12||12}${h>=12?"pm":"am"}`;
