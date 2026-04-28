@@ -2172,91 +2172,97 @@ function AnalyticsSection() {
   const [customMonths, setCustomMonths] = useState(3);
 
   useEffect(() => {
-    const loadSessions = async () => {
+    (async () => {
       try {
         const { db } = await import("../firebase/config");
         const { collection, getDocs } = await import("firebase/firestore");
         const snap = await getDocs(collection(db, "analytics"));
         const docs = snap.docs.map(d => {
           const data = d.data();
-          // Normalize startedAt to ISO string regardless of Firestore format
+          // Normalize startedAt to ISO string
           let startedAt = data.startedAt;
-          if(startedAt?.toDate) startedAt = startedAt.toDate().toISOString();
-          else if(startedAt?.seconds) startedAt = new Date(startedAt.seconds*1000).toISOString();
+          if (!startedAt) return { id: d.id, ...data, startedAt: null };
+          if (typeof startedAt === "object" && startedAt.toDate) startedAt = startedAt.toDate().toISOString();
+          else if (typeof startedAt === "object" && startedAt.seconds) startedAt = new Date(startedAt.seconds * 1000).toISOString();
+          else if (typeof startedAt !== "string") startedAt = new Date(startedAt).toISOString();
           return { id: d.id, ...data, startedAt };
         });
-        docs.sort((a,b) => (b.startedAt||"").localeCompare(a.startedAt||""));
-        console.log("analytics loaded:", docs.length, "first:", docs[0]?.startedAt);
+        docs.sort((a, b) => (b.startedAt || "").localeCompare(a.startedAt || ""));
         setSessions(docs);
-      } catch(e) { console.log("analytics load error:", e); }
+      } catch(e) { console.log("analytics error:", e); }
       setLoading(false);
-    };
-    loadSessions();
+    })();
   }, []);
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
-
-  const toLocalDateStr = (iso) => {
-    if(!iso) return "";
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  // Filter sessions
+  const getFiltered = () => {
+    const now = Date.now();
+    const localDate = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    };
+    const todayStr = localDate(new Date().toISOString());
+    return sessions.filter(s => {
+      if (!s.startedAt) return filter === "all";
+      const ms = new Date(s.startedAt).getTime();
+      if (isNaN(ms)) return filter === "all";
+      if (filter === "today") return localDate(s.startedAt) === todayStr;
+      if (filter === "week") return ms >= now - 7 * 864e5;
+      if (filter === "custom") return ms >= now - customMonths * 30 * 864e5;
+      return true;
+    });
   };
-  // parseDate still needed for hour chart
-  const parseDate = (s) => s ? new Date(s) : null;
 
-  const filtered = sessions.filter(s => {
-    if(!s.startedAt) return filter==="all";
-    const ms = new Date(s.startedAt).getTime();
-    if(isNaN(ms)) return filter==="all";
-    if(filter==="today") return toLocalDateStr(s.startedAt)===todayStr;
-    if(filter==="week") return ms >= now.getTime()-7*24*60*60*1000;
-    if(filter==="custom") return ms >= now.getTime()-customMonths*30*24*60*60*1000;
-    return true;
-  });
-
-  const uniqueDevices = new Set(filtered.map(s=>s.deviceId)).size;
-  const avgDuration = filtered.length ? Math.round(filtered.reduce((a,s)=>a+(s.duration||0),0)/filtered.length) : 0;
-  const fmtDuration = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+  const filtered = getFiltered();
+  const uniqueDevices = new Set(filtered.map(s => s.deviceId)).size;
+  const avgDur = filtered.length ? Math.round(filtered.reduce((a,s) => a + (s.duration||0), 0) / filtered.length) : 0;
+  const fmtDur = s => s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+  const fmt12 = h => `${h%12||12}${h>=12?"pm":"am"}`;
+  const localDate = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
 
   const TAB_LABELS = {
-    leaderboard:"Leaderboard",individual:"Individual",alltime:"All-Time",
-    matchups:"Matchups",countdown:"Countdown",schedule:"Schedule",
-    competitions:"Competitions","hole-in-one":"Hole-in-One",superlatives:"Superlatives",
-    players:"Players",history:"History",media:"Media",rules:"Rules",mockdraft:"Mock Draft"
+    leaderboard:"Leaderboard", individual:"Individual", alltime:"All-Time",
+    matchups:"Matchups", countdown:"Countdown", schedule:"Schedule",
+    competitions:"Competitions", "hole-in-one":"Hole-in-One", superlatives:"Superlatives",
+    players:"Players", history:"History", media:"Media", rules:"Rules", mockdraft:"Mock Draft"
   };
 
-  // Tab popularity
   const tabCounts = {};
-  filtered.forEach(s=>(s.tabsVisited||[]).forEach(t=>{tabCounts[t]=(tabCounts[t]||0)+1;}));
-  const tabsSorted = Object.entries(tabCounts).sort((a,b)=>b[1]-a[1]);
-  const maxTabCount = tabsSorted[0]?.[1]||1;
+  filtered.forEach(s => (s.tabsVisited||[]).forEach(t => { tabCounts[t] = (tabCounts[t]||0)+1; }));
+  const tabsSorted = Object.entries(tabCounts).sort((a,b) => b[1]-a[1]);
+  const maxTab = tabsSorted[0]?.[1] || 1;
 
-  // Hour distribution (local time)
+  const deviceCounts = { ios:0, android:0, desktop:0 };
+  filtered.forEach(s => { if(s.deviceType) deviceCounts[s.deviceType] = (deviceCounts[s.deviceType]||0)+1; });
+
+  const useHourChart = filter === "today" || filter === "week";
   const hourCounts = Array(24).fill(0);
-  filtered.forEach(s=>{
-    const hd=parseDate(s.startedAt); if(hd&&!isNaN(hd.getTime())) hourCounts[hd.getHours()]++;
-  });
-  const maxHour = Math.max(...hourCounts,1);
+  filtered.forEach(s => { if(s.startedAt){ const h = new Date(s.startedAt).getHours(); if(!isNaN(h)) hourCounts[h]++; }});
+  const maxHour = Math.max(...hourCounts, 1);
   const peakHour = hourCounts.indexOf(maxHour);
-  const fmt12 = h => { const ampm=h>=12?"pm":"am"; const h12=h%12||12; return `${h12}${ampm}`; };
 
-  // Device breakdown
-  const deviceCounts = {ios:0,android:0,desktop:0};
-  filtered.forEach(s=>{if(s.deviceType) deviceCounts[s.deviceType]=(deviceCounts[s.deviceType]||0)+1;});
+  const dateCounts = {};
+  filtered.forEach(s => { const d = localDate(s.startedAt); if(d) dateCounts[d] = (dateCounts[d]||0)+1; });
+  const dates = Object.keys(dateCounts).sort();
+  const maxDate = Math.max(...Object.values(dateCounts), 1);
 
-  const s = {
-    card:{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px", marginBottom:12 },
-    label:{ fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 },
-    val:{ fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 },
-    sub:{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:3 },
+  const st = {
+    card: { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:10, padding:"14px", marginBottom:12 },
+    lbl: { fontSize:10, color:"rgba(255,255,255,0.4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:4 },
+    val: { fontSize:28, fontWeight:900, color:"#e8edf3", lineHeight:1 },
+    sub: { fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:3 },
   };
 
   return (
     <div>
       <div style={{fontSize:20,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:16}}>📊 Analytics</div>
 
-      {/* Filter */}
       <div style={{display:"flex",gap:6,marginBottom:filter==="custom"?8:16,flexWrap:"wrap"}}>
         {[["today","Today"],["week","This Week"],["custom","Last X Months"],["all","All Time"]].map(([v,l])=>(
           <button key={v} onClick={()=>setFilter(v)}
@@ -2265,6 +2271,7 @@ function AnalyticsSection() {
           </button>
         ))}
       </div>
+
       {filter==="custom"&&(
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
           <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Show last</span>
@@ -2278,114 +2285,102 @@ function AnalyticsSection() {
       )}
 
       {loading ? (
-        <div style={{color:"rgba(255,255,255,0.3)",textAlign:"center",padding:40}}>Loading analytics...</div>
+        <div style={{color:"rgba(255,255,255,0.3)",textAlign:"center",padding:40}}>Loading...</div>
       ) : (
         <>
-          {/* Summary cards */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
             {[
-              ["Sessions",filtered.length,"opens in period"],
-              ["Unique Devices",uniqueDevices,"distinct users"],
-              ["Avg Duration",fmtDuration(avgDuration),"per session"],
-              ["Device Split",`📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}`,"ios/android · desktop"],
+              ["Sessions", filtered.length, "opens"],
+              ["Unique Devices", uniqueDevices, "distinct users"],
+              ["Avg Duration", fmtDur(avgDur), "per session"],
+              ["Devices", `📱${deviceCounts.ios+deviceCounts.android} 💻${deviceCounts.desktop}`, "mobile · desktop"],
             ].map(([label,val,sub])=>(
-              <div key={label} style={s.card}>
-                <div style={s.label}>{label}</div>
-                <div style={s.val}>{val}</div>
-                <div style={s.sub}>{sub}</div>
+              <div key={label} style={st.card}>
+                <div style={st.lbl}>{label}</div>
+                <div style={st.val}>{val}</div>
+                <div style={st.sub}>{sub}</div>
               </div>
             ))}
           </div>
 
-          {/* Tab popularity */}
-          <div style={s.card}>
-            <div style={{...s.label,marginBottom:12}}>Tab Popularity</div>
-            {tabsSorted.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data yet</div>:
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>Tab Popularity</div>
+            {tabsSorted.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data</div>:
               tabsSorted.map(([t,count])=>(
-                <div key={t} style={{marginBottom:8}}>
+                <div key={t} style={{marginBottom:7}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                     <span style={{fontSize:12,fontWeight:600}}>{TAB_LABELS[t]||t}</span>
-                    <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{count} visits</span>
+                    <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{count}</span>
                   </div>
-                  <div style={{height:6,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}>
-                    <div style={{height:"100%",width:`${(count/maxTabCount)*100}%`,background:"linear-gradient(90deg,#ff8c00,#ffd700)",borderRadius:3}}/>
+                  <div style={{height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${(count/maxTab)*100}%`,background:"linear-gradient(90deg,#ff8c00,#ffd700)",borderRadius:3}}/>
                   </div>
                 </div>
               ))
             }
           </div>
 
-          {/* Usage chart — by hour for today/week, by date for all/custom */}
-          <div style={s.card}>
-            <div style={{...s.label,marginBottom:12}}>{filter==="today"||filter==="week"?"Opens by Hour of Day":"Opens by Date"}</div>
-            {filtered.length===0?<div style={{color:"rgba(255,255,255,0.25)",fontSize:12}}>No data for this period</div>:
-              (filter==="today"||filter==="week") ? (
-              <>
-                <div style={{display:"flex",alignItems:"flex-end",gap:2,height:60,marginBottom:4}}>
-                  {hourCounts.map((count,h)=>(
-                    <div key={h} title={`${fmt12(h)}: ${count} open${count!==1?"s":""}`}
-                      style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
-                      <div style={{width:"100%",height:`${Math.max(count>0?3:1,(count/maxHour)*56)}px`,
-                        background:count>0?h===peakHour?"#ffd700":"rgba(255,140,0,0.7)":"rgba(255,255,255,0.05)",
-                        borderRadius:2,transition:"height 0.3s"}}/>
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(255,255,255,0.3)"}}>
-                  {[0,6,12,18,23].map(h=><span key={h}>{fmt12(h)}</span>)}
-                </div>
-                {maxHour>0&&<div style={{fontSize:11,color:"#ffd700",marginTop:6}}>Peak: {fmt12(peakHour)} ({hourCounts[peakHour]} open{hourCounts[peakHour]!==1?"s":""})</div>}
-              </>
-            ) : (()=>{
-              // Opens by date
-              const dateCounts = {};
-              filtered.forEach(s=>{
-                const d=toLocalDateStr(s.startedAt);
-                if(d) dateCounts[d]=(dateCounts[d]||0)+1;
-              });
-              const dates=Object.keys(dateCounts).sort();
-              const maxD=Math.max(...Object.values(dateCounts),1);
-              return (
-                <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  {dates.map(d=>(
-                    <div key={d} style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",width:90,flexShrink:0}}>
-                        {new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>{useHourChart?"Opens by Hour":"Opens by Date"}</div>
+            {filtered.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data for this period</div>:
+              useHourChart?(
+                <>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:2,height:56,marginBottom:4}}>
+                    {hourCounts.map((count,h)=>(
+                      <div key={h} style={{flex:1,height:"100%",display:"flex",alignItems:"flex-end"}}>
+                        <div style={{width:"100%",height:`${Math.max(count?4:1,(count/maxHour)*52)}px`,
+                          background:count?h===peakHour?"#ffd700":"rgba(255,140,0,0.7)":"rgba(255,255,255,0.05)",borderRadius:2}}/>
                       </div>
-                      <div style={{flex:1,height:16,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${(dateCounts[d]/maxD)*100}%`,background:"rgba(255,140,0,0.7)",borderRadius:3}}/>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:"rgba(255,255,255,0.3)"}}>
+                    {[0,6,12,18,23].map(h=><span key={h}>{fmt12(h)}</span>)}
+                  </div>
+                  {maxHour>0&&<div style={{fontSize:11,color:"#ffd700",marginTop:6}}>Peak: {fmt12(peakHour)} · {hourCounts[peakHour]} session{hourCounts[peakHour]!==1?"s":""}</div>}
+                </>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {dates.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No data</div>:
+                    dates.map(d=>(
+                      <div key={d} style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",width:95,flexShrink:0}}>
+                          {new Date(d+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                        </div>
+                        <div style={{flex:1,height:14,background:"rgba(255,255,255,0.05)",borderRadius:3,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${(dateCounts[d]/maxDate)*100}%`,background:"rgba(255,140,0,0.7)",borderRadius:3}}/>
+                        </div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",width:16,textAlign:"right"}}>{dateCounts[d]}</div>
                       </div>
-                      <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",width:20,textAlign:"right"}}>{dateCounts[d]}</div>
-                    </div>
-                  ))}
+                    ))
+                  }
                 </div>
-              );
-            })()}
+              )
+            }
           </div>
 
-          {/* Recent sessions */}
-          <div style={s.card}>
-            <div style={{...s.label,marginBottom:12}}>Recent Sessions</div>
-            {filtered.slice(0,20).map(sess=>{
-              const dt = parseDate(sess.startedAt);
-              const timeStr = dt ? dt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—";
-              const icon = sess.deviceType==="ios"?"📱":sess.deviceType==="android"?"🤖":"💻";
-              return (
-                <div key={sess.id} style={{padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:14}}>{icon}</span>
-                      <div>
-                        <div style={{fontSize:11,fontWeight:600}}>{timeStr}</div>
-                        <div style={{fontSize:10,color:"rgba(255,255,255,0.35)"}}>{fmtDuration(sess.duration||0)} · {(sess.tabsVisited||[]).map(t=>TAB_LABELS[t]||t).join(" → ")}</div>
+          <div style={st.card}>
+            <div style={{...st.lbl,marginBottom:12}}>Recent Sessions ({filtered.length})</div>
+            {filtered.length===0?<div style={{fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center",padding:"12px 0"}}>No sessions in this period</div>:
+              filtered.slice(0,25).map(sess=>{
+                const dt = sess.startedAt ? new Date(sess.startedAt) : null;
+                const timeStr = dt&&!isNaN(dt) ? dt.toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—";
+                const icon = sess.deviceType==="ios"?"📱":sess.deviceType==="android"?"🤖":"💻";
+                return (
+                  <div key={sess.id} style={{padding:"7px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                        <span style={{fontSize:13,marginTop:1}}>{icon}</span>
+                        <div>
+                          <div style={{fontSize:11,fontWeight:600}}>{timeStr}</div>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:1}}>{fmtDur(sess.duration||0)} · {(sess.tabsVisited||[]).map(t=>TAB_LABELS[t]||t).join(" → ")}</div>
+                        </div>
                       </div>
+                      <div style={{fontSize:9,color:"rgba(255,255,255,0.2)"}}>{sess.deviceId?.slice(0,6)}</div>
                     </div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{sess.deviceId?.slice(0,6)}</div>
                   </div>
-                </div>
-              );
-            })}
-            {filtered.length===0&&<div style={{color:"rgba(255,255,255,0.25)",fontSize:12,textAlign:"center",padding:"16px 0"}}>No sessions yet — analytics will appear once users open the app</div>}
+                );
+              })
+            }
           </div>
         </>
       )}
