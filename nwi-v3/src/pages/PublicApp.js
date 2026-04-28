@@ -1312,10 +1312,15 @@ export default function PublicApp({ onGoAdmin }) {
       <style>{css}</style>
 
       {/* Header */}
-      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, ${dynamicColors.bg})` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"20px 16px 14px", transition:"all 1s ease" }}>
+      <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, ${dynamicColors.bg})` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"14px 16px 14px", transition:"all 1s ease" }}>
         <div style={{ maxWidth:680, margin:"0 auto" }}>
-          <div style={{ textAlign:"center", marginBottom:16 }}>
-            <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", marginBottom:4, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          {/* Admin button + notification bell row */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <button onClick={onGoAdmin}
+              style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, color:"rgba(255,255,255,0.45)", fontFamily:"inherit", fontSize:11, fontWeight:700, padding:"5px 12px", cursor:"pointer", letterSpacing:"0.05em" }}>
+              ⚙️ Admin
+            </button>
+            <div style={{ fontSize:11, letterSpacing:"0.2em", color:"rgba(255,255,255,0.3)", textTransform:"uppercase", display:"flex", alignItems:"center", gap:8 }}>
               <span><span className="live-dot"/>LIVE · {meta?.year || 2026}</span>
               {messaging && notifEnabled !== null && (
                 <button onClick={toggleNotifications} title={notifEnabled?"Turn off notifications":"Turn on notifications"}
@@ -1324,6 +1329,8 @@ export default function PublicApp({ onGoAdmin }) {
                 </button>
               )}
             </div>
+          </div>
+          <div style={{ textAlign:"center", marginBottom:16 }}>
             <h1 style={{ fontWeight:900, fontSize:"clamp(24px,6vw,46px)", letterSpacing:"0.04em", textTransform:"uppercase", lineHeight:1.05, background:"linear-gradient(90deg,#ff4500,#ff8c00 35%,#fff 50%,#00aaff 65%,#0066cc)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
               NUCLEAR WHALE<br/>INVITATIONAL
             </h1>
@@ -1343,16 +1350,6 @@ export default function PublicApp({ onGoAdmin }) {
           </div>
         </div>
       </div>
-
-      {/* Fixed admin button — top right corner */}
-      <button onClick={onGoAdmin} style={{
-        position:"fixed", bottom:"env(safe-area-inset-bottom, 24px)", left:16, zIndex:999,
-        background:"rgba(0,0,0,0.75)", backdropFilter:"blur(8px)",
-        border:"1px solid rgba(255,255,255,0.15)", borderRadius:20,
-        color:"rgba(255,255,255,0.5)", fontFamily:"inherit",
-        fontSize:11, fontWeight:700, padding:"8px 16px", cursor:"pointer",
-        letterSpacing:"0.05em", marginBottom:24
-      }}>⚙️ Admin</button>
 
       {/* Tab bar — full width, centered on desktop, scrollable on mobile */}
       <div className="tab-bar">
