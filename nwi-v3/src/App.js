@@ -4,19 +4,23 @@ import PublicApp from "./pages/PublicApp";
 import AdminPanel from "./pages/AdminPanel";
 
 export default function App() {
-  const [page, setPage] = useState("public"); // "public" | "admin"
-  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [page, setPage] = useState(() => sessionStorage.getItem("nwi_page") || "public");
+  const [adminAuthed, setAdminAuthed] = useState(() => sessionStorage.getItem("nwi_admin_authed") === "true");
+
+  const goAdmin = () => { sessionStorage.setItem("nwi_page","admin"); setPage("admin"); };
+  const onAuth = () => { sessionStorage.setItem("nwi_admin_authed","true"); setAdminAuthed(true); };
+  const onBack = () => { sessionStorage.setItem("nwi_page","public"); sessionStorage.removeItem("nwi_admin_authed"); setPage("public"); setAdminAuthed(false); };
 
   return (
     <>
       {page === "public" && (
-        <PublicApp onGoAdmin={() => setPage("admin")} />
+        <PublicApp onGoAdmin={goAdmin} />
       )}
       {page === "admin" && (
         <AdminPanel
           authed={adminAuthed}
-          onAuth={() => setAdminAuthed(true)}
-          onBack={() => { setPage("public"); setAdminAuthed(false); }}
+          onAuth={onAuth}
+          onBack={onBack}
         />
       )}
     </>
