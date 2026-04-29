@@ -9,7 +9,7 @@ export default function App() {
 
   const goAdmin = () => { sessionStorage.setItem("nwi_page","admin"); setPage("admin"); };
   const onAuth = () => { sessionStorage.setItem("nwi_admin_authed","true"); setAdminAuthed(true); };
-  const onBack = () => { sessionStorage.setItem("nwi_page","public"); sessionStorage.removeItem("nwi_admin_authed"); setPage("public"); setAdminAuthed(false); };
+  const onBack = () => { sessionStorage.setItem("nwi_page","public"); sessionStorage.removeItem("nwi_admin_authed"); sessionStorage.removeItem("nwi_admin_section"); window.location.href = window.location.href; };
 
   return (
     <>
