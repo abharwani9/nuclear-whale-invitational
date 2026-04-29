@@ -658,6 +658,22 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
               const compSlots=(savedMatchups[cid]||[]).length;
               const playerConflict=!alreadySaved&&!selCompIsScramble&&[...s.np,...s.wp].some(p=>usedInSelComp.includes(p));
+              // Pre-save warning: check if saving THIS would leave any comp with <2 players
+              const preSaveWarnings=[];
+              if(!alreadySaved&&!playerConflict){
+                const wouldBe={...savedMatchups,[selCompIsScramble?SCRAMBLE_KEY:selComp?.id||""]: [...(savedMatchups[selCompIsScramble?SCRAMBLE_KEY:selComp?.id||""]||[]),{np:s.np,wp:s.wp}]};
+                teamComps.filter(c=>!isScrambleGroup(c.id)&&c.id!==(selComp?.id||"")).forEach(comp=>{
+                  const compSaved=wouldBe[comp.id]||[];
+                  const slotsLeft=maxSlots-compSaved.length;
+                  if(slotsLeft<=0) return;
+                  const usedN=compSaved.flatMap(m=>m.np||[]);
+                  const usedW=compSaved.flatMap(m=>m.wp||[]);
+                  const availN=(nukes||[]).filter(n=>!usedN.includes(n));
+                  const availW=(whales||[]).filter(n=>!usedW.includes(n));
+                  if(nukes.length>=2&&availN.length<2) preSaveWarnings.push(`⚠️ ${comp.name}: only ${availN.length} Nuke${availN.length!==1?"s":""} left after this save`);
+                  if(whales.length>=2&&availW.length<2) preSaveWarnings.push(`⚠️ ${comp.name}: only ${availW.length} Whale${availW.length!==1?"s":""} left after this save`);
+                });
+              }
               const repeat=checkRepeat(s.np,s.wp,cid);
               const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
               const partnerRepeatWhale=checkPartnerRepeat(s.wp[0],s.wp[1]);
@@ -680,6 +696,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                   {partnerRepeatNuke&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.np[0]} & {s.np[1]} have been paired before</div>}
                   {partnerRepeatWhale&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.wp[0]} & {s.wp[1]} have been paired before</div>}
                   {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
+              {preSaveWarnings.map((w,wi)=><div key={wi} style={{fontSize:10,color:"#ffd700",marginBottom:3}}>{w}</div>)}
                   <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
                     <div style={{textAlign:"center"}}>
                       <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
@@ -888,6 +905,36 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                 <div style={{flex:1,background:"#00aaff"}}/>
               </div>
               <div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:6,textAlign:"center"}}>Based on {all.length} saved matchup{all.length!==1?"s":""}</div>
+            </div>
+          );
+        })()}
+
+        {/* Team Strength Index */}
+        {(nukes.length>=2||whales.length>=2)&&(()=>{
+          const nAvgHcp=nukes.length?nukes.reduce((s,n)=>s+getHandicap(n),0)/nukes.length:null;
+          const wAvgHcp=whales.length?whales.reduce((s,n)=>s+getHandicap(n),0)/whales.length:null;
+          if(!nAvgHcp&&!wAvgHcp) return null;
+          const diff=(wAvgHcp||nAvgHcp)-(nAvgHcp||wAvgHcp);
+          const nStr=Math.max(5,Math.min(95,50+diff*2));
+          const wStr=100-nStr;
+          const nukeStronger=nStr>=wStr;
+          return (
+            <div style={{marginTop:12,padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>💪 Team Strength (by HCP)</div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
+                <span style={{color:"#ff4500",fontWeight:700}}>☢️ Nukes {nAvgHcp?`HCP ${nAvgHcp.toFixed(1)}`:"—"}</span>
+                <span style={{color:"#00aaff",fontWeight:700}}>{wAvgHcp?`HCP ${wAvgHcp.toFixed(1)}`:"—"} 🐋 Whales</span>
+              </div>
+              <div style={{height:8,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",display:"flex"}}>
+                <div style={{width:`${nStr}%`,background:"#ff4500",transition:"width 0.5s"}}/>
+                <div style={{flex:1,background:"#00aaff"}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:nukeStronger?"flex-start":"flex-end",marginTop:3}}>
+                {nukeStronger
+                  ?<span style={{fontSize:10,color:"#ff4500",fontWeight:600}}>☢️ {Math.round(Math.abs(nStr-wStr))}% stronger on paper</span>
+                  :<span style={{fontSize:10,color:"#00aaff",fontWeight:600}}>🐋 {Math.round(Math.abs(wStr-nStr))}% stronger on paper</span>
+                }
+              </div>
             </div>
           );
         })()}
