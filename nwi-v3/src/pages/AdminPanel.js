@@ -547,7 +547,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   // Local matchup state per round — avoids Firebase re-render flicker
   const [localMatchups, setLocalMatchups] = useState({});
-  const [refreshKey, setRefreshKey] = useState(0);
+
 
   // Keep local state in sync when Firebase updates (but don't overwrite mid-edit)
   useEffect(() => {
@@ -556,13 +556,9 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
       rounds.forEach(r => { next[r.id] = r.matchups || []; });
       return next;
     });
-  }, [rounds, refreshKey]);
+  }, [rounds]);
 
-  // Force full resync from Firestore
-  const forceRefresh = () => {
-    setLocalMatchups({});
-    setRefreshKey(k => k+1);
-  };
+
 
   const getMatchups = (round) => localMatchups[round.id] ?? round.matchups ?? [];
 
@@ -606,13 +602,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   return (
     <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-        <div style={s.sectionTitle}>⚔️ Rounds & Matchups</div>
-        <button onClick={forceRefresh}
-          style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", background:"rgba(74,222,128,0.1)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-          <span style={{ fontSize:14 }}>↻</span> Refresh Matchups
-        </button>
-      </div>
+      <div style={s.sectionTitle}>⚔️ Rounds & Matchups</div>
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editingRound?"#ff8c00":"#4ade80" }}>{editingRound?"✏️ Edit Round":"➕ Add Round"}</div>
         <div style={s.grid2}>
@@ -679,60 +669,184 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
-          {getMatchups(round).map((m,mi)=>(
-            <div key={mi} style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:10, padding:"12px", marginBottom:8 }}>
-              <div style={s.grid2}>
-                <div>
-                  <div style={{ fontSize:11, color:"#ff4500", marginBottom:5 }}>☢️ NUKES</div>
-                  {[0,1].map(idx=>(
-                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.nukes||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"nukes",idx,e.target.value)}>
-                      <option value="">— Player —</option>
-                      {nukeNames.map(n=><option key={n}>{n}</option>)}
-                    </select>
-                  ))}
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:"#00aaff", marginBottom:5 }}>🐋 WHALES</div>
-                  {[0,1].map(idx=>(
-                    <select key={idx} style={{ ...s.select, marginBottom:5 }} value={(m.whales||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,"whales",idx,e.target.value)}>
-                      <option value="">— Player —</option>
-                      {whaleNames.map(n=><option key={n}>{n}</option>)}
-                    </select>
-                  ))}
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>🏅 COMPETITION</div>
-                  <select style={s.select} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
-                    <option value="">— None —</option>
-                    {compNames.map(n=><option key={n}>{n}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginBottom:5 }}>💰 POINTS WORTH</div>
-                  <input style={s.input} type="number" step="0.5" placeholder={`Default: ${round.pointsPerWin}`}
-                    value={m.pointsWorth||""} onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
-                  <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:3 }}>Win={m.pointsWorth||round.pointsPerWin}pts · Tie={m.pointsWorth ? m.pointsWorth/2 : round.pointsPerTie}pts</div>
-                </div>
-              </div>
-              <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>Result:</div>
+          {(()=>{
+            // Group matchups by competition for display
+            const matchupList = getMatchups(round);
+            const mainComps = competitions.filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0));
+            
+            // Find scramble competitions
+            const scrambleComps = competitions.filter(c=>c.isScramble);
+            const scrambleCompIds = new Set(scrambleComps.map(c=>c.id));
+            const scrambleCompNames = new Set(scrambleComps.map(c=>c.name));
+            
+            // Group by competition, preserving scramble groups
+            const groups = [];
+            const seen = new Set();
+            
+            mainComps.forEach(comp => {
+              const compMatchups = matchupList.map((m,mi)=>({m,mi})).filter(({m})=>m.competitionName===comp.name);
+              if(compMatchups.length===0) return;
+              
+              if(comp.isScramble) {
+                // Group scramble by scrambleGroup or just show all together
+                const grouped = {};
+                compMatchups.forEach(({m,mi})=>{
+                  const grp = m.scrambleGroup||`sg_${mi}`;
+                  if(!grouped[grp]) grouped[grp]=[];
+                  grouped[grp].push({m,mi});
+                });
+                Object.entries(grouped).forEach(([grp,rows])=>{
+                  groups.push({type:"scramble",comp,rows,grp});
+                });
+              } else {
+                compMatchups.forEach(({m,mi})=>{
+                  groups.push({type:"standard",comp,m,mi});
+                });
+              }
+              seen.add(comp.name);
+            });
+            
+            // Any matchups not matching a main comp — show ungrouped
+            matchupList.forEach((m,mi)=>{
+              if(!seen.has(m.competitionName)) {
+                groups.push({type:"standard",comp:null,m,mi});
+              }
+            });
+
+            const WinnerBtns = ({m,mi}) => (
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
                 {["nukes","tie","whales",null].map(w=>(
                   <button key={String(w)} onClick={()=>updateWinner(round,mi,w)}
-                    style={{ padding:"4px 10px", borderRadius:8, border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":w==="tie"?"#ffd700":"rgba(255,255,255,0.3)"):"rgba(255,255,255,0.1)"}`, background:m.winner===w?"rgba(255,255,255,0.08)":"none", color:m.winner===w?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                    {w==="nukes"?"☢️ Win":w==="whales"?"🐋 Win":w==="tie"?"🤝 Tie":"Pending"}
+                    style={{padding:"4px 10px",borderRadius:8,border:`1px solid ${m.winner===w?(w==="nukes"?"#ff4500":w==="whales"?"#00aaff":w==="tie"?"#ffd700":"rgba(255,255,255,0.3)"):"rgba(255,255,255,0.1)"}`,background:m.winner===w?"rgba(255,255,255,0.08)":"none",color:m.winner===w?"#fff":"rgba(255,255,255,0.4)",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    {w==="nukes"?"☢️ Win":w==="whales"?"🐋 Win":w==="tie"?"🤝 Tie":"⏳"}
                   </button>
                 ))}
-                <div style={{ marginLeft:"auto", fontSize:12, fontWeight:700 }}>
-                  {m.pointsWorth
-                    ? <span style={{ color:"#ff8c00" }}>Win={m.pointsWorth}pts · Tie={m.pointsWorth/2}pts</span>
-                    : <span style={{ color:"rgba(255,200,0,0.5)" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts</span>
-                  }
-                </div>
-                <button style={{ ...s.btnDanger, padding:"4px 10px" }} onClick={()=>delMatchup(round,mi)}>✕</button>
               </div>
-            </div>
-          ))}
-          <button style={{ ...s.btnGhost, marginTop:4 }} onClick={()=>addMatchup(round)}>+ Add Matchup</button>
+            );
+
+            const PlayerPickers = ({m,mi,side,names,color,emoji}) => (
+              <div>
+                <div style={{fontSize:10,color,marginBottom:4}}>{emoji} {side==="nukes"?"Nukes":"Whales"}</div>
+                {[0,1].map(idx=>(
+                  <select key={idx} style={{...s.select,marginBottom:4}} value={(m[side]||["",""])[idx]||""} onChange={e=>updateMatchupPlayer(round,mi,side,idx,e.target.value)}>
+                    <option value="">— Player —</option>
+                    {names.map(n=><option key={n}>{n}</option>)}
+                  </select>
+                ))}
+              </div>
+            );
+
+            return (
+              <>
+                {groups.map((g,gi)=>{
+                  if(g.type==="scramble") {
+                    const firstM = g.rows[0]?.m||{};
+                    const firstMi = g.rows[0]?.mi??0;
+                    const subNames = {
+                      "Front 9":2, "Back 9":2, "18-Holes":4
+                    };
+                    // Find actual sub-row competition names
+                    const f9 = scrambleComps.find(c=>c.name?.toLowerCase().includes("front")||c.name?.toLowerCase().includes("9-hole")||c.name?.toLowerCase().includes("front 9"));
+                    const b9 = scrambleComps.find(c=>c.name?.toLowerCase().includes("back")||c.name?.toLowerCase().includes("back 9"));
+                    const full18 = scrambleComps.find(c=>!c.name?.toLowerCase().includes("front")&&!c.name?.toLowerCase().includes("back")&&(c.name?.toLowerCase().includes("18")||c.name?.toLowerCase().includes("full")));
+                    
+                    return (
+                      <div key={gi} style={{background:"rgba(255,200,0,0.04)",border:"1px solid rgba(255,200,0,0.2)",borderRadius:10,padding:"12px",marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                          <div style={{fontSize:12,fontWeight:700,color:"#ffd700"}}>🏌️ {g.comp.name} — Scramble</div>
+                          <button style={{...s.btnGhost,fontSize:11}} onClick={()=>{
+                            // Split into independent matchups
+                            if(window.confirm("Split scramble into 3 independent matchup rows?")) {
+                              const cur = getMatchups(round);
+                              const others = cur.filter((_,i)=>!g.rows.some(r=>r.mi===i));
+                              const split = g.rows.map(r=>({...r.m,scrambleGroup:undefined}));
+                              saveMatchups(round,[...others,...split]);
+                            }
+                          }}>Split ↗</button>
+                        </div>
+                        {/* Shared players */}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                          <PlayerPickers m={firstM} mi={firstMi} side="nukes" names={nukeNames} color="#ff4500" emoji="☢️"/>
+                          <PlayerPickers m={firstM} mi={firstMi} side="whales" names={whaleNames} color="#00aaff" emoji="🐋"/>
+                        </div>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:4}}>Players apply to all sub-matches below</div>
+                        {/* Sub-rows */}
+                        {g.rows.map(({m,mi},si)=>{
+                          const pts=m.pointsWorth||(si===2?4:2);
+                          const label=m.subLabel||(si===0?"Front 9":si===1?"Back 9":"18-Holes");
+                          return (
+                            <div key={mi} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:7,marginBottom:4}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,200,0,0.7)",width:60,flexShrink:0}}>{label}</div>
+                              <input type="number" step="0.5" style={{...s.input,width:50,padding:"3px 6px"}} value={m.pointsWorth||""} placeholder={String(pts)}
+                                onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                              <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>pts</div>
+                              <div style={{flex:1}}><WinnerBtns m={m} mi={mi}/></div>
+                              <button style={{...s.btnDanger,padding:"2px 7px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
+                            </div>
+                          );
+                        })}
+                        {/* Add sub-row */}
+                        <button style={{...s.btnGhost,fontSize:11,marginTop:6}} onClick={()=>{
+                          const cur=getMatchups(round);
+                          const si=g.rows.length;
+                          const label=si===0?"Front 9":si===1?"Back 9":"18-Holes";
+                          const pts=si===2?4:2;
+                          const newRow={nukes:firstM.nukes||["",""],whales:firstM.whales||["",""],winner:null,competitionName:g.comp.name,pointsWorth:pts,scrambleGroup:g.grp,subLabel:label};
+                          saveMatchups(round,[...cur,newRow]);
+                        }}>+ Add Sub-match</button>
+                      </div>
+                    );
+                  }
+
+                  // Standard matchup
+                  const {m,mi,comp} = g;
+                  const pts = m.pointsWorth||round.pointsPerWin||2;
+                  return (
+                    <div key={gi} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"12px",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                        <div>
+                          <select style={{...s.select,maxWidth:180}} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
+                            <option value="">— Competition —</option>
+                            {competitions.filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0)).map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>)}
+                          </select>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <input type="number" step="0.5" style={{...s.input,width:55}} value={m.pointsWorth||""} placeholder="2 pts"
+                            onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win</span>
+                          <button style={{...s.btnDanger,padding:"3px 8px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                        <PlayerPickers m={m} mi={mi} side="nukes" names={nukeNames} color="#ff4500" emoji="☢️"/>
+                        <PlayerPickers m={m} mi={mi} side="whales" names={whaleNames} color="#00aaff" emoji="🐋"/>
+                      </div>
+                      <WinnerBtns m={m} mi={mi}/>
+                    </div>
+                  );
+                })}
+
+                {/* Add matchup buttons */}
+                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+                  <button style={{...s.btnGhost,fontSize:11}} onClick={()=>addMatchup(round)}>+ Standard Matchup</button>
+                  {competitions.some(c=>c.isScramble)&&(
+                    <button style={{...s.btnGhost,fontSize:11,color:"#ffd700",borderColor:"rgba(255,200,0,0.3)"}} onClick={()=>{
+                      const scrComp=competitions.find(c=>c.isScramble);
+                      if(!scrComp) return;
+                      const cur=getMatchups(round);
+                      const grp=`sg_${Date.now()}`;
+                      const newRows=[
+                        {nukes:["",""],whales:["",""],winner:null,competitionName:scrComp.name,pointsWorth:2,scrambleGroup:grp,subLabel:"Front 9"},
+                        {nukes:["",""],whales:["",""],winner:null,competitionName:scrComp.name,pointsWorth:2,scrambleGroup:grp,subLabel:"Back 9"},
+                        {nukes:["",""],whales:["",""],winner:null,competitionName:scrComp.name,pointsWorth:4,scrambleGroup:grp,subLabel:"18-Holes"},
+                      ];
+                      saveMatchups(round,[...cur,...newRows]);
+                    }}>+ Scramble Entry</button>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
         )
       ))}
@@ -906,99 +1020,99 @@ function ScheduleSection({ schedule, showToast }) {
 
 // ── COMPETITIONS ────────────────────────────────────────────────────────────
 function CompetitionsSection({ competitions, showToast }) {
-  const blank = { name:"", icon:"🏅", desc:"", winner:"", winnerTeam:"nukes", detail:"" };
-  const [form, setForm]       = useState(blank);
+  const blank = { name:"", icon:"🏅", desc:"", section:"main", isScramble:false };
+  const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
-  const [resultFor, setResultFor] = useState(null);
-  const sortedComps = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
-  const { items:dragComps, dragOver:dragOverComp, onDragStart:compDragStart, onDragEnter:compDragEnter, onDragEnd:compDragEnd } = useDragList(sortedComps);
+
+  const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
+  const mainComps = sorted.filter(c=>c.section!=="side");
+  const sideComps = sorted.filter(c=>c.section==="side");
 
   const save = async () => {
-    if (!form.name) return showToast("Name required", true);
     try {
-      if (editing) { await firestore.update("competitions",editing,form); showToast("Updated!"); setEditing(null); }
-      else { await firestore.add("competitions",{name:form.name,icon:form.icon,desc:form.desc,winner:"",winnerTeam:"nukes",detail:""}); showToast("Competition added!"); }
+      if (editing) {
+        await firestore.update("competitions", editing, {...form});
+        showToast("Updated!");
+        setEditing(null);
+      } else {
+        const maxOrder = competitions.reduce((m,c)=>Math.max(m,c.order??0),0);
+        await firestore.add("competitions", {...form, order:maxOrder+10});
+        showToast("Added!");
+      }
       setForm(blank);
-    } catch(e) { showToast(e.message,true); }
+    } catch(e) { showToast("Error: "+e.message, true); }
   };
 
-  const saveResult = async (id) => {
-    try { await firestore.update("competitions",id,{winner:form.winner,detail:form.detail}); showToast("Result saved!"); setResultFor(null); setForm(blank); }
-    catch(e) { showToast(e.message,true); }
-  };
+  const CompCard = ({c}) => (
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:8,marginBottom:6}}>
+      <span style={{fontSize:20}}>{c.icon||"🏅"}</span>
+      <div style={{flex:1}}>
+        <div style={{fontSize:13,fontWeight:700}}>{c.name}</div>
+        <div style={{display:"flex",gap:8,marginTop:3}}>
+          {c.isScramble&&<span style={{fontSize:10,color:"#ffd700",background:"rgba(255,200,0,0.1)",padding:"1px 6px",borderRadius:4}}>🏌️ Scramble</span>}
+          <span style={{fontSize:10,color:c.section==="side"?"rgba(255,255,255,0.3)":"rgba(74,222,128,0.7)",background:c.section==="side"?"rgba(255,255,255,0.04)":"rgba(74,222,128,0.08)",padding:"1px 6px",borderRadius:4}}>{c.section==="side"?"Side":"Main Event"}</span>
+        </div>
+      </div>
+      <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name||"",icon:c.icon||"🏅",desc:c.desc||"",section:c.section||"main",isScramble:c.isScramble||false});}}>✏️</button>
+      <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
+    </div>
+  );
 
   return (
     <div>
       <div style={s.sectionTitle}>🎯 Competitions</div>
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16, fontFamily:"'Barlow',sans-serif" }}>
-        Master list of side competitions. These appear as a dropdown when setting up rounds, and show on the public app.
-      </div>
 
-      {/* Add / edit form */}
-      <div style={s.card}>
-        <div style={{ fontSize:14, fontWeight:700, marginBottom:14, color:editing?"#ff8c00":"#4ade80" }}>{editing?"✏️ Edit Competition":"➕ Add Competition"}</div>
+      {/* Form */}
+      <div className="card" style={{padding:16,marginBottom:20}}>
+        <div style={s.label}>{editing?"Edit Competition":"Add Competition"}</div>
         <div style={s.grid2}>
-          <div><div style={s.label}>Name *</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Closest to the Pin"/></div>
-          <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="🎯"/></div>
+          <div>
+            <div style={s.label}>Icon</div>
+            <input style={{...s.input,width:60}} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="🏅"/>
+          </div>
+          <div>
+            <div style={s.label}>Name</div>
+            <input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Four-Ball"/>
+          </div>
         </div>
-        <div style={{ marginTop:10 }}><div style={s.label}>Description</div><input style={s.input} value={form.desc} onChange={e=>setForm(f=>({...f,desc:e.target.value}))} placeholder="Rules, hole number, etc."/></div>
-        <div style={{ ...s.row, marginTop:14 }}>
-          <button style={s.btnFire} onClick={save}>{editing?"Save Changes":"Add Competition"}</button>
+        <div style={{display:"flex",gap:12,marginTop:10,flexWrap:"wrap"}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+            <input type="radio" checked={form.section==="main"} onChange={()=>setForm(f=>({...f,section:"main"}))}/>
+            <span style={{color:"rgba(74,222,128,0.8)"}}>Main Event</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+            <input type="radio" checked={form.section==="side"} onChange={()=>setForm(f=>({...f,section:"side"}))}/>
+            <span style={{color:"rgba(255,255,255,0.5)"}}>Side Competition</span>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer"}}>
+            <input type="checkbox" checked={form.isScramble||false} onChange={e=>setForm(f=>({...f,isScramble:e.target.checked}))}/>
+            <span style={{color:"#ffd700"}}>🏌️ Is Scramble (F9/B9/18H)</span>
+          </label>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <button style={s.btnPrimary} onClick={save}>{editing?"Save":"Add"}</button>
           {editing&&<button style={s.btnGhost} onClick={()=>{setEditing(null);setForm(blank);}}>Cancel</button>}
         </div>
       </div>
 
-      {/* Competition list */}
-      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>⠿ Drag to reorder</div>
-      {dragComps.map((c,ci)=>(
-        <div key={c.id} draggable
-          onDragStart={()=>compDragStart(ci)}
-          onDragEnter={()=>compDragEnter(ci)}
-          onDragEnd={()=>compDragEnd("competitions")}
-          onDragOver={e=>e.preventDefault()}
-          style={{ ...s.card, cursor:"grab", opacity:dragOverComp===ci?0.5:1, borderColor:dragOverComp===ci?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
-            <span style={{ fontSize:24 }}>{c.icon}</span>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:15, fontWeight:700 }}>{c.name}</div>
-              {c.desc&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>}
-              {c.winner&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.6)", marginTop:2 }}>
-                🏅 {c.winner}{c.detail?` — ${c.detail}`:""}
-              </div>}
-            </div>
-            <div style={s.row}>
-              <button style={{ ...s.btnGhost, fontSize:11 }} onClick={()=>{setResultFor(resultFor===c.id?null:c.id);setForm({winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>
-                {resultFor===c.id?"Cancel":"🏅 Result"}
-              </button>
-              <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setResultFor(null);setForm({name:c.name,icon:c.icon||"🏅",desc:c.desc||"",winner:c.winner||"",winnerTeam:c.winnerTeam||"nukes",detail:c.detail||""});}}>Edit</button>
-              <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
-            </div>
-          </div>
-          {/* Result entry */}
-          {resultFor===c.id&&(
-            <div style={{ marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,255,255,0.07)" }}>
-              <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Enter Result</div>
-              <div style={s.grid2}>
-                <div><div style={s.label}>Winner / Leader</div><input style={s.input} value={form.winner} onChange={e=>setForm(f=>({...f,winner:e.target.value}))} placeholder="Player name or team"/></div>
-                <div><div style={s.label}>Detail (optional)</div><input style={s.input} value={form.detail} onChange={e=>setForm(f=>({...f,detail:e.target.value}))} placeholder="e.g. 4ft 2in, -12"/></div>
-              </div>
-              <button style={{ ...s.btnFire, marginTop:12 }} onClick={()=>saveResult(c.id)}>Save Result</button>
-            </div>
-          )}
-        </div>
-      ))}
+      {/* Main Events */}
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(74,222,128,0.7)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>⭐ Main Events</div>
+        {mainComps.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No main events yet</div>}
+        {mainComps.map(c=><CompCard key={c.id} c={c}/>)}
+      </div>
 
-      {competitions.length===0&&(
-        <div style={{ textAlign:"center", padding:"30px 0", color:"rgba(255,255,255,0.2)", fontSize:14 }}>
-          No competitions yet — add some above. They'll appear as a dropdown when creating rounds.
-        </div>
-      )}
+      {/* Side Competitions */}
+      <div>
+        <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>🎪 Side Competitions</div>
+        {sideComps.length===0&&<div style={{fontSize:12,color:"rgba(255,255,255,0.25)"}}>No side competitions yet</div>}
+        {sideComps.map(c=><CompCard key={c.id} c={c}/>)}
+      </div>
     </div>
   );
 }
 
-// ── HISTORY ─────────────────────────────────────────────────────────────────
+
 function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
   const blank = { year:new Date().getFullYear()-1, winner:"TBD", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
   const [form, setForm]       = useState(blank);
