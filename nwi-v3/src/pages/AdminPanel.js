@@ -547,18 +547,22 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   // Local matchup state per round — avoids Firebase re-render flicker
   const [localMatchups, setLocalMatchups] = useState({});
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Keep local state in sync when Firebase updates (but don't overwrite mid-edit)
   useEffect(() => {
-    setLocalMatchups(prev => {
-      const next = {...prev};
-      rounds.forEach(r => {
-        // Only sync if we don't have a pending local edit for this round
-        if (!next[r.id]) next[r.id] = r.matchups || [];
-      });
+    setLocalMatchups(() => {
+      const next = {};
+      rounds.forEach(r => { next[r.id] = r.matchups || []; });
       return next;
     });
-  }, [rounds]);
+  }, [rounds, refreshKey]);
+
+  // Force full resync from Firestore
+  const forceRefresh = () => {
+    setLocalMatchups({});
+    setRefreshKey(k => k+1);
+  };
 
   const getMatchups = (round) => localMatchups[round.id] ?? round.matchups ?? [];
 
@@ -604,7 +608,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
         <div style={s.sectionTitle}>⚔️ Rounds & Matchups</div>
-        <button onClick={()=>{try{sessionStorage.setItem("nwi_admin_section","rounds");}catch(e){} window.location.reload();}}
+        <button onClick={forceRefresh}
           style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", background:"rgba(74,222,128,0.1)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
           <span style={{ fontSize:14 }}>↻</span> Refresh Matchups
         </button>
