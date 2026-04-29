@@ -1984,22 +1984,74 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="competitions" && (
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Competitions</div>
-            {["main","side"].map(sec=>{
-              const filtered=[...competitions].filter(c=>sec==="main"?c.section!=="side":c.section==="side").sort((a,b)=>(a.order??0)-(b.order??0));
-              if(!filtered.length) return null;
-              return (<div key={sec} style={{marginBottom:20}}>
-                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:sec==="main"?"rgba(74,222,128,0.7)":"rgba(255,255,255,0.35)",marginBottom:10}}>{sec==="main"?"⭐ Main Events":"🎪 Side Competitions"}</div>
-                {filtered.map(c=>(
-              <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
-                <div style={{ display:"flex", gap:12 }}>
-                  <div style={{ fontSize:28 }}>{c.icon}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
-                    <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>
+            {(()=>{
+              const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
+              const mainComps = sorted.filter(c=>c.section!=="side");
+              const sideComps = sorted.filter(c=>c.section==="side");
+              const renderComp = (c) => {
+                // Get all matchups for this competition across all rounds
+                const compMatchups = rounds.flatMap(r=>
+                  (r.matchups||[]).filter(m=>m.competitionName===c.name).map(m=>({...m,roundName:r.name,pointsPerWin:r.pointsPerWin}))
+                );
+                const played = compMatchups.filter(m=>m.winner);
+                const nukeWins = played.filter(m=>m.winner==="nukes").length;
+                const whaleWins = played.filter(m=>m.winner==="whales").length;
+                const ties = played.filter(m=>m.winner==="tie").length;
+                return (
+                  <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
+                    <div style={{ display:"flex", gap:12, marginBottom: played.length ? 12 : 0 }}>
+                      <div style={{ fontSize:28 }}>{c.icon}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
+                        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>
+                        {c.detail&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{c.detail}</div>}
+                      </div>
+                    </div>
+                    {played.length>0&&(
+                      <div style={{ marginTop:8 }}>
+                        <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                          <div style={{ flex:1, padding:"8px", background:"rgba(255,69,0,0.08)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:8, textAlign:"center" }}>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>☢️ Nuke Wins</div>
+                          </div>
+                          {ties>0&&<div style={{ flex:1, padding:"8px", background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:8, textAlign:"center" }}>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#ffd700" }}>{ties}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>🤝 Ties</div>
+                          </div>}
+                          <div style={{ flex:1, padding:"8px", background:"rgba(0,170,255,0.06)", border:"1px solid rgba(0,170,255,0.15)", borderRadius:8, textAlign:"center" }}>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>🐋 Whale Wins</div>
+                          </div>
+                        </div>
+                        {compMatchups.map((m,mi)=>{
+                          if(!m.winner) return null;
+                          const pts = m.pointsWorth||m.pointsPerWin||2;
+                          return (
+                            <div key={mi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:4, fontSize:12 }}>
+                              <span style={{ color:"rgba(255,255,255,0.5)" }}>{(m.nukes||[]).join(" & ")} vs {(m.whales||[]).join(" & ")}</span>
+                              <span style={{ fontWeight:700, color:m.winner==="nukes"?"#ff4500":m.winner==="whales"?"#00aaff":"#ffd700" }}>
+                                {m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"} · {pts}pts
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {played.length===0&&<div style={{ padding:"12px 0", textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.2)" }}>No results yet</div>}
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              };
+              return (<>
+                {mainComps.length>0&&<>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(74,222,128,0.7)",marginBottom:10}}>⭐ Main Events</div>
+                  {mainComps.map(c=>renderComp(c))}
+                </>}
+                {sideComps.length>0&&<>
+                  <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.35)",marginBottom:10,marginTop:mainComps.length?20:0}}>🎪 Side Competitions</div>
+                  {sideComps.map(c=>renderComp(c))}
+                </>}
+              </>);
+            })()}
           </div>
         )}
 
