@@ -358,6 +358,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const getCompPts = (comp) => {
     if(!comp) return defaultPts;
     if(ptsOverride[comp.id]) return Number(ptsOverride[comp.id]);
+    if(meta?.compPts?.[comp.id]) return Number(meta.compPts[comp.id]);
     const r=(rounds||[]).find(r=>r.competitionName===comp.name||(r.matchups||[]).some(mu=>mu.competitionName===comp.name));
     return r?.pointsPerWin||defaultPts;
   };
