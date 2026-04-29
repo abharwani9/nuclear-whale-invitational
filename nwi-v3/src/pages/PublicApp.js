@@ -1,5 +1,5 @@
 // src/pages/PublicApp.js
-import { useState, useEffect } from "react";
+import { useState, useEffect, Component } from "react";
 import { useCollection, useDocument } from "../firebase/hooks";
 import { messaging, getToken, onMessage, VAPID_KEY } from "../firebase/config";
 import MediaGallery from "./MediaGallery";
@@ -139,6 +139,21 @@ function CustomPicker({ label, value, options, onSelect, setModalPicker, color="
       </button>
     </div>
   );
+}
+
+class MockDraftErrorBoundary extends Component {
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  render(){
+    if(this.state.err) return (
+      <div style={{padding:20,color:"#ff5555",fontSize:12}}>
+        <div style={{fontWeight:700,marginBottom:8}}>Mock Draft Error:</div>
+        <div style={{fontFamily:"monospace",fontSize:10,color:"rgba(255,85,85,0.7)"}}>{this.state.err?.message||String(this.state.err)}</div>
+        <button onClick={()=>this.setState({err:null})} style={{marginTop:10,padding:"6px 12px",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:6,color:"rgba(255,255,255,0.6)",cursor:"pointer",fontFamily:"inherit",fontSize:11}}>Retry</button>
+      </div>
+    );
+    return this.props.children;
+  }
 }
 
 function PhotoAvatar({ name, roster, size=28 }) {
@@ -2272,7 +2287,9 @@ export default function PublicApp({ onGoAdmin }) {
         )}
 
         {tab==="mockdraft" && (
+          <MockDraftErrorBoundary>
           <MockDraftTab roster={roster} competitions={competitions} meta={meta} history={history} rounds={rounds} getHandicap={n=>{const p=roster.find(r=>r.name===n);const h=parseFloat(p?.handicap);if(!h||isNaN(h)||h<=1)return 27;if(h>50)return 36;return h;}}/>
+          </MockDraftErrorBoundary>
         )}
       </div>
 
