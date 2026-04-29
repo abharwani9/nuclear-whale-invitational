@@ -778,7 +778,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             <div key={mi} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:7,marginBottom:4}}>
                               <div style={{fontSize:11,fontWeight:700,color:"rgba(255,200,0,0.7)",width:60,flexShrink:0}}>{label}</div>
                               <input type="number" step="0.5" style={{...s.input,width:50,padding:"3px 6px"}} value={m.pointsWorth||""} placeholder={String(pts)}
-                                onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                                onChange={e= step="0.5">updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
                               <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>pts</div>
                               <div style={{flex:1}}><WinnerBtns m={m} mi={mi}/></div>
                               <button style={{...s.btnDanger,padding:"2px 7px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
@@ -812,7 +812,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <input type="number" step="0.5" style={{...s.input,width:55}} value={m.pointsWorth||""} placeholder="2 pts"
-                            onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                            onChange={e= step="0.5">updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
                           <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win</span>
                           <button style={{...s.btnDanger,padding:"3px 8px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
                         </div>
@@ -1453,7 +1453,7 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
         </div>
         <div>
           <div style={s.label}>Points Worth</div>
-          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e=>setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
+          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e= step="0.5">setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
         </div>
       </div>
       <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -1999,6 +1999,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
     (competitions||[]).forEach(c => {
       hcpFields[`hcpAllowance_${c.id}`] = meta?.hcpAllowances?.[c.id] ?? "";
       hcpFields[`teamFormat_${c.id}`] = meta?.teamFormats?.[c.id] ?? false;
+      hcpFields[`compPts_${c.id}`] = meta?.compPts?.[c.id] ?? "";
     });
     setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", defaultMatchPts:meta.defaultMatchPts||"2", dynamicColors:meta.dynamicColors||false, ...hcpFields });
     setLoaded(true);
@@ -2014,10 +2015,13 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         if (val !== "" && val !== undefined) hcpAllowances[c.id] = Number(val);
       });
       const teamFormats = {};
+      const compPts = {};
       (competitions||[]).forEach(c => {
         if (form[`teamFormat_${c.id}`]) teamFormats[c.id] = true;
+        const p = form[`compPts_${c.id}`];
+        if (p !== "" && p !== undefined) compPts[c.id] = Number(p);
       });
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,defaultMatchPts:Number(form.defaultMatchPts)||2});
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,compPts,defaultMatchPts:Number(form.defaultMatchPts)||2});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
