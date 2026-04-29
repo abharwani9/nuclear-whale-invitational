@@ -443,7 +443,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       setSelNukes([]); setSelWhales([]);
       // (1) After saving, check if any remaining players are now locked out
       const warnings=[];
-      teamComps.filter(c=>!isScrambleGroup(c.id)).forEach(comp=>{
+      nonScrambleTeamComps.forEach(comp=>{
         const compSaved=(next[comp.id]||[]);
         const slotsLeft=maxSlots-compSaved.length;
         if(slotsLeft<=0) return;
@@ -658,21 +658,18 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
               const compSlots=(savedMatchups[cid]||[]).length;
               const playerConflict=!alreadySaved&&!selCompIsScramble&&[...s.np,...s.wp].some(p=>usedInSelComp.includes(p));
-              // Pre-save warning: check if saving THIS would leave any comp with <2 players
+              // Pre-save warning: check if this pairing would create a repeat in remaining slots
               const preSaveWarnings=[];
               if(!alreadySaved&&!playerConflict){
-                const wouldBe={...savedMatchups,[selCompIsScramble?SCRAMBLE_KEY:selComp?.id||""]: [...(savedMatchups[selCompIsScramble?SCRAMBLE_KEY:selComp?.id||""]||[]),{np:s.np,wp:s.wp}]};
-                teamComps.filter(c=>!isScrambleGroup(c.id)&&c.id!==(selComp?.id||"")).forEach(comp=>{
-                  const compSaved=wouldBe[comp.id]||[];
-                  const slotsLeft=maxSlots-compSaved.length;
-                  if(slotsLeft<=0) return;
-                  const usedN=compSaved.flatMap(m=>m.np||[]);
-                  const usedW=compSaved.flatMap(m=>m.wp||[]);
-                  const availN=(nukes||[]).filter(n=>!usedN.includes(n));
-                  const availW=(whales||[]).filter(n=>!usedW.includes(n));
-                  if(nukes.length>=2&&availN.length<2) preSaveWarnings.push(`⚠️ ${comp.name}: only ${availN.length} Nuke${availN.length!==1?"s":""} left after this save`);
-                  if(whales.length>=2&&availW.length<2) preSaveWarnings.push(`⚠️ ${comp.name}: only ${availW.length} Whale${availW.length!==1?"s":""} left after this save`);
-                });
+                const nKey=[...s.np].sort().join("|");
+                const wKey=[...s.wp].sort().join("|");
+                const thisCid=selCompIsScramble?SCRAMBLE_KEY:selComp?.id||"";
+                const existsElsewhere=Object.entries(savedMatchups).some(([ocid,ms])=>
+                  ocid!==thisCid&&!(scrambleIds.includes(thisCid)&&scrambleIds.includes(ocid))&&
+                  ms.some(m=>[...(m.np||[])].sort().join("|")===nKey||[...(m.wp||[])].sort().join("|")===wKey||
+                    [...(m.np||[])].sort().join("|")===wKey||[...(m.wp||[])].sort().join("|")===nKey)
+                );
+                if(existsElsewhere) preSaveWarnings.push("⚠️ If you save this, a repeat pairing will be detected");
               }
               const repeat=checkRepeat(s.np,s.wp,cid);
               const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
