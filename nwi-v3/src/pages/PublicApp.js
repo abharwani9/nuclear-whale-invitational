@@ -183,7 +183,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const compOrder = competitions.reduce((acc,c,i)=>({...acc,[c.id]:i}),{});
 
   // Scramble detection — group all scramble competitions
-  const scrambleComps = competitions.filter(c=>c.name?.toLowerCase().includes("scramble"));
+  const scrambleComps = competitions.filter(c=>c.isScramble||c.name?.toLowerCase().includes("scramble"));
   const scrambleIds = scrambleComps.map(c=>c.id);
   const isScrambleGroup = (id) => scrambleIds.includes(id);
   const SCRAMBLE_KEY = "__scramble__";
@@ -1983,7 +1983,7 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── COMPETITIONS ── */}
         {tab==="competitions" && (
           <div>
-            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Side Competitions</div>
+            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Competitions</div>
             {competitions.map(c=>(
               <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
                 <div style={{ display:"flex", gap:12 }}>
@@ -2165,6 +2165,8 @@ export default function PublicApp({ onGoAdmin }) {
                   )}
                 </div>
               );
+            })}
+              </div>);
             })}
           </div>
         )}
