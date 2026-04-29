@@ -771,35 +771,29 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                         <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
                         <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
                         {(()=>{
-                          const scramble9 = scrambleComps.find(c=>c.name?.toLowerCase().includes("9")||c.name?.toLowerCase().includes("front")||c.name?.toLowerCase().includes("back"));
-                          const scramble18 = scrambleComps.find(c=>!c.name?.toLowerCase().includes("9")&&!c.name?.toLowerCase().includes("front")&&!c.name?.toLowerCase().includes("back"));
-                          const nH9=getBlendedStats(m.np||[],scramble9?.name);
-                          const wH9=getBlendedStats(m.wp||[],scramble9?.name);
-                          const nH18=getBlendedStats(m.np||[],scramble18?.name);
-                          const wH18=getBlendedStats(m.wp||[],scramble18?.name);
+                          const sc9=scrambleComps.find(c=>c.name?.toLowerCase().includes("9")||c.name?.toLowerCase().includes("front")||c.name?.toLowerCase().includes("back"));
+                          const sc18=scrambleComps.find(c=>!c.name?.toLowerCase().includes("9")&&!c.name?.toLowerCase().includes("front")&&!c.name?.toLowerCase().includes("back"));
+                          const nH9=getBlendedStats(m.np||[],sc9?.name);
+                          const wH9=getBlendedStats(m.wp||[],sc9?.name);
+                          const nH18=getBlendedStats(m.np||[],sc18?.name);
+                          const wH18=getBlendedStats(m.wp||[],sc18?.name);
                           return (
                             <>
-                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:3}}>9-Hole Scramble</div>
-                              {(nH9||wH9)&&<div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:2,marginBottom:4,alignItems:"center"}}>
-                                <div style={{fontSize:8,color:"rgba(255,69,0,0.6)",textAlign:"center"}}>{Math.round(nH9?.w||0)}W-{Math.round(nH9?.t||0)}T-{Math.round(nH9?.l||0)}L</div>
-                                <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                                <div style={{fontSize:8,color:"rgba(0,170,255,0.6)",textAlign:"center"}}>{Math.round(wH9?.w||0)}W-{Math.round(wH9?.t||0)}T-{Math.round(wH9?.l||0)}L</div>
-                              </div>}
-                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:3}}>18-Hole Scramble</div>
-                              {(nH18||wH18)&&<div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:2,marginBottom:4,alignItems:"center"}}>
-                                <div style={{fontSize:8,color:"rgba(255,69,0,0.6)",textAlign:"center"}}>{Math.round(nH18?.w||0)}W-{Math.round(nH18?.t||0)}T-{Math.round(nH18?.l||0)}L</div>
-                                <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                                <div style={{fontSize:8,color:"rgba(0,170,255,0.6)",textAlign:"center"}}>{Math.round(wH18?.w||0)}W-{Math.round(wH18?.t||0)}T-{Math.round(wH18?.l||0)}L</div>
-                              </div>}
-
+                              {/* Nukes records */}
+                              {nH9&&<div style={{fontSize:8,color:"rgba(255,69,0,0.5)",textAlign:"center"}}>9H: {Math.round(nH9.w)}W-{Math.round(nH9.t)}T-{Math.round(nH9.l)}L</div>}
+                              {nH18&&<div style={{fontSize:8,color:"rgba(255,69,0,0.5)",textAlign:"center",marginBottom:3}}>18H: {Math.round(nH18.w)}W-{Math.round(nH18.t)}T-{Math.round(nH18.l)}L</div>}
+                              {/* Single vs */}
+                              <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"3px 0"}}>vs</div>
+                              {/* Whales side */}
+                              <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                              {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                              <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
+                              <div style={{fontSize:9,color:"#00aaff",textAlign:"center",marginBottom:2}}>{wExp}pts exp</div>
+                              {wH9&&<div style={{fontSize:8,color:"rgba(0,170,255,0.5)",textAlign:"center"}}>9H: {Math.round(wH9.w)}W-{Math.round(wH9.t)}T-{Math.round(wH9.l)}L</div>}
+                              {wH18&&<div style={{fontSize:8,color:"rgba(0,170,255,0.5)",textAlign:"center"}}>18H: {Math.round(wH18.w)}W-{Math.round(wH18.t)}T-{Math.round(wH18.l)}L</div>}
                             </>
                           );
                         })()}
-                        <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"2px 0"}}>vs</div>
-                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                        <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
-                        <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
                       </div>
                     );
                   })}
