@@ -194,11 +194,6 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const hasScramble = scrambleComps.some(c=>teamFormats[c.id]);
 
   // Board entries: non-scramble comps + optional scramble group
-  const boardEntries = [
-    ...sortedNonScramble.map(c=>({type:"comp",comp:c,id:c.id})),
-    ...(hasScramble?[{type:"scramble",id:SCRAMBLE_KEY}]:[]),
-  ];
-
   // ── State ──────────────────────────────────────────────────────────────────
   const [nukes, setNukes_] = useState([]);
   const [whales, setWhales_] = useState([]);
@@ -501,6 +496,11 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     const bo=bi>=0?bi:(compOrder[b.id]??999);
     return ao-bo;
   });
+  const boardEntries = [
+    ...sortedNonScramble.map(c=>({type:"comp",comp:c,id:c.id})),
+    ...(hasScramble?[{type:"scramble",id:SCRAMBLE_KEY}]:[]),
+  ];
+
   // Explorer competition options (non-scramble + single "Scramble" entry)
   const explorerComps=[
     ...sortedNonScramble,
