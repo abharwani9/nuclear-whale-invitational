@@ -778,7 +778,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             <div key={mi} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.03)",borderRadius:7,marginBottom:4}}>
                               <div style={{fontSize:11,fontWeight:700,color:"rgba(255,200,0,0.7)",width:60,flexShrink:0}}>{label}</div>
                               <input type="number" step="0.5" style={{...s.input,width:50,padding:"3px 6px"}} value={m.pointsWorth||""} placeholder={String(pts)}
-                                onChange={e= step="0.5">updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                                onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
                               <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>pts</div>
                               <div style={{flex:1}}><WinnerBtns m={m} mi={mi}/></div>
                               <button style={{...s.btnDanger,padding:"2px 7px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
@@ -812,7 +812,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
                           <input type="number" step="0.5" style={{...s.input,width:55}} value={m.pointsWorth||""} placeholder="2 pts"
-                            onChange={e= step="0.5">updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
+                            onChange={e=>updateMatchupField(round,mi,"pointsWorth",Number(e.target.value)||"")}/>
                           <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win</span>
                           <button style={{...s.btnDanger,padding:"3px 8px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
                         </div>
@@ -1453,7 +1453,7 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
         </div>
         <div>
           <div style={s.label}>Points Worth</div>
-          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e= step="0.5">setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
+          <input style={s.input} type="number" value={vals.pointsWorth} onChange={e=>setVals(v=>({...v,pointsWorth:e.target.value}))} placeholder="e.g. 3"/>
         </div>
       </div>
       <div style={{ display:"flex", gap:6, marginTop:10, flexWrap:"wrap", alignItems:"center" }}>
