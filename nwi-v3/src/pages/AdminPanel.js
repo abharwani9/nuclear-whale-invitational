@@ -604,7 +604,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
     <div>
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
         <div style={s.sectionTitle}>⚔️ Rounds & Matchups</div>
-        <button onClick={()=>window.location.reload()}
+        <button onClick={()=>{try{sessionStorage.setItem("nwi_admin_section","rounds");}catch(e){} window.location.reload();}}
           style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", background:"rgba(74,222,128,0.1)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
           <span style={{ fontSize:14 }}>↻</span> Refresh Matchups
         </button>
