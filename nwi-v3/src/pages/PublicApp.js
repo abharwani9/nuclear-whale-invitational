@@ -2164,8 +2164,8 @@ export default function PublicApp({ onGoAdmin }) {
                     </div>
                   )}
                 </div>
-              );
-            })}
+              ))
+              }
               </div>);
             })}
           </div>
