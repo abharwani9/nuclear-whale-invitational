@@ -16,7 +16,7 @@ export function useCollection(collectionName, orderField = null) {
       ? query(collection(db, collectionName), orderBy(orderField))
       : collection(db, collectionName);
 
-    const unsub = onSnapshot(ref, snap => {
+    const unsub = onSnapshot(ref, { includeMetadataChanges: false }, snap => {
       setData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
     });
