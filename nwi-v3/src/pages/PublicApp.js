@@ -2221,7 +2221,8 @@ export default function PublicApp({ onGoAdmin }) {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+            })}
           </div>
         )}
         {tab==="media" && <MediaGallery/>}
