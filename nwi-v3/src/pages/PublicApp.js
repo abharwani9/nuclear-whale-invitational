@@ -180,7 +180,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
 
   // Board entries: non-scramble comps + optional scramble group
   const boardEntries = [
-    ...nonScrambleTeamComps.map(c=>({type:"comp",comp:c,id:c.id})),
+    ...sortedNonScramble.map(c=>({type:"comp",comp:c,id:c.id})),
     ...(hasScramble?[{type:"scramble",id:SCRAMBLE_KEY}]:[]),
   ];
 
@@ -424,8 +424,24 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       if(current.length>=maxSlots) return;
       const pts=getCompPts(selComp);
       const entry={np:m.np,wp:m.wp,prob:m.prob,nHcp:m.nHcp,wHcp:m.wHcp,label:m.label,compId:cid,pointsWorth:pts,isScramble:isScr};
-      setSavedMatchups(s=>{const next={...s,[cid]:[...current,entry]};try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
-      setSelNukes([]); setSelWhales([]); // clear after save
+      const next={...savedMatchups,[cid]:[...current,entry]};
+      setSavedMatchups(s=>{try{sessionStorage.setItem("nwi_mock_saved",JSON.stringify(next));}catch(e){}return next;});
+      setSelNukes([]); setSelWhales([]);
+      // (1) After saving, check if any remaining players are now locked out
+      const warnings=[];
+      teamComps.filter(c=>!isScrambleGroup(c.id)).forEach(comp=>{
+        const compSaved=(next[comp.id]||[]);
+        const slotsLeft=maxSlots-compSaved.length;
+        if(slotsLeft<=0) return;
+        const usedN=[...new Set(compSaved.flatMap(s=>s.np||[]))];
+        const usedW=[...new Set(compSaved.flatMap(s=>s.wp||[]))];
+        const availN=nukes.filter(n=>!usedN.includes(n));
+        const availW=whales.filter(n=>!usedW.includes(n));
+        if(availN.length<2&&nukes.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availN.length} Nuke${availN.length!==1?"s":""} left`);
+        if(availW.length<2&&whales.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availW.length} Whale${availW.length!==1?"s":""} left`);
+      });
+      if(warnings.length) alert(warnings.join("
+"));
     } catch(e){console.log("save error:",e);}
   };
 
@@ -723,14 +739,35 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                         {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
                         <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
                         <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
-                        {[[`Front 9`,`${SCRAMBLE_KEY}_f9`,defaultPts],[`Back 9`,`${SCRAMBLE_KEY}_b9`,defaultPts],[`18-Holes`,`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>{
-                          const pts=Number(ptsOverride[key]||"")||def;
+                        {(()=>{
+                          const scramble9 = scrambleComps.find(c=>c.name?.toLowerCase().includes("9")||c.name?.toLowerCase().includes("front")||c.name?.toLowerCase().includes("back"));
+                          const scramble18 = scrambleComps.find(c=>!c.name?.toLowerCase().includes("9")&&!c.name?.toLowerCase().includes("front")&&!c.name?.toLowerCase().includes("back"));
+                          const nH9=getBlendedStats(m.np||[],scramble9?.name);
+                          const wH9=getBlendedStats(m.wp||[],scramble9?.name);
+                          const nH18=getBlendedStats(m.np||[],scramble18?.name);
+                          const wH18=getBlendedStats(m.wp||[],scramble18?.name);
                           return (
-                            <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.35)",marginBottom:1}}>
-                              <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{pts}pts</span>
-                            </div>
+                            <>
+                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:1}}>9-Hole Scramble</div>
+                              {(nH9||wH9)&&<div style={{fontSize:8,textAlign:"center",marginBottom:2}}>
+                                <span style={{color:"rgba(255,69,0,0.6)"}}>{Math.round(nH9?.w||0)}W-{Math.round(nH9?.t||0)}T-{Math.round(nH9?.l||0)}L</span>
+                                <span style={{color:"rgba(255,255,255,0.2)"}}> vs </span>
+                                <span style={{color:"rgba(0,170,255,0.6)"}}>{Math.round(wH9?.w||0)}W-{Math.round(wH9?.t||0)}T-{Math.round(wH9?.l||0)}L</span>
+                              </div>}
+                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:1}}>18-Hole Scramble</div>
+                              {(nH18||wH18)&&<div style={{fontSize:8,textAlign:"center",marginBottom:2}}>
+                                <span style={{color:"rgba(255,69,0,0.6)"}}>{Math.round(nH18?.w||0)}W-{Math.round(nH18?.t||0)}T-{Math.round(nH18?.l||0)}L</span>
+                                <span style={{color:"rgba(255,255,255,0.2)"}}> vs </span>
+                                <span style={{color:"rgba(0,170,255,0.6)"}}>{Math.round(wH18?.w||0)}W-{Math.round(wH18?.t||0)}T-{Math.round(wH18?.l||0)}L</span>
+                              </div>}
+                              {[["F9",`${SCRAMBLE_KEY}_f9`,defaultPts],["B9",`${SCRAMBLE_KEY}_b9`,defaultPts],["18H",`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>(
+                                <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.3)",marginBottom:1}}>
+                                  <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{Number(ptsOverride[key]||"")||def}pts</span>
+                                </div>
+                              ))}
+                            </>
                           );
-                        })}
+                        })()}
                         <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center",margin:"2px 0"}}>vs</div>
                         <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
                         {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
@@ -774,17 +811,25 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                     <div key={i} style={{padding:"8px",background:"rgba(255,255,255,0.04)",border:`1px solid ${conflict?"rgba(255,140,0,0.5)":repeat?"rgba(255,200,0,0.4)":"rgba(255,255,255,0.08)"}`,borderRadius:8,position:"relative"}}>
                       {conflict&&<div style={{fontSize:8,color:"#ff8c00",marginBottom:2}}>⚠️ Conflict</div>}
                       {repeat&&!conflict&&<div style={{fontSize:8,color:"#ffd700",marginBottom:2}}>⚠️ Repeat</div>}
-                      {(()=>{const pts=Number(ptsOverride[comp.id]||"")||getCompPts(comp);const nExp=(m.prob*pts).toFixed(1);const wExp=((1-m.prob)*pts).toFixed(1);return(<>
-                      <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                      {(m.np||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                      <div style={{fontSize:11,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
-                      <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:3}}>{nExp}pts exp</div>
-                      <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
-                      <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
-                      {(m.wp||[]).map(n=><div key={n} style={{fontSize:9,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
-                      <div style={{fontSize:11,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
-                      <div style={{fontSize:9,color:"#00aaff",textAlign:"center"}}>{wExp}pts exp</div>
-                      </>);})()}
+                      {(()=>{
+                        const pts=Number(ptsOverride[comp.id]||"")||getCompPts(comp);
+                        const nExp=(m.prob*pts).toFixed(1);
+                        const wExp=((1-m.prob)*pts).toFixed(1);
+                        const nH=getBlendedStats(m.np||[],comp.name);
+                        const wH=getBlendedStats(m.wp||[],comp.name);
+                        return(<>
+                        <div style={{display:"flex",justifyContent:"center",gap:2,marginBottom:2}}>{(m.np||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                        {(m.np||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#ff4500",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                        <div style={{fontSize:13,fontWeight:800,color:"#ff4500",textAlign:"center",margin:"2px 0"}}>{toOdds(m.prob)}</div>
+                        <div style={{fontSize:9,color:"#ff4500",textAlign:"center",marginBottom:1}}>{nExp}pts exp</div>
+                        {nH&&<div style={{fontSize:9,color:"rgba(255,69,0,0.5)",textAlign:"center",marginBottom:2}}>{Math.round(nH.w)}W-{Math.round(nH.t)}T-{Math.round(nH.l)}L</div>}
+                        <div style={{fontSize:8,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
+                        <div style={{display:"flex",justifyContent:"center",gap:2,margin:"2px 0"}}>{(m.wp||[]).map(n=><PhotoAvatar roster={roster} key={n} name={n} size={18}/>)}</div>
+                        {(m.wp||[]).map(n=><div key={n} style={{fontSize:10,fontWeight:700,color:"#00aaff",textAlign:"center",lineHeight:1.2}}>{n}</div>)}
+                        <div style={{fontSize:13,fontWeight:800,color:"#00aaff",textAlign:"center",margin:"2px 0"}}>{toOdds(1-m.prob)}</div>
+                        <div style={{fontSize:9,color:"#00aaff",textAlign:"center",marginBottom:1}}>{wExp}pts exp</div>
+                        {wH&&<div style={{fontSize:9,color:"rgba(0,170,255,0.5)",textAlign:"center",marginBottom:2}}>{Math.round(wH.w)}W-{Math.round(wH.t)}T-{Math.round(wH.l)}L</div>}
+                        </>);})()}
                       <button onClick={()=>deleteMatchup(comp.id,i)} style={{position:"absolute",top:4,right:4,background:"none",border:"none",color:"rgba(255,85,85,0.5)",cursor:"pointer",fontSize:10}}>✕</button>
                     </div>
                   );
@@ -794,7 +839,34 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
           );
         })}
 
-        {/* Team probability */}
+        {/* Team Strength Index — shows when players assigned, before any matchups */}
+        {(nukes.length>=2||whales.length>=2)&&(()=>{
+          const nAvgHcp=nukes.length?nukes.reduce((s,n)=>s+getHandicap(n),0)/nukes.length:null;
+          const wAvgHcp=whales.length?whales.reduce((s,n)=>s+getHandicap(n),0)/whales.length:null;
+          if(!nAvgHcp&&!wAvgHcp) return null;
+          // Lower HCP = stronger. Convert to strength %
+          const nStr=nAvgHcp?Math.max(5,Math.min(95,50+(wAvgHcp||nAvgHcp)-nAvgHcp)):50;
+          const wStr=100-nStr;
+          return (
+            <div style={{marginBottom:12,padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>💪 Team Strength (by HCP)</div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
+                <span style={{color:"#ff4500",fontWeight:700}}>☢️ Nukes {nAvgHcp?`HCP ${nAvgHcp.toFixed(1)}`:"—"}</span>
+                <span style={{color:"#00aaff",fontWeight:700}}>{wAvgHcp?`HCP ${wAvgHcp.toFixed(1)}`:"—"} 🐋 Whales</span>
+              </div>
+              <div style={{height:8,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",display:"flex"}}>
+                <div style={{width:`${nStr}%`,background:"#ff4500",transition:"width 0.5s"}}/>
+                <div style={{flex:1,background:"#00aaff"}}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:3}}>
+                <span>{Math.round(nStr)}% stronger on paper</span>
+                <span>{Math.round(wStr)}%</span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Projected Outcum */}
         {(()=>{
           const all=Object.entries(savedMatchups).flatMap(([cid,ms])=>ms.map(m=>({...m,cid})));
           if(!all.length) return null;
@@ -808,7 +880,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
           const nPct=tPts>0?Math.round((nExp/tPts)*100):50;
           return (
             <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>📊 Projected Outcome</div>
+              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>📊 Projected Outcum</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 {[["☢️ Nukes","#ff4500","rgba(255,69,0,0.08)","rgba(255,69,0,0.25)",nPct,nExp],["🐋 Whales","#00aaff","rgba(0,170,255,0.08)","rgba(0,170,255,0.25)",100-nPct,wExp]].map(([label,color,bg,border,pct,exp])=>(
                   <div key={label} style={{padding:"12px",background:bg,border:`1px solid ${border}`,borderRadius:12,textAlign:"center"}}>
@@ -1544,7 +1616,19 @@ export default function PublicApp({ onGoAdmin }) {
                                         {rp?.photoURL
                                           ? <img src={rp.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
                                           : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
-                                        <div style={{ fontWeight:700 }}>{p.name}</div>
+                                        <div>
+                                          <div style={{ fontWeight:700 }}>{p.name}</div>
+                                          {(()=>{
+                                            const wins = history.filter(h => {
+                                              if(!h.winner||h.winner==="TBD") return false;
+                                              const winTeam = h.winner==="THE NUKES"?"nukes":"whales";
+                                              const draft = drafts?.find(d=>String(d.year)===String(h.year));
+                                              return draft?.assignments?.[p.name]===winTeam;
+                                            }).length;
+                                            if(!wins) return null;
+                                            return <div style={{ display:"flex", gap:1, marginTop:1 }}>{Array.from({length:wins}).map((_,ti)=><span key={ti} style={{ fontSize:9, lineHeight:1 }}>🏆</span>)}</div>;
+                                          })()}
+                                        </div>
                                       </div>
                                     </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
