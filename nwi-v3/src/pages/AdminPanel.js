@@ -2114,7 +2114,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
                       <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>%</span>
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                      <input style={{ ...s.input, width:44, textAlign:"center" }} type="number" step="1.5" min="0"
+                      <input style={{ ...s.input, width:64, textAlign:"center" }} type="text" inputMode="decimal"
                         value={ptsVal} onChange={e=>setForm(f=>({...f,[ptsKey]:e.target.value}))}
                         placeholder="2"/>
                       <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>pts</span>
