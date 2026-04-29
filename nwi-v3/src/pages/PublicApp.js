@@ -2037,7 +2037,7 @@ export default function PublicApp({ onGoAdmin }) {
                         })}
                       </div>
                     )}
-                    {played.length===0&&<div style={{ padding:"12px 0", textAlign:"center", fontSize:13, color:"rgba(255,255,255,0.2)" }}>No results yet</div>}
+
                   </div>
                 );
               };
