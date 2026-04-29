@@ -199,7 +199,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [whales, setWhales_] = useState([]);
   const [unassigned, setUnassigned] = useState(sortedRoster.map(p=>p.name));
   const [assignSort, setAssignSort] = useState("hcp");
-  const [selComp, setSelComp] = useState(null);
+  const [selComp, setSelComp] = useState(null); // restored after load
   const [selNukes, setSelNukes] = useState([]);
   const [selWhales, setSelWhales] = useState([]);
   const [explorerSort, setExplorerSort] = useState("hcp");
@@ -222,6 +222,9 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       if(Object.keys(ss).length) setSavedMatchups(ss);
       if(Object.keys(sp).length) setPtsOverride(sp);
       if(sn.length||sw.length) setUnassigned(sortedRoster.map(p=>p.name).filter(n=>![...sn,...sw].includes(n)));
+      // Restore selected competition
+      const sc = sessionStorage.getItem("nwi_mock_selcomp");
+      if(sc) { try { setSelComp(JSON.parse(sc)); } catch(e){} }
     } catch(e) {}
     try { localStorage.removeItem("nwi_mock_matchups"); localStorage.removeItem("nwi_mock_pts"); } catch(e) {}
   }, []);
@@ -561,7 +564,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
           ))}
         </div>
 
-        <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSelNukes([]);setSelWhales([]);setSavedMatchups({});setPtsOverride({});try{["nwi_mock_saved","nwi_mock_nukes","nwi_mock_whales","nwi_mock_pts"].forEach(k=>sessionStorage.removeItem(k));}catch(e){}}}
+        <button onClick={()=>{setNukes([]);setWhales([]);setUnassigned(sortedRoster.map(p=>p.name));setSelNukes([]);setSelWhales([]);setSavedMatchups({});setPtsOverride({});try{["nwi_mock_saved","nwi_mock_nukes","nwi_mock_whales","nwi_mock_pts","nwi_mock_selcomp"].forEach(k=>sessionStorage.removeItem(k));}catch(e){}}}
           style={{width:"100%",padding:"8px",background:"rgba(255,140,0,0.12)",border:"1px solid rgba(255,140,0,0.35)",borderRadius:8,color:"#ff8c00",fontFamily:"inherit",fontSize:12,fontWeight:700,cursor:"pointer"}}>
           🔄 Reset All Players
         </button>
@@ -585,6 +588,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               onSelect={v=>{
                 const found=explorerComps.find(c=>c.id===v)||null;
                 setSelComp(found); setSelNukes([]); setSelWhales([]);
+                try{sessionStorage.setItem("nwi_mock_selcomp",JSON.stringify(found));}catch(e){}
               }}
               color="#ffd700"
             />
@@ -763,17 +767,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                           const wH18=getBlendedStats(m.wp||[],scramble18?.name);
                           return (
                             <>
-                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:1}}>9-Hole Scramble</div>
-                              {(nH9||wH9)&&<div style={{fontSize:8,textAlign:"center",marginBottom:2}}>
-                                <span style={{color:"rgba(255,69,0,0.6)"}}>{Math.round(nH9?.w||0)}W-{Math.round(nH9?.t||0)}T-{Math.round(nH9?.l||0)}L</span>
-                                <span style={{color:"rgba(255,255,255,0.2)"}}> vs </span>
-                                <span style={{color:"rgba(0,170,255,0.6)"}}>{Math.round(wH9?.w||0)}W-{Math.round(wH9?.t||0)}T-{Math.round(wH9?.l||0)}L</span>
+                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:3}}>9-Hole Scramble</div>
+                              {(nH9||wH9)&&<div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:2,marginBottom:4,alignItems:"center"}}>
+                                <div style={{fontSize:8,color:"rgba(255,69,0,0.6)",textAlign:"center"}}>{Math.round(nH9?.w||0)}W-{Math.round(nH9?.t||0)}T-{Math.round(nH9?.l||0)}L</div>
+                                <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
+                                <div style={{fontSize:8,color:"rgba(0,170,255,0.6)",textAlign:"center"}}>{Math.round(wH9?.w||0)}W-{Math.round(wH9?.t||0)}T-{Math.round(wH9?.l||0)}L</div>
                               </div>}
-                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:1}}>18-Hole Scramble</div>
-                              {(nH18||wH18)&&<div style={{fontSize:8,textAlign:"center",marginBottom:2}}>
-                                <span style={{color:"rgba(255,69,0,0.6)"}}>{Math.round(nH18?.w||0)}W-{Math.round(nH18?.t||0)}T-{Math.round(nH18?.l||0)}L</span>
-                                <span style={{color:"rgba(255,255,255,0.2)"}}> vs </span>
-                                <span style={{color:"rgba(0,170,255,0.6)"}}>{Math.round(wH18?.w||0)}W-{Math.round(wH18?.t||0)}T-{Math.round(wH18?.l||0)}L</span>
+                              <div style={{fontSize:8,color:"rgba(255,255,255,0.4)",textAlign:"center",marginBottom:3}}>18-Hole Scramble</div>
+                              {(nH18||wH18)&&<div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:2,marginBottom:4,alignItems:"center"}}>
+                                <div style={{fontSize:8,color:"rgba(255,69,0,0.6)",textAlign:"center"}}>{Math.round(nH18?.w||0)}W-{Math.round(nH18?.t||0)}T-{Math.round(nH18?.l||0)}L</div>
+                                <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
+                                <div style={{fontSize:8,color:"rgba(0,170,255,0.6)",textAlign:"center"}}>{Math.round(wH18?.w||0)}W-{Math.round(wH18?.t||0)}T-{Math.round(wH18?.l||0)}L</div>
                               </div>}
                               {[["F9",`${SCRAMBLE_KEY}_f9`,defaultPts],["B9",`${SCRAMBLE_KEY}_b9`,defaultPts],["18H",`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>(
                                 <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.3)",marginBottom:1}}>
@@ -853,33 +857,6 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
             </div>
           );
         })}
-
-        {/* Team Strength Index — shows when players assigned, before any matchups */}
-        {(nukes.length>=2||whales.length>=2)&&(()=>{
-          const nAvgHcp=nukes.length?nukes.reduce((s,n)=>s+getHandicap(n),0)/nukes.length:null;
-          const wAvgHcp=whales.length?whales.reduce((s,n)=>s+getHandicap(n),0)/whales.length:null;
-          if(!nAvgHcp&&!wAvgHcp) return null;
-          // Lower HCP = stronger. Convert to strength %
-          const nStr=nAvgHcp?Math.max(5,Math.min(95,50+(wAvgHcp||nAvgHcp)-nAvgHcp)):50;
-          const wStr=100-nStr;
-          return (
-            <div style={{marginBottom:12,padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>💪 Team Strength (by HCP)</div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
-                <span style={{color:"#ff4500",fontWeight:700}}>☢️ Nukes {nAvgHcp?`HCP ${nAvgHcp.toFixed(1)}`:"—"}</span>
-                <span style={{color:"#00aaff",fontWeight:700}}>{wAvgHcp?`HCP ${wAvgHcp.toFixed(1)}`:"—"} 🐋 Whales</span>
-              </div>
-              <div style={{height:8,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden",display:"flex"}}>
-                <div style={{width:`${nStr}%`,background:"#ff4500",transition:"width 0.5s"}}/>
-                <div style={{flex:1,background:"#00aaff"}}/>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:3}}>
-                <span>{Math.round(nStr)}% stronger on paper</span>
-                <span>{Math.round(wStr)}%</span>
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Projected Outcum */}
         {(()=>{
