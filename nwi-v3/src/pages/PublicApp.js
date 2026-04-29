@@ -211,6 +211,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   const [savedMatchups, setSavedMatchups] = useState({});
   const [ptsOverride, setPtsOverride] = useState({});
   const [modalPicker, setModalPicker] = useState(null);
+  const [saveWarnings, setSaveWarnings] = useState([]);
 
   const setNukes = (v) => { const val=typeof v==="function"?v(nukes):v; setNukes_(val); try{sessionStorage.setItem("nwi_mock_nukes",JSON.stringify(val));}catch(e){} };
   const setWhales = (v) => { const val=typeof v==="function"?v(whales):v; setWhales_(val); try{sessionStorage.setItem("nwi_mock_whales",JSON.stringify(val));}catch(e){} };
@@ -455,7 +456,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         if(availN.length<2&&nukes.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availN.length} Nuke${availN.length!==1?"s":""} left`);
         if(availW.length<2&&whales.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availW.length} Whale${availW.length!==1?"s":""} left`);
       });
-      if(warnings.length) alert(warnings.join("\n"));
+      setSaveWarnings(warnings);
     } catch(e){console.log("save error:",e);}
   };
 
