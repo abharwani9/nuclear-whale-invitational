@@ -1984,7 +1984,12 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="competitions" && (
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:20 }}>Competitions</div>
-            {competitions.map(c=>(
+            {["main","side"].map(sec=>{
+              const filtered=[...competitions].filter(c=>sec==="main"?c.section!=="side":c.section==="side").sort((a,b)=>(a.order??0)-(b.order??0));
+              if(!filtered.length) return null;
+              return (<div key={sec} style={{marginBottom:20}}>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:sec==="main"?"rgba(74,222,128,0.7)":"rgba(255,255,255,0.35)",marginBottom:10}}>{sec==="main"?"⭐ Main Events":"🎪 Side Competitions"}</div>
+                {filtered.map(c=>(
               <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
                 <div style={{ display:"flex", gap:12 }}>
                   <div style={{ fontSize:28 }}>{c.icon}</div>
@@ -2164,13 +2169,11 @@ export default function PublicApp({ onGoAdmin }) {
                     </div>
                   )}
                 </div>
-              ))
-              }
+              ))}
               </div>);
             })}
           </div>
         )}
-
         {tab==="media" && <MediaGallery/>}
 {tab==="hole" && (() => {
           const currentYear = meta?.year || new Date().getFullYear();
