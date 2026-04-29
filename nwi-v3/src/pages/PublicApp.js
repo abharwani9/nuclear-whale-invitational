@@ -411,7 +411,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
     const known=knownIsNuke?np:wp;
     const pool=knownIsNuke?(whales.length>=2?whales:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n))):(nukes.length>=2?nukes:sortedRoster.map(p=>p.name).filter(n=>!known.includes(n)));
     const filtered=selCompIsScramble?pool:pool.filter(n=>!usedInSelComp.includes(n));
-    const matchups=getPairs(filtered).map(op=>{
+    // All pairs already saved across ALL competitions (cross-comp dedup)
+    const allSavedPairs=new Set(
+      Object.entries(savedMatchups).flatMap(([,ms])=>
+        ms.flatMap(m=>[[...(m.np||[])].sort().join("|"),[...(m.wp||[])].sort().join("|")])
+      )
+    );
+    const allCandidatePairs=getPairs(filtered);
+    // Filter out pairs already used anywhere; fall back to all if none remain
+    const freshPairs=allCandidatePairs.filter(p=>!allSavedPairs.has([...p].sort().join("|")));
+    const candidatePairs=freshPairs.length>0?freshPairs:allCandidatePairs;
+    const matchups=candidatePairs.map(op=>{
       const nP=knownIsNuke?known:op, wP=knownIsNuke?op:known;
       const prob=calcProb(nP,wP,selComp);
       return {nPair:nP,wPair:wP,prob,diff:Math.abs(prob-0.5),nHcp:teamHcp(nP,allow),wHcp:teamHcp(wP,allow)};
