@@ -440,8 +440,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         if(availN.length<2&&nukes.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availN.length} Nuke${availN.length!==1?"s":""} left`);
         if(availW.length<2&&whales.length>=2) warnings.push(`⚠️ ${comp.name}: only ${availW.length} Whale${availW.length!==1?"s":""} left`);
       });
-      if(warnings.length) alert(warnings.join("
-"));
+      if(warnings.length) alert(warnings.join("\n"));
     } catch(e){console.log("save error:",e);}
   };
 
