@@ -658,19 +658,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
               const alreadySaved=(savedMatchups[cid]||[]).some(m=>JSON.stringify([...(m.np||[])].sort())===JSON.stringify([...s.np].sort())&&JSON.stringify([...(m.wp||[])].sort())===JSON.stringify([...s.wp].sort()));
               const compSlots=(savedMatchups[cid]||[]).length;
               const playerConflict=!alreadySaved&&!selCompIsScramble&&[...s.np,...s.wp].some(p=>usedInSelComp.includes(p));
-              // Pre-save warning: check if this pairing would create a repeat in remaining slots
-              const preSaveWarnings=[];
-              if(!alreadySaved&&!playerConflict){
-                const nKey=[...s.np].sort().join("|");
-                const wKey=[...s.wp].sort().join("|");
-                const thisCid=selCompIsScramble?SCRAMBLE_KEY:selComp?.id||"";
-                const existsElsewhere=Object.entries(savedMatchups).some(([ocid,ms])=>
-                  ocid!==thisCid&&!(scrambleIds.includes(thisCid)&&scrambleIds.includes(ocid))&&
-                  ms.some(m=>[...(m.np||[])].sort().join("|")===nKey||[...(m.wp||[])].sort().join("|")===wKey||
-                    [...(m.np||[])].sort().join("|")===wKey||[...(m.wp||[])].sort().join("|")===nKey)
-                );
-                if(existsElsewhere) preSaveWarnings.push("⚠️ If you save this, a repeat pairing will be detected");
-              }
+
               const repeat=checkRepeat(s.np,s.wp,cid);
               const partnerRepeatNuke=checkPartnerRepeat(s.np[0],s.np[1]);
               const partnerRepeatWhale=checkPartnerRepeat(s.wp[0],s.wp[1]);
@@ -693,7 +681,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                   {partnerRepeatNuke&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.np[0]} & {s.np[1]} have been paired before</div>}
                   {partnerRepeatWhale&&<div style={{fontSize:10,color:"#ffd700",marginBottom:4}}>⚠️ {s.wp[0]} & {s.wp[1]} have been paired before</div>}
                   {playerConflict&&<div style={{fontSize:10,color:"#ff5555",marginBottom:4}}>🚫 Player already used in this competition</div>}
-              {preSaveWarnings.map((w,wi)=><div key={wi} style={{fontSize:10,color:"#ffd700",marginBottom:3}}>{w}</div>)}
+
                   <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:8,alignItems:"center"}}>
                     <div style={{textAlign:"center"}}>
                       <div style={{display:"flex",justifyContent:"center",gap:3,marginBottom:4}}>{s.np.map(n=><PhotoAvatar roster={roster} key={n} name={n} size={26}/>)}</div>
@@ -793,11 +781,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
                                 <div style={{fontSize:7,color:"rgba(255,255,255,0.2)",textAlign:"center"}}>vs</div>
                                 <div style={{fontSize:8,color:"rgba(0,170,255,0.6)",textAlign:"center"}}>{Math.round(wH18?.w||0)}W-{Math.round(wH18?.t||0)}T-{Math.round(wH18?.l||0)}L</div>
                               </div>}
-                              {[["F9",`${SCRAMBLE_KEY}_f9`,defaultPts],["B9",`${SCRAMBLE_KEY}_b9`,defaultPts],["18H",`${SCRAMBLE_KEY}_18`,defaultPts*2]].map(([lbl,key,def])=>(
-                                <div key={lbl} style={{display:"flex",justifyContent:"space-between",fontSize:8,color:"rgba(255,255,255,0.3)",marginBottom:1}}>
-                                  <span>{lbl}</span><span style={{color:"#ffd700",fontWeight:700}}>{Number(ptsOverride[key]||"")||def}pts</span>
-                                </div>
-                              ))}
+
                             </>
                           );
                         })()}
