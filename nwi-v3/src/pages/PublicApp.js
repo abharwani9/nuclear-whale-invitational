@@ -1625,6 +1625,7 @@ export default function PublicApp({ onGoAdmin }) {
                             <thead><tr>
                               <th>#</th>
                               <th>Player</th>
+                              <th>🏆</th>
                               <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
                               <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
                               <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
@@ -1633,6 +1634,12 @@ export default function PublicApp({ onGoAdmin }) {
                             <tbody>
                               {sorted.map((p,i)=>{
                                 const rp = roster.find(r=>r.name===p.name);
+                                const tournWins = history.filter(h => {
+                                  if(!h.winner||h.winner==="TBD") return false;
+                                  const winTeam = h.winner==="THE NUKES"?"nukes":"whales";
+                                  const draft = drafts?.find(d=>String(d.year)===String(h.year));
+                                  return draft?.assignments?.[p.name]===winTeam;
+                                }).length;
                                 return (
                                   <tr key={p.name} style={{ background:i%2===0?"rgba(255,255,255,0.02)":"transparent", cursor:"pointer" }} onClick={()=>rp&&setSelectedPlayer({...rp,...p})}>
                                     <td style={{ fontWeight:900, color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":"rgba(255,255,255,0.3)" }}>{i+1}</td>
@@ -1641,20 +1648,13 @@ export default function PublicApp({ onGoAdmin }) {
                                         {rp?.photoURL
                                           ? <img src={rp.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
                                           : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
-                                        <div>
-                                          <div style={{ fontWeight:700 }}>{p.name}</div>
-                                          {(()=>{
-                                            const wins = history.filter(h => {
-                                              if(!h.winner||h.winner==="TBD") return false;
-                                              const winTeam = h.winner==="THE NUKES"?"nukes":"whales";
-                                              const draft = drafts?.find(d=>String(d.year)===String(h.year));
-                                              return draft?.assignments?.[p.name]===winTeam;
-                                            }).length;
-                                            if(!wins) return null;
-                                            return <div style={{ display:"flex", gap:1, marginTop:1 }}>{Array.from({length:wins}).map((_,ti)=><span key={ti} style={{ fontSize:9, lineHeight:1 }}>🏆</span>)}</div>;
-                                          })()}
-                                        </div>
+                                        <div style={{ fontWeight:700 }}>{p.name}</div>
                                       </div>
+                                    </td>
+                                    <td style={{ textAlign:"center" }}>
+                                      {tournWins>0
+                                        ? <div style={{ display:"flex", gap:1, justifyContent:"center" }}>{Array.from({length:tournWins}).map((_,ti)=><span key={ti} style={{ fontSize:11 }}>🏆</span>)}</div>
+                                        : <span style={{ color:"rgba(255,255,255,0.15)", fontSize:11 }}>—</span>}
                                     </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                     <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
@@ -1798,7 +1798,6 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
                     {round.day&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:20 }}>{round.day}</div>}
                     {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
-                    <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginLeft:"auto" }}>Win={round.pointsPerWin}pts</div>
                   </div>
                   {(round.matchups||[]).map((m,mi)=>(
                     <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
@@ -2125,7 +2124,21 @@ export default function PublicApp({ onGoAdmin }) {
               const isTBD=!h.winner||h.winner==="TBD";
               const isExp=expandedHistory===h.id;
               const matchCount=(h.matches||[]).filter(m=>m.type!=="heading").length;
-              const nukePts=h.nukes_pts??0, whalePts=h.whales_pts??0;
+              // Compute pts live from matches so edits reflect immediately
+              const computedNukePts = (h.matches||[]).filter(m=>m.type!=="heading"&&m.winner).reduce((sum,m)=>{
+                const pts=Number(m.pointsWorth)||0;
+                if(m.winner==="nukes") return sum+pts;
+                if(m.winner==="tie") return sum+pts/2;
+                return sum;
+              },0);
+              const computedWhalePts = (h.matches||[]).filter(m=>m.type!=="heading"&&m.winner).reduce((sum,m)=>{
+                const pts=Number(m.pointsWorth)||0;
+                if(m.winner==="whales") return sum+pts;
+                if(m.winner==="tie") return sum+pts/2;
+                return sum;
+              },0);
+              const nukePts = matchCount>0 ? computedNukePts : (h.nukes_pts??0);
+              const whalePts = matchCount>0 ? computedWhalePts : (h.whales_pts??0);
               return (
                 <div key={h.id} style={{ marginBottom:10 }}>
                   {/* Year header - always visible */}
