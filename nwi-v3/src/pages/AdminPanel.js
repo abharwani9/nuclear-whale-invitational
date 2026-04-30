@@ -846,7 +846,15 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                         <div>
                           <select style={{...s.select,maxWidth:180}} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
                             <option value="">— Competition —</option>
-                            {competitions.filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0)).map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>)}
+                            {(()=>{
+                              const mainComps = competitions.filter(c=>c.section!=="side");
+                              const savedOrder = meta?.compSettingsOrder||[];
+                              const ordered = [
+                                ...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
+                                ...mainComps.filter(c=>!savedOrder.includes(c.id)).sort((a,b)=>(a.order??0)-(b.order??0))
+                              ];
+                              return ordered.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
+                            })()}
                           </select>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -2155,24 +2163,45 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           </div>
           {(competitions||[]).length === 0 ? (
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No competitions set up yet — add them in the Competitions tab</div>
-          ) : (
+          ) : (()=>{
+            // Use meta.compSettingsOrder for independent ordering, fall back to competitions order
+            const savedOrder = meta?.compSettingsOrder || [];
+            const orderedComps = [
+              ...savedOrder.map(id=>(competitions||[]).find(c=>c.id===id)).filter(Boolean),
+              ...(competitions||[]).filter(c=>!savedOrder.includes(c.id))
+            ];
+            return (
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               {/* Column headers */}
               <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 12px" }}>
+                <div style={{ width:20 }}/>
                 <div style={{ flex:1 }}/>
                 <div style={{ width:75, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>HCP %</div>
                 <div style={{ width:84, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>Pts/Win</div>
                 <div style={{ width:60, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>Team?</div>
               </div>
-              {(competitions||[]).map(c => {
+              {orderedComps.map((c,ci) => {
                 const key = `hcpAllowance_${c.id}`;
                 const teamKey = `teamFormat_${c.id}`;
                 const ptsKey = `compPts_${c.id}`;
                 const val = form[key] ?? (meta?.hcpAllowances?.[c.id] || "");
                 const isTeam = form[teamKey] ?? (meta?.teamFormats?.[c.id] || false);
                 const ptsVal = form[ptsKey] ?? (meta?.compPts?.[c.id] || "");
+                const moveComp = async (fromIdx, toIdx) => {
+                  const newOrder = [...orderedComps];
+                  const [moved] = newOrder.splice(fromIdx, 1);
+                  newOrder.splice(toIdx, 0, moved);
+                  const orderIds = newOrder.map(x=>x.id);
+                  await firestore.set("meta","tournament",{...meta, compSettingsOrder: orderIds});
+                };
                 return (
                   <div key={c.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+                    <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                      <button onClick={()=>ci>0&&moveComp(ci,ci-1)} disabled={ci===0}
+                        style={{ background:"none", border:"none", color:ci===0?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.4)", cursor:ci===0?"default":"pointer", fontSize:10, lineHeight:1, padding:"1px 3px" }}>▲</button>
+                      <button onClick={()=>ci<orderedComps.length-1&&moveComp(ci,ci+1)} disabled={ci===orderedComps.length-1}
+                        style={{ background:"none", border:"none", color:ci===orderedComps.length-1?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.4)", cursor:ci===orderedComps.length-1?"default":"pointer", fontSize:10, lineHeight:1, padding:"1px 3px" }}>▼</button>
+                    </div>
                     <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{c.icon||"🏅"} {c.name}</div>
                     <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <input style={{ ...s.input, width:55, textAlign:"center" }} type="number" step="5" min="0" max="100"
@@ -2194,7 +2223,8 @@ function SettingsSection({ meta, history, competitions, showToast }) {
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>Admin Codes</div>
