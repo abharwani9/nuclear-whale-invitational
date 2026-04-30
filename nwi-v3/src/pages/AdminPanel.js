@@ -758,7 +758,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                     return (
                       <div key={gi} style={{background:"rgba(255,200,0,0.04)",border:"1px solid rgba(255,200,0,0.2)",borderRadius:10,padding:"12px",marginBottom:8}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                          <div style={{fontSize:12,fontWeight:700,color:"#ffd700"}}>🏌️ {g.comp.name} — Scramble</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#ffd700"}}>🏌️ 9-9-18 Scramble ({g.comp.name})</div>
                           <button style={{...s.btnGhost,fontSize:11}} onClick={()=>{
                             // Split into independent matchups
                             if(window.confirm("Split scramble into 3 independent matchup rows?")) {
@@ -769,12 +769,46 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             }
                           }}>Split ↗</button>
                         </div>
-                        {/* Shared players */}
+                        {/* Shared players — changes sync to all sub-rows */}
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                          <PlayerPickers m={firstM} mi={firstMi} side="nukes" names={nukeNames} color="#ff4500" emoji="☢️"/>
-                          <PlayerPickers m={firstM} mi={firstMi} side="whales" names={whaleNames} color="#00aaff" emoji="🐋"/>
+                          <div>
+                            <div style={{fontSize:10,color:"#ff4500",marginBottom:4}}>☢️ Nukes</div>
+                            {[0,1].map(pi=>(
+                              <select key={pi} style={{...s.select,marginBottom:4}} value={(firstM.nukes||["",""])[pi]||""} onChange={async e=>{
+                                const cur=getMatchups(round);
+                                const updated=cur.map((mu,i)=>{
+                                  if(!g.rows.some(r=>r.mi===i)) return mu;
+                                  const arr=[...(mu.nukes||["",""])];
+                                  arr[pi]=e.target.value;
+                                  return {...mu,nukes:arr};
+                                });
+                                await saveMatchups(round,updated);
+                              }}>
+                                <option value="">— Player —</option>
+                                {nukeNames.map(n=><option key={n}>{n}</option>)}
+                              </select>
+                            ))}
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,color:"#00aaff",marginBottom:4}}>🐋 Whales</div>
+                            {[0,1].map(pi=>(
+                              <select key={pi} style={{...s.select,marginBottom:4}} value={(firstM.whales||["",""])[pi]||""} onChange={async e=>{
+                                const cur=getMatchups(round);
+                                const updated=cur.map((mu,i)=>{
+                                  if(!g.rows.some(r=>r.mi===i)) return mu;
+                                  const arr=[...(mu.whales||["",""])];
+                                  arr[pi]=e.target.value;
+                                  return {...mu,whales:arr};
+                                });
+                                await saveMatchups(round,updated);
+                              }}>
+                                <option value="">— Player —</option>
+                                {whaleNames.map(n=><option key={n}>{n}</option>)}
+                              </select>
+                            ))}
+                          </div>
                         </div>
-                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:4}}>Players apply to all sub-matches below</div>
+                        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:4}}>Players sync to all sub-matches automatically</div>
                         {/* Sub-rows */}
                         {g.rows.map(({m,mi},si)=>{
                           const pts=m.pointsWorth||(si===2?4:2);
@@ -1068,14 +1102,24 @@ function CompetitionsSection({ competitions, showToast }) {
         const idx=list.findIndex(x=>x.id===c.id);
         if(idx<=0) return;
         const prev=list[idx-1];
-        await firestore.update("competitions",c.id,{order:(prev.order??0)-1});
+        const myOrder=c.order??idx*10;
+        const prevOrder=prev.order??(idx-1)*10;
+        await Promise.all([
+          firestore.update("competitions",c.id,{order:prevOrder}),
+          firestore.update("competitions",prev.id,{order:myOrder}),
+        ]);
       }}>↑</button>
       <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
         const list=sorted.filter(x=>x.section===c.section);
         const idx=list.findIndex(x=>x.id===c.id);
         if(idx>=list.length-1) return;
         const next=list[idx+1];
-        await firestore.update("competitions",c.id,{order:(next.order??0)+1});
+        const myOrder=c.order??idx*10;
+        const nextOrder=next.order??(idx+1)*10;
+        await Promise.all([
+          firestore.update("competitions",c.id,{order:nextOrder}),
+          firestore.update("competitions",next.id,{order:myOrder}),
+        ]);
       }}>↓</button>
       <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name||"",icon:c.icon||"🏅",desc:c.desc||"",section:c.section||"main",isScramble:c.isScramble||false});}}>✏️</button>
       <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
@@ -2107,12 +2151,23 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
         <div style={{ marginTop:10 }}>
-          <div style={s.label}>Handicap Allowance % by Competition</div>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:10 }}>Set the handicap allowance % for each competition format. Used by the odds model.</div>
+          <div style={s.label}>Competition Settings</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:10, lineHeight:1.5 }}>
+            <strong style={{color:"rgba(255,255,255,0.5)"}}>HCP %</strong> — how much of the handicap difference applies to this format (100% = full strokes, 75% = common for 4-ball).&nbsp;
+            <strong style={{color:"rgba(255,255,255,0.5)"}}>Pts</strong> — default points awarded per win in this competition.&nbsp;
+            <strong style={{color:"rgba(255,255,255,0.5)"}}>Team?</strong> — whether this is a team format (affects odds model).
+          </div>
           {(competitions||[]).length === 0 ? (
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)" }}>No competitions set up yet — add them in the Competitions tab</div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {/* Column headers */}
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 12px" }}>
+                <div style={{ flex:1 }}/>
+                <div style={{ width:75, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>HCP %</div>
+                <div style={{ width:84, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>Pts/Win</div>
+                <div style={{ width:60, textAlign:"center", fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>Team?</div>
+              </div>
               {(competitions||[]).map(c => {
                 const key = `hcpAllowance_${c.id}`;
                 const teamKey = `teamFormat_${c.id}`;
