@@ -542,7 +542,12 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   };
 
   const addMatchup = async (round) => {
-    const curr = getMatchups(round); await saveMatchups(round, [...curr, {nukes:["",""],whales:["",""],winner:null,competitionName:"",pointsWorth:""}]);
+    const curr = getMatchups(round);
+    // Get last used competition in this round, or use round's competitionName
+    const lastComp = curr.length>0 ? curr[curr.length-1].competitionName : (round.competitionName||"");
+    const comp = competitions.find(c=>c.name===lastComp);
+    const defPts = comp&&meta?.compPts?.[comp.id] ? Number(meta.compPts[comp.id]) : (round.pointsPerWin||2);
+    await saveMatchups(round, [...curr, {nukes:["",""],whales:["",""],winner:null,competitionName:lastComp,pointsWorth:""}]);
   };
 
   // Local matchup state per round — avoids Firebase re-render flicker
@@ -1058,6 +1063,20 @@ function CompetitionsSection({ competitions, showToast }) {
           <span style={{fontSize:10,color:c.section==="side"?"rgba(255,255,255,0.3)":"rgba(74,222,128,0.7)",background:c.section==="side"?"rgba(255,255,255,0.04)":"rgba(74,222,128,0.08)",padding:"1px 6px",borderRadius:4}}>{c.section==="side"?"Side":"Main Event"}</span>
         </div>
       </div>
+      <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
+        const list=sorted.filter(x=>x.section===c.section);
+        const idx=list.findIndex(x=>x.id===c.id);
+        if(idx<=0) return;
+        const prev=list[idx-1];
+        await firestore.update("competitions",c.id,{order:(prev.order??0)-1});
+      }}>↑</button>
+      <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
+        const list=sorted.filter(x=>x.section===c.section);
+        const idx=list.findIndex(x=>x.id===c.id);
+        if(idx>=list.length-1) return;
+        const next=list[idx+1];
+        await firestore.update("competitions",c.id,{order:(next.order??0)+1});
+      }}>↓</button>
       <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name||"",icon:c.icon||"🏅",desc:c.desc||"",section:c.section||"main",isScramble:c.isScramble||false});}}>✏️</button>
       <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
     </div>
@@ -2086,14 +2105,6 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={s.label}>Weather City</div>
           <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
-        </div>
-        <div style={{ marginTop:10 }}>
-          <div style={s.label}>Default Points Per Match</div>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:6 }}>Used when a competition isn't assigned to a round (e.g. Stableford)</div>
-          <input style={{ ...s.input, width:80 }} type="number" min="0" step="0.5"
-            value={form.defaultMatchPts||"2"}
-            onChange={e=>setForm(f=>({...f,defaultMatchPts:e.target.value}))}
-            placeholder="2"/>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Handicap Allowance % by Competition</div>
