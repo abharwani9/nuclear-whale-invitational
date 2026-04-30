@@ -758,7 +758,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                     return (
                       <div key={gi} style={{background:"rgba(255,200,0,0.04)",border:"1px solid rgba(255,200,0,0.2)",borderRadius:10,padding:"12px",marginBottom:8}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                          <div style={{fontSize:12,fontWeight:700,color:"#ffd700"}}>🏌️ 9-9-18 Scramble ({g.comp.name})</div>
+                          <div style={{fontSize:12,fontWeight:700,color:"#ffd700"}}>🏌️ 9-9-18 Scramble</div>
                           <button style={{...s.btnGhost,fontSize:11}} onClick={()=>{
                             // Split into independent matchups
                             if(window.confirm("Split scramble into 3 independent matchup rows?")) {
@@ -1098,27 +1098,26 @@ function CompetitionsSection({ competitions, showToast }) {
         </div>
       </div>
       <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
-        const list=sorted.filter(x=>x.section===c.section);
-        const idx=list.findIndex(x=>x.id===c.id);
-        if(idx<=0) return;
-        const prev=list[idx-1];
-        const myOrder=c.order??idx*10;
-        const prevOrder=prev.order??(idx-1)*10;
+        const effSec=(s)=>s==="side"?"side":"main";
+        const list=sorted.filter(x=>effSec(x.section)===effSec(c.section));
+        const ci=list.findIndex(x=>x.id===c.id);
+        if(ci<=0) return;
+        // Assign sequential orders first to ensure clean swap
+        await Promise.all(list.map((x,i)=>firestore.update("competitions",x.id,{order:i*10})));
         await Promise.all([
-          firestore.update("competitions",c.id,{order:prevOrder}),
-          firestore.update("competitions",prev.id,{order:myOrder}),
+          firestore.update("competitions",list[ci].id,{order:(ci-1)*10}),
+          firestore.update("competitions",list[ci-1].id,{order:ci*10}),
         ]);
       }}>↑</button>
       <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
-        const list=sorted.filter(x=>x.section===c.section);
-        const idx=list.findIndex(x=>x.id===c.id);
-        if(idx>=list.length-1) return;
-        const next=list[idx+1];
-        const myOrder=c.order??idx*10;
-        const nextOrder=next.order??(idx+1)*10;
+        const effSec=(s)=>s==="side"?"side":"main";
+        const list=sorted.filter(x=>effSec(x.section)===effSec(c.section));
+        const ci=list.findIndex(x=>x.id===c.id);
+        if(ci>=list.length-1) return;
+        await Promise.all(list.map((x,i)=>firestore.update("competitions",x.id,{order:i*10})));
         await Promise.all([
-          firestore.update("competitions",c.id,{order:nextOrder}),
-          firestore.update("competitions",next.id,{order:myOrder}),
+          firestore.update("competitions",list[ci].id,{order:(ci+1)*10}),
+          firestore.update("competitions",list[ci+1].id,{order:ci*10}),
         ]);
       }}>↓</button>
       <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name||"",icon:c.icon||"🏅",desc:c.desc||"",section:c.section||"main",isScramble:c.isScramble||false});}}>✏️</button>
@@ -2151,7 +2150,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
         <div style={{ marginTop:10 }}>
-          <div style={s.label}>Competition Settings</div>
+          <div style={{fontSize:15,fontWeight:800,color:'#e8edf3',letterSpacing:'0.04em',marginBottom:4}}>Competition Settings</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:10, lineHeight:1.5 }}>
             <strong style={{color:"rgba(255,255,255,0.5)"}}>HCP %</strong> — how much of the handicap difference applies to this format (100% = full strokes, 75% = common for 4-ball).&nbsp;
             <strong style={{color:"rgba(255,255,255,0.5)"}}>Pts</strong> — default points awarded per win in this competition.&nbsp;
