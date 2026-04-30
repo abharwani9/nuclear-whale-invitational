@@ -1099,26 +1099,23 @@ function CompetitionsSection({ competitions, showToast }) {
       </div>
       <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
         const effSec=(s)=>s==="side"?"side":"main";
-        const list=sorted.filter(x=>effSec(x.section)===effSec(c.section));
+        const list=[...competitions].sort((a,b)=>(a.order??0)-(b.order??0)).filter(x=>effSec(x.section)===effSec(c.section));
         const ci=list.findIndex(x=>x.id===c.id);
         if(ci<=0) return;
-        // Assign sequential orders first to ensure clean swap
-        await Promise.all(list.map((x,i)=>firestore.update("competitions",x.id,{order:i*10})));
-        await Promise.all([
-          firestore.update("competitions",list[ci].id,{order:(ci-1)*10}),
-          firestore.update("competitions",list[ci-1].id,{order:ci*10}),
-        ]);
+        const aId=list[ci].id, bId=list[ci-1].id;
+        const aOrd=ci*10, bOrd=(ci-1)*10;
+        await firestore.update("competitions",aId,{order:bOrd});
+        await firestore.update("competitions",bId,{order:aOrd});
       }}>↑</button>
       <button style={{...s.btnGhost,padding:"2px 6px",fontSize:14}} onClick={async()=>{
         const effSec=(s)=>s==="side"?"side":"main";
-        const list=sorted.filter(x=>effSec(x.section)===effSec(c.section));
+        const list=[...competitions].sort((a,b)=>(a.order??0)-(b.order??0)).filter(x=>effSec(x.section)===effSec(c.section));
         const ci=list.findIndex(x=>x.id===c.id);
         if(ci>=list.length-1) return;
-        await Promise.all(list.map((x,i)=>firestore.update("competitions",x.id,{order:i*10})));
-        await Promise.all([
-          firestore.update("competitions",list[ci].id,{order:(ci+1)*10}),
-          firestore.update("competitions",list[ci+1].id,{order:ci*10}),
-        ]);
+        const aId=list[ci].id, bId=list[ci+1].id;
+        const aOrd=(ci+1)*10, bOrd=ci*10;
+        await firestore.update("competitions",aId,{order:aOrd});
+        await firestore.update("competitions",bId,{order:bOrd});
       }}>↓</button>
       <button style={s.btnGhost} onClick={()=>{setEditing(c.id);setForm({name:c.name||"",icon:c.icon||"🏅",desc:c.desc||"",section:c.section||"main",isScramble:c.isScramble||false});}}>✏️</button>
       <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("competitions",c.id);}}>✕</button>
