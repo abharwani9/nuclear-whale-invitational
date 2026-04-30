@@ -508,7 +508,7 @@ function DraftSection({ roster, drafts, showToast }) {
 
 // ── ROUNDS ─────────────────────────────────────────────────────────────────
 function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }) {
-  const blankRound = { name:"", day:"Day 1", pointsPerWin:3, pointsPerTie:1.5, competitionName:"" };
+  const blankRound = { name:"", day:"Day 1", competitionName:"" };
   const [form, setForm]           = useState(blankRound);
   const [editingRound, setEditingRound] = useState(null);
   const [newSegment, setNewSegment] = useState("");
@@ -533,7 +533,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   const saveRound = async () => {
     if (!form.name) return showToast("Round name required", true);
-    const data = { name:form.name, day:form.day, pointsPerWin:Number(form.pointsPerWin), pointsPerTie:Number(form.pointsPerTie), competitionName:form.competitionName||"" };
+    const data = { name:form.name, day:form.day, competitionName:form.competitionName||"" };
     try {
       if (editingRound) { await firestore.update("rounds",editingRound,data); showToast("Updated!"); setEditingRound(null); }
       else { await firestore.add("rounds",{...data,matchups:[]}); showToast("Round added!"); }
@@ -669,9 +669,9 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
-              <div style={{ fontSize:12, color:"#ffd700" }}>Win={round.pointsPerWin}pts · Tie={round.pointsPerTie}pts{round.competitionName?` · 🏅 ${round.competitionName}`:""}</div>
+              {round.competitionName&&<div style={{ fontSize:12, color:"#ffd700" }}>🏅 {round.competitionName}</div>}
             </div>
-            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",pointsPerWin:round.pointsPerWin||3,pointsPerTie:round.pointsPerTie||1.5,competitionName:round.competitionName||""});}}>Edit</button>
+            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",competitionName:round.competitionName||""});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
           {(()=>{
@@ -849,10 +849,11 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             {(()=>{
                               const mainComps = competitions.filter(c=>c.section!=="side");
                               const savedOrder = (meta?.compSettingsOrder||[]).filter(id=>mainComps.some(c=>c.id===id));
+                              // Use compSettingsOrder if set, else fall back to competitions tab order (order field)
                               const ordered = savedOrder.length>0
                                 ? [...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
                                    ...mainComps.filter(c=>!savedOrder.includes(c.id))]
-                                : [...mainComps].sort((a,b)=>(a.order??0)-(b.order??0));
+                                : mainComps; // as-is from Firestore, user can set order in Settings tab
                               return ordered.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
                             })()}
                           </select>
