@@ -1295,7 +1295,7 @@ export default function PublicApp({ onGoAdmin }) {
 
   rounds.forEach(round => {
     (round.matchups || []).forEach(m => {
-      const pts = (m.pointsWorth > 0 ? m.pointsWorth : round.pointsPerWin) || 0;
+      const _comp = (competitions||[]).find(c=>c.name===m.competitionName); const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[_comp?.id]) || 2;
       const tiePts = pts / 2;
       const nk = m.nukes || [], wh = m.whales || [];
       const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
