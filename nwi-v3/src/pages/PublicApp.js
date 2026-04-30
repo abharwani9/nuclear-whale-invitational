@@ -2464,9 +2464,17 @@ export default function PublicApp({ onGoAdmin }) {
 
             {/* All-time stats */}
             {(() => {
-              const at = allTimeStats[selectedPlayer.name];
-              if (!at || at.ptsAvail === 0) return null;
-              const pct = Math.round((at.ptsWon/at.ptsAvail)*100);
+              const at = allTimeStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
+              const cur = playerStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
+              const totalPtsWon = (at.ptsWon||0) + (cur.ptsWon||0);
+              const totalPtsAvail = (at.ptsAvail||0) + (cur.ptsAvail||0);
+              const totalW = (at.matchWins||0) + (cur.matchWins||0);
+              const totalL = (at.matchLosses||0) + (cur.matchLosses||0);
+              const totalT = (at.matchTies||0) + (cur.matchTies||0);
+              const totalM = totalW + totalL + totalT;
+              if (totalM === 0 && totalPtsAvail === 0) return null;
+              const pct = totalPtsAvail > 0 ? Math.round((totalPtsWon/totalPtsAvail)*100) : 0;
+              const winPct = totalM > 0 ? Math.round((totalW/totalM)*100) : null;
               return (
                 <div style={{ marginBottom:14 }}>
                   <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:8 }}>ALL-TIME STATS</div>
@@ -2476,19 +2484,14 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WIN%</div>
                     </div>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#4ade80" }}>{(()=>{
-                        const cur=playerStats[selectedPlayer.name]||{};
-                        const totalW=(at.matchWins||0)+(cur.matchWins||0);
-                        const totalM=(at.totalMatches||0)+(cur.matchWins||0)+(cur.matchLosses||0)+(cur.matchTies||0);
-                        return totalM>0?Math.round((totalW/totalM)*100)+"%":"—";
-                      })()}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#4ade80" }}>{winPct!==null?winPct+"%":"—"}</div>
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>WIN%</div>
                     </div>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
                       <div style={{ fontSize:13, fontWeight:800, lineHeight:1.4 }}>
-                        <span style={{ color:"#4ade80" }}>{at.matchWins}W</span>{" "}
-                        <span style={{ color:"#ffd700" }}>{at.matchTies}T</span>{" "}
-                        <span style={{ color:"#ff5555" }}>{at.matchLosses}L</span>
+                        <span style={{ color:"#4ade80" }}>{totalW}W</span>{" "}
+                        <span style={{ color:"#ffd700" }}>{totalT}T</span>{" "}
+                        <span style={{ color:"#ff5555" }}>{totalL}L</span>
                       </div>
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>RECORD</div>
                     </div>
