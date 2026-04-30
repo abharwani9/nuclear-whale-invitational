@@ -814,11 +814,11 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                           {(()=>{
                             const comp=competitions.find(c=>c.name===m.competitionName);
                             const defPts=comp&&meta?.compPts?.[comp.id]?Number(meta.compPts[comp.id]):round.pointsPerWin||2;
-                            return <input type="number" step="0.5" style={{...s.input,width:60}} value={m.pointsWorth||""}
-                              placeholder={`${defPts} pts`}
+                            return <input type="number" step="0.5" style={{...s.input,width:52,textAlign:"center"}} value={m.pointsWorth||""}
+                              placeholder={String(defPts)}
                               onChange={e=>updateMatchupField(round,mi,"pointsWorth",e.target.value===''?'':Number(e.target.value))}/>;
                           })()}
-                          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>pts/win</span>
+                          <span style={{fontSize:11,color:"rgba(255,255,255,0.35)"}}>pts/win</span>
                           <button style={{...s.btnDanger,padding:"3px 8px",fontSize:10}} onClick={()=>delMatchup(round,mi)}>✕</button>
                         </div>
                       </div>
