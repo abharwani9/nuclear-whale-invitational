@@ -848,11 +848,16 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             <option value="">— Competition —</option>
                             {(()=>{
                               const mainComps = competitions.filter(c=>c.section!=="side");
-                              const savedOrder = meta?.compSettingsOrder||[];
-                              const ordered = [
-                                ...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
-                                ...mainComps.filter(c=>!savedOrder.includes(c.id)).sort((a,b)=>(a.order??0)-(b.order??0))
-                              ];
+                              const savedOrder = (meta?.compSettingsOrder||[]).filter(id=>mainComps.some(c=>c.id===id));
+                              let ordered;
+                              if(savedOrder.length>0){
+                                ordered = [
+                                  ...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
+                                  ...mainComps.filter(c=>!savedOrder.includes(c.id))
+                                ];
+                              } else {
+                                ordered = [...mainComps].sort((a,b)=>(a.order??0)-(b.order??0));
+                              }
                               return ordered.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
                             })()}
                           </select>
@@ -2093,7 +2098,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         const p = form[`compPts_${c.id}`];
         if (p !== "" && p !== undefined) compPts[c.id] = Number(p);
       });
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,compPts,defaultMatchPts:Number(form.defaultMatchPts)||2});
+      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,compPts,defaultMatchPts:Number(form.defaultMatchPts)||2,compSettingsOrder:meta?.compSettingsOrder||[]});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
