@@ -1088,9 +1088,9 @@ export default function PublicApp({ onGoAdmin }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [lbTab, setLbTab]           = useState(()=>{ try{ return sessionStorage.getItem("nwi_pub_lbtab")||"team"; }catch(e){ return "team"; } });
   const [expandedHistory, setExpandedHistory] = useState(null);
-  const [atSort, setAtSort]         = useState("ptsWinPct");
+  const [atSort, setAtSort]         = useState("record");
   const [atDir, setAtDir]           = useState("desc");
-  const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
+  const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %", championships:"championships" };
   const [indSort, setIndSort]       = useState("record");
   const [indDir, setIndDir]         = useState("desc");
   const indSortLabels = { ptsWon:"points won", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
@@ -1562,7 +1562,7 @@ export default function PublicApp({ onGoAdmin }) {
                             <th>Player</th>
                             <th style={thS("ptsWon")} onClick={()=>handleIndSort("ptsWon")}>Pts{arr("ptsWon")}</th>
                             <th style={thS("ptsWinPct")} onClick={()=>handleIndSort("ptsWinPct")}>Pts%{arr("ptsWinPct")}</th>
-                            <th style={thS("record")} onClick={()=>handleIndSort("record")}>W-T-L{arr("record")}</th>
+                            <th style={thS("record")} onClick={()=>handleIndSort("record")}>Record{arr("record")}</th>
                             <th style={thS("winPct")} onClick={()=>handleIndSort("winPct")}>Win%{arr("winPct")}</th>
                           </tr></thead>
                           <tbody>
@@ -1585,7 +1585,11 @@ export default function PublicApp({ onGoAdmin }) {
                                   </td>
                                   <td style={{ fontWeight:700, color:tc?tc.color:"rgba(255,255,255,0.5)" }}>{p.ptsWon}</td>
                                   <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                  <td style={{ color:"rgba(255,255,255,0.5)", fontSize:11 }}>{p.matchWins}-{p.matchTies}-{p.matchLosses}</td>
+                                  <td>
+                                    <span style={{ fontWeight:700, color:"#4ade80", fontSize:11 }}>{p.matchWins}W</span>
+                                    {" "}<span style={{ fontWeight:700, color:"#ffd700", fontSize:11 }}>{p.matchTies}T</span>
+                                    {" "}<span style={{ fontWeight:700, color:"#ff5555", fontSize:11 }}>{p.matchLosses}L</span>
+                                  </td>
                                   <td style={{ fontWeight:700, color:"#4ade80" }}>{totalM>0?p.matchWinPct+"%":"—"}</td>
                                 </tr>
                               );
@@ -1610,11 +1614,14 @@ export default function PublicApp({ onGoAdmin }) {
                         else { setAtSort(col); setAtDir("desc"); }
                       };
                       const sorted = [...allTimeLb].sort((a,b) => {
+                        const aTw = history.filter(h=>{if(!h.winner||h.winner==="TBD")return false;const wt=h.winner==="THE NUKES"?"nukes":"whales";const dr=drafts?.find(d=>String(d.year)===String(h.year));return dr?.assignments?.[a.name]===wt;}).length;
+                        const bTw = history.filter(h=>{if(!h.winner||h.winner==="TBD")return false;const wt=h.winner==="THE NUKES"?"nukes":"whales";const dr=drafts?.find(d=>String(d.year)===String(h.year));return dr?.assignments?.[b.name]===wt;}).length;
                         let diff = 0;
-                        if (atSort==="ptsWon")    diff = b.ptsWon - a.ptsWon;
-                        if (atSort==="ptsWinPct") diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
-                        if (atSort==="record")    diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
-                        if (atSort==="winPct")    diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
+                        if (atSort==="ptsWon")         diff = b.ptsWon - a.ptsWon;
+                        if (atSort==="ptsWinPct")      diff = b.ptsWinPct - a.ptsWinPct || b.ptsWon - a.ptsWon;
+                        if (atSort==="record")         diff = b.matchWins - a.matchWins || a.matchLosses - b.matchLosses;
+                        if (atSort==="winPct")         diff = b.matchWinPct - a.matchWinPct || b.matchWins - a.matchWins;
+                        if (atSort==="championships")  diff = bTw - aTw || b.matchWins - a.matchWins;
                         return atDir==="asc" ? -diff : diff;
                       });
                       const thStyle = (col) => ({ cursor:"pointer", userSelect:"none", color:atSort===col?"#ffd700":"rgba(255,255,255,0.5)", whiteSpace:"nowrap" });
@@ -1625,7 +1632,7 @@ export default function PublicApp({ onGoAdmin }) {
                             <thead><tr>
                               <th>#</th>
                               <th>Player</th>
-                              <th style={{cursor:"default"}}>Championships</th>
+                              <th style={thStyle("championships")} onClick={()=>handleSort("championships")}>Championships{arrow("championships")}</th>
                               <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
                               <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
                               <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
@@ -1654,8 +1661,8 @@ export default function PublicApp({ onGoAdmin }) {
                                         </div>
                                       </div>
                                     </td>
-                                    <td style={{ textAlign:"center", fontWeight:700, color:tournWins>0?"#ffd700":"rgba(255,255,255,0.15)", fontSize:tournWins>0?14:11 }}>
-                                      {tournWins>0?tournWins:"—"}
+                                    <td style={{ textAlign:"center", fontWeight:700, color:tournWins>0?"#ffd700":"rgba(255,255,255,0.4)" }}>
+                                      {tournWins}
                                     </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                     <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
@@ -2459,12 +2466,12 @@ export default function PublicApp({ onGoAdmin }) {
                   <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", marginBottom:8 }}>ALL-TIME STATS</div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#ff8c00" }}>{at.ptsWon}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WON</div>
-                    </div>
-                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
                       <div style={{ fontSize:20, fontWeight:800, color:"#ffd700" }}>{pct}%</div>
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WIN%</div>
+                    </div>
+                    <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#4ade80" }}>{at.totalMatches>0?Math.round((at.matchWins/at.totalMatches)*100)+"%":"—"}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>WIN%</div>
                     </div>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
                       <div style={{ fontSize:13, fontWeight:800, lineHeight:1.4 }}>
