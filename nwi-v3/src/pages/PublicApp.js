@@ -1818,7 +1818,10 @@ export default function PublicApp({ onGoAdmin }) {
                       {m.competitionName&&(()=>{
                 const comp=competitions?.find(c=>c.name===m.competitionName);
                 const defaultPtsVal=Number(m.pointsWorth)||Number(comp&&meta?.compPts?.[comp.id])||Number(round.pointsPerWin)||2;
-                return <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {defaultPtsVal}pts</div>;
+                const subLbl=m.subLabel;
+                return <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>
+                  🏅 {m.competitionName}{subLbl?` · ${subLbl}`:""} · {defaultPtsVal}pts
+                </div>;
               })()}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
@@ -1875,7 +1878,7 @@ export default function PublicApp({ onGoAdmin }) {
                               <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
                               <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {nukeHcp}{isAdj?` (${allowance}%)`:"" }</div>
                             </div>
-                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS</div>
+                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS · tap for stats</div>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
                               <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {whaleHcp}{isAdj?` (${allowance}%)`:"" }</div>
