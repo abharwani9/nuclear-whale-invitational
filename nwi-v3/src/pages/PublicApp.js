@@ -1091,7 +1091,7 @@ export default function PublicApp({ onGoAdmin }) {
   const [atSort, setAtSort]         = useState("ptsWinPct");
   const [atDir, setAtDir]           = useState("desc");
   const atSortLabels = { ptsWon:"total points", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
-  const [indSort, setIndSort]       = useState("ptsWon");
+  const [indSort, setIndSort]       = useState("record");
   const [indDir, setIndDir]         = useState("desc");
   const indSortLabels = { ptsWon:"points won", ptsWinPct:"points win %", record:"wins", winPct:"match win %" };
   const [playersSort, setPlayersSort] = useState("alpha");
@@ -1355,8 +1355,8 @@ export default function PublicApp({ onGoAdmin }) {
   const totalPtsAvail = teamPtsAvail.nukes;
   const playedPts = teamPoints.nukes + teamPoints.whales;
   const remainingPts = totalPtsAvail - playedPts;
-  const nukeWinPts  = Math.max(0, Math.ceil(totalPtsAvail / 2 + 0.5 - teamPoints.nukes));
-  const whaleWinPts = Math.max(0, Math.ceil(totalPtsAvail / 2 + 0.5 - teamPoints.whales));
+  const nukeWinPts  = Math.max(0, totalPtsAvail / 2 + 0.5 - teamPoints.nukes);
+  const whaleWinPts = Math.max(0, totalPtsAvail / 2 + 0.5 - teamPoints.whales);
   const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
   const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
   const nukesElim  = teamPoints.nukes  + remainingPts <= teamPoints.whales;
@@ -1435,13 +1435,13 @@ export default function PublicApp({ onGoAdmin }) {
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
             <div className="card nuke-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="nukes" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>☢️ NUKES</div>
-              <div style={{ fontSize:32, fontWeight:900, color:"#ff4500", lineHeight:1, animation:"flicker 3s infinite" }}>{teamPoints.nukes}</div>
+              <div style={{ fontSize:32, fontWeight:900, color:"#ff4500", lineHeight:1, animation:"flicker 3s infinite" }}>{teamPoints.nukes%1===0?teamPoints.nukes:teamPoints.nukes.toFixed(1)}</div>
               <div style={{ fontSize:10, color:"rgba(255,80,0,0.5)", marginTop:1 }}>POINTS</div>
             </div>
             <div style={{ textAlign:"center", fontSize:14, fontWeight:900, color:"rgba(255,255,255,0.15)" }}>VS</div>
             <div className="card whale-card" style={{ padding:"10px", textAlign:"center", boxShadow: dynamicColors?.leading==="whales" ? `0 0 20px ${dynamicColors.glow}` : undefined, transition:"box-shadow 1s ease" }}>
               <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", marginBottom:2 }}>🐋 WHALES</div>
-              <div style={{ fontSize:32, fontWeight:900, color:"#00aaff", lineHeight:1, animation:"wave 3s infinite" }}>{teamPoints.whales}</div>
+              <div style={{ fontSize:32, fontWeight:900, color:"#00aaff", lineHeight:1, animation:"wave 3s infinite" }}>{teamPoints.whales%1===0?teamPoints.whales:teamPoints.whales.toFixed(1)}</div>
               <div style={{ fontSize:10, color:"rgba(0,150,255,0.5)", marginTop:1 }}>POINTS</div>
             </div>
           </div>
@@ -1479,7 +1479,7 @@ export default function PublicApp({ onGoAdmin }) {
                     const clinched=t.team==="nukes"?nukesClinched:whalesClinched;
                     const elim=t.team==="nukes"?nukesElim:whalesElim;
                     const needed=t.team==="nukes"?nukeWinPts:whaleWinPts;
-                    const magicNumber = Math.floor(totalPtsAvail/2)+1;
+                    const magicNumber = totalPtsAvail/2+0.5;
                     return (
                       <div key={t.team} className={`card ${t.team==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:"16px" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -1490,7 +1490,7 @@ export default function PublicApp({ onGoAdmin }) {
                             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>{activePlayers.filter(p=>teamAssign[p.name]===t.team).length} players</div>
                           </div>
                           <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:36, fontWeight:900, color:TEAMS[t.team].color, lineHeight:1 }}>{t.pts}</div>
+                            <div style={{ fontSize:36, fontWeight:900, color:TEAMS[t.team].color, lineHeight:1 }}>{t.pts%1===0?t.pts:t.pts.toFixed(1)}</div>
                             <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>PTS</div>
                           </div>
                         </div>
@@ -1503,7 +1503,7 @@ export default function PublicApp({ onGoAdmin }) {
                             ) : (
                               <div>
                                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:5 }}>
-                                  <span style={{ fontSize:12, fontWeight:600 }}>{t.pts} pts · Need {magicNumber} to clinch · {Math.round((t.pts/totalPtsAvail)*100)}% of pts won</span>
+                                  <span style={{ fontSize:12, fontWeight:600 }}>{t.pts%1===0?t.pts:t.pts.toFixed(1)} pts · Need {magicNumber%1===0?magicNumber:magicNumber.toFixed(1)} to clinch · {Math.round((t.pts/totalPtsAvail)*100)}% of pts won</span>
                                 </div>
                                 <div style={{ height:8, background:"rgba(255,255,255,0.07)", borderRadius:4, overflow:"hidden" }}>
                                   <div style={{ height:"100%", borderRadius:4, transition:"width 0.5s",
@@ -1625,7 +1625,7 @@ export default function PublicApp({ onGoAdmin }) {
                             <thead><tr>
                               <th>#</th>
                               <th>Player</th>
-                              <th>🏆</th>
+                              <th style={{cursor:"default"}}>Championships</th>
                               <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
                               <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
                               <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
@@ -1648,13 +1648,14 @@ export default function PublicApp({ onGoAdmin }) {
                                         {rp?.photoURL
                                           ? <img src={rp.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
                                           : <div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, flexShrink:0 }}>{p.name?.[0]}</div>}
-                                        <div style={{ fontWeight:700 }}>{p.name}</div>
+                                        <div>
+                                          <div style={{ fontWeight:700 }}>{p.name}</div>
+                                          {tournWins>0&&<div style={{ display:"flex", gap:0, marginTop:1 }}>{Array.from({length:tournWins}).map((_,ti)=><span key={ti} style={{ fontSize:9 }}>🏆</span>)}</div>}
+                                        </div>
                                       </div>
                                     </td>
-                                    <td style={{ textAlign:"center" }}>
-                                      {tournWins>0
-                                        ? <div style={{ display:"flex", gap:1, justifyContent:"center" }}>{Array.from({length:tournWins}).map((_,ti)=><span key={ti} style={{ fontSize:11 }}>🏆</span>)}</div>
-                                        : <span style={{ color:"rgba(255,255,255,0.15)", fontSize:11 }}>—</span>}
+                                    <td style={{ textAlign:"center", fontWeight:700, color:tournWins>0?"#ffd700":"rgba(255,255,255,0.15)", fontSize:tournWins>0?14:11 }}>
+                                      {tournWins>0?tournWins:"—"}
                                     </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                     <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
@@ -1802,7 +1803,10 @@ export default function PublicApp({ onGoAdmin }) {
                   {(round.matchups||[]).map((m,mi)=>(
                     <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
                       onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
-                      {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {m.pointsWorth||round.pointsPerWin}pts</div>}
+                      {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {(()=>{
+                const comp=competitions?.find(c=>c.name===m.competitionName);
+                return m.pointsWorth||(comp&&meta?.compPts?.[comp.id])||round.pointsPerWin||2;
+              })()}pts</div>}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
@@ -2624,9 +2628,17 @@ export default function PublicApp({ onGoAdmin }) {
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:4 }}>🏆 Tournament Champion</div>
                 <div style={{ fontSize:24, fontWeight:900, color:winnerColor }}>{winnerEmoji} {histYear?.winner || "TBD"}</div>
                 <div style={{ fontSize:18, fontWeight:700, color:"rgba(255,255,255,0.6)", marginTop:4 }}>
-                  <span style={{ color:"#ff4500" }}>{histYear?.nukes_pts || 0}</span>
+                  <span style={{ color:"#ff4500" }}>{(()=>{
+                    const ms=(histYear?.matches||[]).filter(m=>m.type!=="heading"&&m.winner);
+                    if(!ms.length) return histYear?.nukes_pts||0;
+                    return ms.reduce((s,m)=>{const p=Number(m.pointsWorth)||0;return m.winner==="nukes"?s+p:m.winner==="tie"?s+p/2:s;},0);
+                  })()}</span>
                   <span style={{ color:"rgba(255,255,255,0.3)", margin:"0 8px" }}>–</span>
-                  <span style={{ color:"#00aaff" }}>{histYear?.whales_pts || 0}</span>
+                  <span style={{ color:"#00aaff" }}>{(()=>{
+                    const ms=(histYear?.matches||[]).filter(m=>m.type!=="heading"&&m.winner);
+                    if(!ms.length) return histYear?.whales_pts||0;
+                    return ms.reduce((s,m)=>{const p=Number(m.pointsWorth)||0;return m.winner==="whales"?s+p:m.winner==="tie"?s+p/2:s;},0);
+                  })()}</span>
                 </div>
               </div>
 
