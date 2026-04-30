@@ -617,14 +617,12 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
               <option>Day 1</option><option>Day 2</option><option>Day 3</option>
             </select>
           </div>
-          <div><div style={s.label}>Points per Win</div><input style={s.input} type="number" step="0.5" value={form.pointsPerWin} onChange={e=>setForm(f=>({...f,pointsPerWin:e.target.value}))}/></div>
-          <div><div style={s.label}>Points per Tie</div><input style={s.input} type="number" step="0.5" value={form.pointsPerTie} onChange={e=>setForm(f=>({...f,pointsPerTie:e.target.value}))}/></div>
         </div>
         <div style={{ marginTop:10 }}>
           <div style={s.label}>Competition (optional)</div>
           <select style={s.select} value={form.competitionName} onChange={e=>setForm(f=>({...f,competitionName:e.target.value}))}>
             <option value="">— None —</option>
-            {compNames.map(n=><option key={n}>{n}</option>)}
+            {[...competitions].filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0)).map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>)}
           </select>
         </div>
         <div style={{ ...s.row, marginTop:14 }}>
@@ -847,14 +845,8 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                           <select style={{...s.select,maxWidth:180}} value={m.competitionName||""} onChange={e=>updateMatchupField(round,mi,"competitionName",e.target.value)}>
                             <option value="">— Competition —</option>
                             {(()=>{
-                              const mainComps = competitions.filter(c=>c.section!=="side");
-                              const savedOrder = (meta?.compSettingsOrder||[]).filter(id=>mainComps.some(c=>c.id===id));
-                              // Use compSettingsOrder if set, else fall back to competitions tab order (order field)
-                              const ordered = savedOrder.length>0
-                                ? [...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
-                                   ...mainComps.filter(c=>!savedOrder.includes(c.id))]
-                                : mainComps; // as-is from Firestore, user can set order in Settings tab
-                              return ordered.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
+                              const mainComps = [...competitions].filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0));
+                              return mainComps.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
                             })()}
                           </select>
                         </div>
