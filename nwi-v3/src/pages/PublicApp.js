@@ -495,7 +495,7 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
 
   // Sort non-scramble comps by order they appear in rounds/matchups tab
   const roundsCompNames = [];
-  (rounds||[]).forEach(r=>{
+  [...(rounds||[])].sort((a,b)=>(a.order??0)-(b.order??0)).forEach(r=>{
     const n=r.competitionName||"";
     if(n&&!roundsCompNames.includes(n)) roundsCompNames.push(n);
     (r.matchups||[]).forEach(m=>{
@@ -1817,7 +1817,7 @@ export default function PublicApp({ onGoAdmin }) {
                       onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
                       {m.competitionName&&(()=>{
                 const comp=competitions?.find(c=>c.name===m.competitionName);
-                const defaultPtsVal=m.pointsWorth||(comp&&meta?.compPts?.[comp.id])||round.pointsPerWin||2;
+                const defaultPtsVal=Number(m.pointsWorth)||Number(comp&&meta?.compPts?.[comp.id])||Number(round.pointsPerWin)||2;
                 return <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {defaultPtsVal}pts</div>;
               })()}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
@@ -2476,7 +2476,12 @@ export default function PublicApp({ onGoAdmin }) {
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>PTS WIN%</div>
                     </div>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
-                      <div style={{ fontSize:20, fontWeight:800, color:"#4ade80" }}>{at.totalMatches>0?Math.round((at.matchWins/at.totalMatches)*100)+"%":"—"}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"#4ade80" }}>{(()=>{
+                        const cur=playerStats[selectedPlayer.name]||{};
+                        const totalW=(at.matchWins||0)+(cur.matchWins||0);
+                        const totalM=(at.totalMatches||0)+(cur.matchWins||0)+(cur.matchLosses||0)+(cur.matchTies||0);
+                        return totalM>0?Math.round((totalW/totalM)*100)+"%":"—";
+                      })()}</div>
                       <div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", marginTop:3 }}>WIN%</div>
                     </div>
                     <div style={{ background:"rgba(255,255,255,0.04)", borderRadius:10, padding:"10px 8px", textAlign:"center" }}>
