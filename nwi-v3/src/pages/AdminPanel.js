@@ -18,8 +18,8 @@ function useDragList(initialItems) {
   const dragIdx = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
-  // Keep in sync with Firebase updates
-  useEffect(() => { setItems(initialItems); }, [JSON.stringify(initialItems.map(x=>x.id))]);
+  // Keep in sync with Firebase updates (sync on any data change, not just ID changes)
+  useEffect(() => { setItems(initialItems); }, [JSON.stringify(initialItems)]);
 
   const onDragStart = (i) => { dragIdx.current = i; };
   const onDragEnter = (i) => {
@@ -849,15 +849,10 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
                             {(()=>{
                               const mainComps = competitions.filter(c=>c.section!=="side");
                               const savedOrder = (meta?.compSettingsOrder||[]).filter(id=>mainComps.some(c=>c.id===id));
-                              let ordered;
-                              if(savedOrder.length>0){
-                                ordered = [
-                                  ...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
-                                  ...mainComps.filter(c=>!savedOrder.includes(c.id))
-                                ];
-                              } else {
-                                ordered = [...mainComps].sort((a,b)=>(a.order??0)-(b.order??0));
-                              }
+                              const ordered = savedOrder.length>0
+                                ? [...savedOrder.map(id=>mainComps.find(c=>c.id===id)).filter(Boolean),
+                                   ...mainComps.filter(c=>!savedOrder.includes(c.id))]
+                                : [...mainComps].sort((a,b)=>(a.order??0)-(b.order??0));
                               return ordered.map(c=><option key={c.id} value={c.name}>{c.icon||"🏅"} {c.name}</option>);
                             })()}
                           </select>
