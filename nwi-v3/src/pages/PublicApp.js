@@ -503,12 +503,17 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
       if(mn&&!roundsCompNames.includes(mn)) roundsCompNames.push(mn);
     });
   });
+  // Sort by order competitions appear in rounds (same as matchups tab), then by competitions order
   const sortedNonScramble = [...nonScrambleTeamComps].sort((a,b)=>{
     const ai=roundsCompNames.indexOf(a.name);
     const bi=roundsCompNames.indexOf(b.name);
-    const ao=ai>=0?ai:(compOrder[a.id]??999);
-    const bo=bi>=0?bi:(compOrder[b.id]??999);
-    return ao-bo;
+    // If both found in rounds, use that order
+    if(ai>=0&&bi>=0) return ai-bi;
+    // If only one found, it goes first
+    if(ai>=0) return -1;
+    if(bi>=0) return 1;
+    // Fall back to competitions collection order
+    return (a.order??0)-(b.order??0);
   });
   const boardEntries = [
     ...sortedNonScramble.map(c=>({type:"comp",comp:c,id:c.id})),
@@ -1810,10 +1815,11 @@ export default function PublicApp({ onGoAdmin }) {
                   {(round.matchups||[]).map((m,mi)=>(
                     <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
                       onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
-                      {m.competitionName&&<div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {(()=>{
+                      {m.competitionName&&(()=>{
                 const comp=competitions?.find(c=>c.name===m.competitionName);
-                return m.pointsWorth||(comp&&meta?.compPts?.[comp.id])||round.pointsPerWin||2;
-              })()}pts</div>}
+                const defaultPtsVal=m.pointsWorth||(comp&&meta?.compPts?.[comp.id])||round.pointsPerWin||2;
+                return <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏅 {m.competitionName} · {defaultPtsVal}pts</div>;
+              })()}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
                         <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
