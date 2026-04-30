@@ -1819,8 +1819,13 @@ export default function PublicApp({ onGoAdmin }) {
                 const comp=competitions?.find(c=>c.name===m.competitionName);
                 const defaultPtsVal=Number(m.pointsWorth)||Number(comp&&meta?.compPts?.[comp.id])||Number(round.pointsPerWin)||2;
                 const subLbl=m.subLabel;
+                // For scramble sub-rows, show subLabel as the title (e.g. "Front 9", "18-Holes")
+                // For regular matchups, show competition name
+                const displayName = subLbl
+                  ? (subLbl==="18-Holes"?"18-Hole Scramble":subLbl==="Front 9"?"Front 9 Scramble":subLbl==="Back 9"?"Back 9 Scramble":subLbl)
+                  : m.competitionName;
                 return <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>
-                  🏅 {m.competitionName}{subLbl?` · ${subLbl}`:""} · {defaultPtsVal}pts
+                  🏅 {displayName} · {defaultPtsVal}pts
                 </div>;
               })()}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
@@ -1924,7 +1929,7 @@ export default function PublicApp({ onGoAdmin }) {
                           </div>
                         );
                       })()}
-                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}>Tap for Stats</div>}
+                      {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}></div>}
                     </div>
                   ))}
                 </div>
