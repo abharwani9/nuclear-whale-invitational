@@ -552,6 +552,8 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
   // Local matchup state per round — avoids Firebase re-render flicker
   const [localMatchups, setLocalMatchups] = useState({});
+  const [collapsedRounds, setCollapsedRounds] = useState({});
+  const toggleRound = (id) => setCollapsedRounds(c=>({...c,[id]:c[id]===false?true:false}));
 
 
   // Keep local state in sync when Firebase updates (but don't overwrite mid-edit)
@@ -1353,7 +1355,9 @@ function ImportFromRounds({ year, rounds, showToast }) {
           whales: (m.whales||[]).filter(Boolean),
           winner: m.winner || null,
           roundName: m.competitionName || round.name || "",
-          pointsWorth: m.pointsWorth || round.pointsPerWin || 0,
+          pointsWorth: Number(m.pointsWorth) || 0,
+          ...(m.subLabel ? { subLabel: m.subLabel } : {}),
+          ...(m.scrambleGroup ? { scrambleGroup: m.scrambleGroup } : {}),
         });
       });
     });
