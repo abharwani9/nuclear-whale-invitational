@@ -1431,7 +1431,15 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
   const [newHeading, setNewHeading] = useState("");
   const [addingHeading, setAddingHeading] = useState(false);
   const allPlayers = [...nukeNames,...whaleNames];
-  const compOptions = ["Round 1","Round 2","Round 3",...(competitions||[]).map(c=>c.name)];
+  // Build options from actual rounds and competitions — no hardcoded Day/Round names
+  const compOptions = [
+    ...new Set([
+      ...(competitions||[]).filter(c=>c.section!=="side").map(c=>c.name),
+      "Front 9 Scramble","Back 9 Scramble","18-Hole Scramble",
+      // Also include any roundNames already used in this year's matches
+      ...(year?.matches||[]).filter(m=>m.roundName).map(m=>m.roundName),
+    ])
+  ];
 
   const saveAll = async (newMatches) => {
     await firestore.update("history", year.id, { matches: newMatches });
