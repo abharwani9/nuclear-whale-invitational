@@ -2471,8 +2471,10 @@ export default function PublicApp({ onGoAdmin }) {
                 playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
               });
               // Add catch-up payments for new players
-              (e.catchUpPaid||[]).forEach(name => {
-                const catchUp = yearEntries.filter(y=>y.year<e.year&&y.year>lastPaidYear).reduce((s,y)=>s+(y.buyIn||0),0);
+              // Only count catch-up for players currently opted in this year
+              const optedInThisYear = e.optedIn||[];
+              (e.catchUpPaid||[]).filter(name=>optedInThisYear.includes(name)).forEach(name => {
+                const catchUp = yearEntries.filter(y=>Number(y.year)<Number(e.year)&&Number(y.year)>lastPaidYear).reduce((s,y)=>s+Number(y.buyIn||0),0);
                 if(catchUp>0) playerOwed[name] = (playerOwed[name]||0) + catchUp;
               });
             }
@@ -2481,9 +2483,10 @@ export default function PublicApp({ onGoAdmin }) {
           const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
           // Total including catch-up
           const catchUpContrib = yearEntries.reduce((sum,e)=>{
-            const paid = e.catchUpPaid||[];
-            const catchUp = yearEntries.filter(y=>y.year<e.year).reduce((s,y)=>s+(y.buyIn||0),0);
-            return sum + paid.length * catchUp;
+            const optedInNames = e.optedIn||[];
+            const validPaid = (e.catchUpPaid||[]).filter(n=>optedInNames.includes(n));
+            const catchUp = yearEntries.filter(y=>Number(y.year)<Number(e.year)).reduce((s,y)=>s+Number(y.buyIn||0),0);
+            return sum + validPaid.length * catchUp;
           }, 0);
           const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0) + catchUpContrib;
           const runningTotal = totalContributed - totalPaidOut;
