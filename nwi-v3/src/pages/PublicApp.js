@@ -1806,7 +1806,7 @@ export default function PublicApp({ onGoAdmin }) {
                   <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
                 </div>
               );
-              const isCollapsed = collapsedRounds[round.id];
+              const isCollapsed = collapsedRounds[round.id] !== false; // default collapsed
               const matchupList = round.matchups||[];
               // Group scramble rows
               const renderedGroups = [];
@@ -1826,11 +1826,12 @@ export default function PublicApp({ onGoAdmin }) {
                 <div key={round.id} style={{ marginBottom:20 }}>
                   {/* Round header - tappable to collapse */}
                   <div onClick={()=>setCollapsedRounds(c=>({...c,[round.id]:!c[round.id]}))}
-                    style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isCollapsed?0:10, flexWrap:"wrap", cursor:"pointer", padding:"6px 0" }}>
+                    style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isCollapsed?4:10, flexWrap:"wrap", cursor:"pointer", padding:"6px 0" }}>
+                    <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)", width:14 }}>{isCollapsed?"▶":"▼"}</span>
                     <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
                     {round.day&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:20 }}>{round.day}</div>}
                     {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
-                    <div style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,255,255,0.3)" }}>{isCollapsed?"▶":"▼"} {matchupList.length} match{matchupList.length!==1?"es":""}</div>
+                    <div style={{ marginLeft:"auto", fontSize:10, color:"rgba(255,255,255,0.25)" }}>{matchupList.length} match{matchupList.length!==1?"es":""}</div>
                   </div>
                   {!isCollapsed && renderedGroups.map((grp,gi)=>{
                     if(grp.type==="scramble"){
@@ -1841,7 +1842,15 @@ export default function PublicApp({ onGoAdmin }) {
                       return (
                         <div key={gi} className="card" style={{ padding:"14px", marginBottom:10 }}>
                           <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏌️ 9-9-18 Scramble</div>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center", marginBottom:10 }}>
+                          {(()=>{
+                            const scrComp = competitions?.find(c=>c.isScramble||c.name?.toLowerCase().includes("scramble"));
+                            const scrAllow = scrComp ? (meta?.hcpAllowances?.[scrComp.id]||100) : 100;
+                            const scrOdds = calcOdds(nukes.filter(Boolean), whales.filter(Boolean), Number(scrAllow), scrComp?.name||"");
+                            const nHcp = teamHandicap(nukes.filter(Boolean), Number(scrAllow));
+                            const wHcp = teamHandicap(whales.filter(Boolean), Number(scrAllow));
+                            const isAdj2 = Number(scrAllow) < 100;
+                            return (<>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
                             <div style={{ textAlign:"center" }}>
                               {nukes.filter(n=>n).map(n=><PhotoAvatar key={n} name={n} roster={roster} size={26}/>)}
                               <div style={{ fontSize:11, fontWeight:700, color:"#ff4500", marginTop:4 }}>{nukes.filter(n=>n).join(" & ")}</div>
@@ -1852,16 +1861,31 @@ export default function PublicApp({ onGoAdmin }) {
                               <div style={{ fontSize:11, fontWeight:700, color:"#00aaff", marginTop:4 }}>{whales.filter(n=>n).join(" & ")}</div>
                             </div>
                           </div>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8, marginBottom:8 }}>
+                            <div style={{ textAlign:"center" }}>
+                              <div style={{ fontSize:14, fontWeight:900, color:"#ff4500" }}>{Math.round(scrOdds.nukeProb*100)}%</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {nHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
+                            </div>
+                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)" }}>Win Probability</div>
+                            <div style={{ textAlign:"center" }}>
+                              <div style={{ fontSize:14, fontWeight:900, color:"#00aaff" }}>{Math.round(scrOdds.whaleProb*100)}%</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {wHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
+                            </div>
+                          </div>
+                            </>);
+                          })()}
                           {grp.rows.map(({mm,mmi})=>{
                             const lbl = mm.subLabel||(mmi===0?"Front 9":mmi===1?"Back 9":"18-Holes");
                             const pts = Number(mm.pointsWorth)||2;
+                            const rowBg = mm.winner==="nukes"?"rgba(255,69,0,0.12)":mm.winner==="whales"?"rgba(0,170,255,0.12)":mm.winner==="tie"?"rgba(255,200,0,0.08)":"rgba(255,255,255,0.03)";
+                            const rowBorder = mm.winner==="nukes"?"rgba(255,69,0,0.3)":mm.winner==="whales"?"rgba(0,170,255,0.3)":mm.winner==="tie"?"rgba(255,200,0,0.2)":"rgba(255,255,255,0.07)";
                             const winColor = mm.winner==="nukes"?"#ff4500":mm.winner==="whales"?"#00aaff":mm.winner==="tie"?"#ffd700":"rgba(255,255,255,0.25)";
-                            const winLabel = mm.winner==="nukes"?`☢️ Nukes +${pts}`:mm.winner==="whales"?`🐋 Whales +${pts}`:mm.winner==="tie"?`🤝 Tie (+${pts/2} each)`:"Pending";
+                            const winLabel = mm.winner==="nukes"?"☢️ Nukes":mm.winner==="whales"?"🐋 Whales":mm.winner==="tie"?"🤝 Tie":"Pending";
                             return (
-                              <div key={mmi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:4 }}>
-                                <span style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:600 }}>{lbl}</span>
+                              <div key={mmi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:rowBg, border:`1px solid ${rowBorder}`, borderRadius:7, marginBottom:4 }}>
+                                <span style={{ fontSize:11, color:"rgba(255,255,255,0.6)", fontWeight:600 }}>{lbl}</span>
                                 <span style={{ fontSize:11, fontWeight:700, color:winColor }}>{winLabel}</span>
-                                <span style={{ fontSize:10, color:"rgba(255,255,255,0.25)" }}>{pts}pts</span>
+                                <span style={{ fontSize:10, color:"rgba(255,255,255,0.35)", fontWeight:600 }}>{pts}pts</span>
                               </div>
                             );
                           })}
@@ -1938,13 +1962,15 @@ export default function PublicApp({ onGoAdmin }) {
                         return (
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
                             <div style={{ textAlign:"center", flex:1 }}>
-                              <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {nukeHcp} · {Math.round(odds.nukeProb*100)}%{isAdj?` (${allowance}%)`:"" }</div>
+                              <div style={{ fontSize:12, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>Win Probability</div>
+                              <div style={{ fontSize:18, fontWeight:900, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)", lineHeight:1.1 }}>{Math.round(odds.nukeProb*100)}%</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {nukeHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
                             </div>
                             <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS · Tap for Stats</div>
                             <div style={{ textAlign:"center", flex:1 }}>
-                              <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {whaleHcp} · {Math.round(odds.whaleProb*100)}%{isAdj?` (${allowance}%)`:"" }</div>
+                              <div style={{ fontSize:12, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>Win Probability</div>
+                              <div style={{ fontSize:18, fontWeight:900, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)", lineHeight:1.1 }}>{Math.round(odds.whaleProb*100)}%</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:2 }}>HCP {whaleHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
                             </div>
                           </div>
                         );
@@ -2280,38 +2306,88 @@ export default function PublicApp({ onGoAdmin }) {
                       {matchCount>0&&(
                         <div style={{ padding:"14px 16px", background:"rgba(0,0,0,0.2)" }}>
                           <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>⚔️ Match Results</div>
-                          {h.matches.map((m,mi)=>(
-                            <div key={mi}>
-                              {/* Subheading */}
-                              {m.type==="heading"&&(
-                                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, marginBottom:8 }}>
-                                  <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.06em", textTransform:"uppercase" }}>{m.label}</div>
-                                  <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
-                                </div>
-                              )}
-                              {/* Match */}
-                              {m.type!=="heading"&&(
-                                <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
-                                  {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
-                                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
-                                    <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                      <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
-                                      {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                      {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5 }}>✓ WIN</div>}
-                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
-                                    </div>
-                                    <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
-                                    <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
-                                      <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
-                                      {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
-                                      {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5 }}>✓ WIN</div>}
-                                      {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                          {(()=>{
+                            // Group scramble rows, show rest individually
+                            const matches = h.matches || [];
+                            const rendered = [];
+                            const usedIdx = new Set();
+                            matches.forEach((m,mi)=>{
+                              if(usedIdx.has(mi)) return;
+                              if(m.scrambleGroup){
+                                const grp = matches.map((mm,mmi)=>({mm,mmi})).filter(({mm})=>mm.scrambleGroup===m.scrambleGroup);
+                                grp.forEach(({mmi})=>usedIdx.add(mmi));
+                                rendered.push({type:"scramble",grp});
+                              } else {
+                                usedIdx.add(mi);
+                                rendered.push({type:"match",m,mi});
+                              }
+                            });
+                            return rendered.map((item,ii)=>(
+                            <div key={ii}>
+                              {item.type==="match"&&(()=>{const m=item.m;return(
+                              <div>
+                                {m.type==="heading"&&(
+                                  <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, marginBottom:8 }}>
+                                    <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.06em", textTransform:"uppercase" }}>{m.label}</div>
+                                    <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
+                                  </div>
+                                )}
+                                {m.type!=="heading"&&(
+                                  <div style={{ background:"rgba(255,255,255,0.03)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.05)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+                                    {m.roundName&&<div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:10 }}>🏅 {m.roundName}{m.pointsWorth?` · ${m.pointsWorth} pts`:""}</div>}
+                                    <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center" }}>
+                                      <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                        <div style={{ fontSize:14, marginBottom:2 }}>☢️</div>
+                                        {(m.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="nukes"?"#ff4500":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                        {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:5 }}>✓ WIN</div>}
+                                        {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                      </div>
+                                      <div style={{ fontSize:10, fontWeight:900, color:"rgba(255,255,255,0.12)", textAlign:"center" }}>VS</div>
+                                      <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.12)":"rgba(0,170,255,0.04)", borderRadius:8, padding:"8px", textAlign:"center" }}>
+                                        <div style={{ fontSize:14, marginBottom:2 }}>🐋</div>
+                                        {(m.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:m.winner==="whales"?"#00aaff":"rgba(255,255,255,0.65)", lineHeight:1.3 }}>{n}</div>)}
+                                        {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:5 }}>✓ WIN</div>}
+                                        {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:5 }}>TIE</div>}
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
+                              </div>
+                              );})()}
+                              {item.type==="scramble"&&(()=>{
+                                const firstM = item.grp[0].mm;
+                                return (
+                                  <div style={{ background:"rgba(255,200,0,0.04)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:10, padding:"11px 12px", marginBottom:8 }}>
+                                    <div style={{ fontSize:14, fontWeight:700, color:"rgba(255,200,0,0.8)", marginBottom:8 }}>🏌️ 9-9-18 Scramble</div>
+                                    <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
+                                      <div style={{ textAlign:"center" }}>
+                                        {(firstM.nukes||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#ff4500" }}>{n}</div>)}
+                                      </div>
+                                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>vs</div>
+                                      <div style={{ textAlign:"center" }}>
+                                        {(firstM.whales||[]).filter(Boolean).map((n,ni)=><div key={ni} style={{ fontSize:13, fontWeight:700, color:"#00aaff" }}>{n}</div>)}
+                                      </div>
+                                    </div>
+                                    {item.grp.map(({mm,mmi})=>{
+                                      const lbl=mm.subLabel||mm.roundName||`Match ${mmi+1}`;
+                                      const pts=Number(mm.pointsWorth)||0;
+                                      const rowBg=mm.winner==="nukes"?"rgba(255,69,0,0.1)":mm.winner==="whales"?"rgba(0,170,255,0.1)":mm.winner==="tie"?"rgba(255,200,0,0.08)":"rgba(255,255,255,0.03)";
+                                      const winColor=mm.winner==="nukes"?"#ff4500":mm.winner==="whales"?"#00aaff":mm.winner==="tie"?"#ffd700":"rgba(255,255,255,0.3)";
+                                      const winLabel=mm.winner==="nukes"?"☢️ Nukes":mm.winner==="whales"?"🐋 Whales":mm.winner==="tie"?"🤝 Tie":"Pending";
+                                      return (
+                                        <div key={mmi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 8px", background:rowBg, borderRadius:6, marginBottom:3 }}>
+                                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", fontWeight:600 }}>{lbl}</span>
+                                          <span style={{ fontSize:11, fontWeight:700, color:winColor }}>{winLabel}</span>
+                                          <span style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>{pts}pts</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
                             </div>
-                          ))}
+                            ));
+                          })()}
                         </div>
                       )}
 
