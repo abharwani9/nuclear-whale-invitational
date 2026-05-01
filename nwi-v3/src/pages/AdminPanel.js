@@ -1263,7 +1263,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:15, fontWeight:800, color:winnerColor }}>{winnerEmoji}{isTBD?"TBD":h.winner}</div>
                   <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", marginTop:2 }}>
-                    MVP: {h.mvp||"—"} · {h.nukes_pts||0}–{h.whales_pts||0}
+                    {h.nukes_pts||0}–{h.whales_pts||0}
                     {matchCount>0&&<span style={{ marginLeft:8, color:"rgba(255,255,255,0.3)" }}>{matchCount} match{matchCount!==1?"es":""}</span>}
                     {supCount>0&&<span style={{ marginLeft:8, color:"rgba(255,200,0,0.5)" }}>🏅 {supCount}</span>}
                   </div>
@@ -1782,7 +1782,12 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const currentEntry = yearEntries.find(e => String(e.year) === String(currentYear));
 
   // Financials — pool resets per winner year: total contributed up to & including winner year minus prior payouts
-  const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
+  const catchUpTotal = yearEntries.reduce((sum,e)=>{
+    const paid = e.catchUpPaid||[];
+    const amount = paid.length * yearEntries.filter(y=>y.year<e.year).reduce((s,y)=>s+(y.buyIn||0),0);
+    return sum + amount;
+  }, 0);
+  const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0) + catchUpTotal;
   const totalPaidOut     = winners.reduce((sum,w)=>sum+(w.amount||0),0);
   const runningTotal     = totalContributed - totalPaidOut;
 
@@ -1818,7 +1823,26 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
     await saveLedger({ yearEntries: upsertYearEntry(year, { optedIn: newOptedIn }) });
   };
 
-  const addYear = async () => {
+  // Catch-up: amount a new player must pay = sum of all buyIns in years before current where pool existed
+  const catchUpAmount = (playerName) => {
+    // Find the first year this player was in the pool
+    const firstYear = yearEntries.filter(e=>(e.optedIn||[]).includes(playerName)).map(e=>e.year).sort((a,b)=>a-b)[0];
+    if (!firstYear) {
+      // Never been in — owes all previous years
+      return yearEntries.filter(e=>e.year<Number(currentYear)).reduce((s,e)=>s+(e.buyIn||0),0);
+    }
+    return 0; // Already in pool from some year
+  };
+
+  const isCatchUpPaid = (playerName) => {
+    return (currentEntry?.catchUpPaid||[]).includes(playerName);
+  };
+
+  const markCatchUpPaid = async (playerName, paid) => {
+    const current = currentEntry?.catchUpPaid||[];
+    const updated = paid ? [...current, playerName] : current.filter(n=>n!==playerName);
+    await saveLedger({ yearEntries: upsertYearEntry(currentYear, { catchUpPaid: updated }) });
+  };
     if (!editYear||!editBuyIn) return showToast("Year and buy-in required", true);
     await saveLedger({ yearEntries: upsertYearEntry(editYear, { buyIn: Number(editBuyIn) }) });
     showToast(`${editYear} added — toggle players below`);
@@ -1892,11 +1916,30 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {sortedRoster.map(p=>{
                     const inPool = (entry.optedIn||[]).includes(p.name);
+                    const catchUp = catchUpAmount(p.name);
+                    const needsCatchUp = inPool && catchUp > 0;
+                    const catchUpPaid = isCatchUpPaid(p.name);
                     return (
                       <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:inPool?"rgba(74,222,128,0.07)":"rgba(255,255,255,0.02)", border:`1px solid ${inPool?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.06)"}`, borderRadius:8 }}>
                         {p.photoURL?<img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:12 }}>{p.name?.[0]}</div>}
-                        <div style={{ flex:1, fontSize:13, fontWeight:600 }}>{p.name}</div>
-                        {inPool&&<div style={{ fontSize:11, color:"#4ade80" }}>${entry.buyIn||0}</div>}
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:600 }}>{p.name}</div>
+                          {needsCatchUp&&!catchUpPaid&&(
+                            <div style={{ fontSize:11, color:"#ffd700", marginTop:2 }}>
+                              ⚠️ Catch-up: ${catchUp} required
+                            </div>
+                          )}
+                          {needsCatchUp&&catchUpPaid&&(
+                            <div style={{ fontSize:11, color:"#4ade80", marginTop:2 }}>✓ Catch-up paid (${catchUp})</div>
+                          )}
+                        </div>
+                        {inPool&&<div style={{ fontSize:11, color:"#4ade80" }}>${entry.buyIn||0}/yr</div>}
+                        {needsCatchUp&&(
+                          <button onClick={()=>markCatchUpPaid(p.name, !catchUpPaid)}
+                            style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${catchUpPaid?"rgba(74,222,128,0.4)":"rgba(255,200,0,0.4)"}`, background:catchUpPaid?"rgba(74,222,128,0.1)":"rgba(255,200,0,0.1)", color:catchUpPaid?"#4ade80":"#ffd700", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                            {catchUpPaid?"✓ Paid":"Mark Paid"}
+                          </button>
+                        )}
                         <button onClick={()=>togglePlayer(p.name, entry.year)}
                           style={{ padding:"4px 12px", borderRadius:8, border:`1px solid ${inPool?"rgba(74,222,128,0.4)":"rgba(255,255,255,0.12)"}`, background:inPool?"rgba(74,222,128,0.12)":"none", color:inPool?"#4ade80":"rgba(255,255,255,0.35)", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                           {inPool?"✓ In":"Out"}
