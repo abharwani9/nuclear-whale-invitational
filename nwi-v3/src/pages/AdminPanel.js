@@ -1843,6 +1843,8 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
     const updated = paid ? [...current, playerName] : current.filter(n=>n!==playerName);
     await saveLedger({ yearEntries: upsertYearEntry(currentYear, { catchUpPaid: updated }) });
   };
+
+  const addYear = async () => {
     if (!editYear||!editBuyIn) return showToast("Year and buy-in required", true);
     await saveLedger({ yearEntries: upsertYearEntry(editYear, { buyIn: Number(editBuyIn) }) });
     showToast(`${editYear} added — toggle players below`);
