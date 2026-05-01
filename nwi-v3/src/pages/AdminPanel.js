@@ -1784,10 +1784,10 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   // Financials — pool resets per winner year: total contributed up to & including winner year minus prior payouts
   const catchUpTotal = yearEntries.reduce((sum,e)=>{
     const paid = e.catchUpPaid||[];
-    const amount = paid.length * yearEntries.filter(y=>y.year<e.year).reduce((s,y)=>s+(y.buyIn||0),0);
+    const amount = paid.length * yearEntries.filter(y=>Number(y.year)<Number(e.year)).reduce((s,y)=>s+Number(y.buyIn||0),0);
     return sum + amount;
   }, 0);
-  const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0) + catchUpTotal;
+  const totalContributed = yearEntries.reduce((sum,e)=>sum+Number(e.contributions||0),0) + catchUpTotal;
   const totalPaidOut     = winners.reduce((sum,w)=>sum+(w.amount||0),0);
   const runningTotal     = totalContributed - totalPaidOut;
 
@@ -1825,13 +1825,15 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
 
   // Catch-up: amount a new player must pay = sum of all buyIns in years before current where pool existed
   const catchUpAmount = (playerName) => {
-    // Find the first year this player was in the pool
-    const firstYear = yearEntries.filter(e=>(e.optedIn||[]).includes(playerName)).map(e=>e.year).sort((a,b)=>a-b)[0];
-    if (!firstYear) {
-      // Never been in — owes all previous years
-      return yearEntries.filter(e=>e.year<Number(currentYear)).reduce((s,e)=>s+(e.buyIn||0),0);
-    }
-    return 0; // Already in pool from some year
+    const curYr = Number(currentYear);
+    // Check if player has ever been in any previous year
+    const wasInBefore = yearEntries.some(e => Number(e.year) < curYr && (e.optedIn||[]).includes(playerName));
+    if (wasInBefore) return 0; // Already a pool member, no catch-up needed
+    // New player — owes sum of all previous years' buy-ins
+    const amount = yearEntries
+      .filter(e => Number(e.year) < curYr)
+      .reduce((s, e) => s + Number(e.buyIn||0), 0);
+    return amount;
   };
 
   const isCatchUpPaid = (playerName) => {
@@ -1918,9 +1920,12 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {sortedRoster.map(p=>{
                     const inPool = (entry.optedIn||[]).includes(p.name);
-                    const catchUp = catchUpAmount(p.name);
+                    // Only check catch-up for the current year section
+                    const isCurrentYearSection = String(entry.year)===String(currentYear);
+                    const catchUp = isCurrentYearSection ? catchUpAmount(p.name) : 0;
                     const needsCatchUp = inPool && catchUp > 0;
                     const catchUpPaid = isCatchUpPaid(p.name);
+                    if(inPool && isCurrentYearSection) console.log(`[HIO] ${p.name}: catchUp=$${catchUp}, needsCatchUp=${needsCatchUp}, prevYears=`, yearEntries.filter(e=>Number(e.year)<Number(currentYear)).map(e=>({yr:e.year,buyIn:e.buyIn,in:(e.optedIn||[]).includes(p.name)})));
                     return (
                       <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:inPool?"rgba(74,222,128,0.07)":"rgba(255,255,255,0.02)", border:`1px solid ${inPool?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.06)"}`, borderRadius:8 }}>
                         {p.photoURL?<img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:12 }}>{p.name?.[0]}</div>}
