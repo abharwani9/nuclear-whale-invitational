@@ -1207,6 +1207,7 @@ export default function PublicApp({ onGoAdmin }) {
 
   const [notifEnabled, setNotifEnabled] = useState(null);
   const [selectedMatchup, setSelectedMatchup] = useState(null);
+  const [collapsedRounds, setCollapsedRounds] = useState({});
   const [showReview, setShowReview] = useState(null);
   const [notifToken, setNotifToken]     = useState(null);
   const [tokenKey, setTokenKey]         = useState(null);
@@ -1805,15 +1806,72 @@ export default function PublicApp({ onGoAdmin }) {
                   <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.08)" }}/>
                 </div>
               );
+              const isCollapsed = collapsedRounds[round.id];
+              const matchupList = round.matchups||[];
+              // Group scramble rows
+              const renderedGroups = [];
+              const usedMi = new Set();
+              matchupList.forEach((m,mi)=>{
+                if(usedMi.has(mi)) return;
+                if(m.scrambleGroup){
+                  const grpRows = matchupList.map((mm,mmi)=>({mm,mmi})).filter(({mm})=>mm.scrambleGroup===m.scrambleGroup);
+                  grpRows.forEach(({mmi})=>usedMi.add(mmi));
+                  renderedGroups.push({type:"scramble",rows:grpRows});
+                } else {
+                  usedMi.add(mi);
+                  renderedGroups.push({type:"standard",m,mi});
+                }
+              });
               return (
                 <div key={round.id} style={{ marginBottom:20 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, flexWrap:"wrap" }}>
+                  {/* Round header - tappable to collapse */}
+                  <div onClick={()=>setCollapsedRounds(c=>({...c,[round.id]:!c[round.id]}))}
+                    style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isCollapsed?0:10, flexWrap:"wrap", cursor:"pointer", padding:"6px 0" }}>
                     <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
                     {round.day&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", background:"rgba(255,255,255,0.05)", padding:"2px 8px", borderRadius:20 }}>{round.day}</div>}
                     {round.competitionName&&<div style={{ fontSize:11, color:"#ffd700", background:"rgba(255,200,0,0.1)", padding:"2px 10px", borderRadius:20 }}>🏅 {round.competitionName}</div>}
+                    <div style={{ marginLeft:"auto", fontSize:12, color:"rgba(255,255,255,0.3)" }}>{isCollapsed?"▶":"▼"} {matchupList.length} match{matchupList.length!==1?"es":""}</div>
                   </div>
-                  {(round.matchups||[]).map((m,mi)=>(
-                    <div key={mi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
+                  {!isCollapsed && renderedGroups.map((grp,gi)=>{
+                    if(grp.type==="scramble"){
+                      // Grouped scramble card
+                      const firstM = grp.rows[0].mm;
+                      const nukes = firstM.nukes||[];
+                      const whales = firstM.whales||[];
+                      return (
+                        <div key={gi} className="card" style={{ padding:"14px", marginBottom:10 }}>
+                          <div style={{ fontSize:12, color:"#ffd700", marginBottom:8 }}>🏌️ 9-9-18 Scramble</div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center", marginBottom:10 }}>
+                            <div style={{ textAlign:"center" }}>
+                              {nukes.filter(n=>n).map(n=><PhotoAvatar key={n} name={n} roster={roster} size={26}/>)}
+                              <div style={{ fontSize:11, fontWeight:700, color:"#ff4500", marginTop:4 }}>{nukes.filter(n=>n).join(" & ")}</div>
+                            </div>
+                            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", textAlign:"center" }}>vs</div>
+                            <div style={{ textAlign:"center" }}>
+                              {whales.filter(n=>n).map(n=><PhotoAvatar key={n} name={n} roster={roster} size={26}/>)}
+                              <div style={{ fontSize:11, fontWeight:700, color:"#00aaff", marginTop:4 }}>{whales.filter(n=>n).join(" & ")}</div>
+                            </div>
+                          </div>
+                          {grp.rows.map(({mm,mmi})=>{
+                            const lbl = mm.subLabel||(mmi===0?"Front 9":mmi===1?"Back 9":"18-Holes");
+                            const pts = Number(mm.pointsWorth)||2;
+                            const winColor = mm.winner==="nukes"?"#ff4500":mm.winner==="whales"?"#00aaff":mm.winner==="tie"?"#ffd700":"rgba(255,255,255,0.25)";
+                            const winLabel = mm.winner==="nukes"?`☢️ Nukes +${pts}`:mm.winner==="whales"?`🐋 Whales +${pts}`:mm.winner==="tie"?`🤝 Tie (+${pts/2} each)`:"Pending";
+                            return (
+                              <div key={mmi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:4 }}>
+                                <span style={{ fontSize:11, color:"rgba(255,255,255,0.5)", fontWeight:600 }}>{lbl}</span>
+                                <span style={{ fontSize:11, fontWeight:700, color:winColor }}>{winLabel}</span>
+                                <span style={{ fontSize:10, color:"rgba(255,255,255,0.25)" }}>{pts}pts</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                    // Standard matchup
+                    const {m,mi} = grp;
+                    return (
+                    <div key={gi} className="card" style={{ padding:"14px", marginBottom:10, cursor:"pointer" }}
                       onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-${mi}`?null:`${round.id}-${mi}`)}>
                       {m.competitionName&&(()=>{
                 const comp=competitions?.find(c=>c.name===m.competitionName);
@@ -1881,12 +1939,12 @@ export default function PublicApp({ onGoAdmin }) {
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10, padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8 }}>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <span style={{ fontSize:13, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>{odds.nukeOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {nukeHcp}{isAdj?` (${allowance}%)`:"" }</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {nukeHcp} · {Math.round(odds.nukeProb*100)}%{isAdj?` (${allowance}%)`:"" }</div>
                             </div>
                             <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS · Tap for Stats</div>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <span style={{ fontSize:13, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>{odds.whaleOdds}</span>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>Team HCP {whaleHcp}{isAdj?` (${allowance}%)`:"" }</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:1 }}>HCP {whaleHcp} · {Math.round(odds.whaleProb*100)}%{isAdj?` (${allowance}%)`:"" }</div>
                             </div>
                           </div>
                         );
@@ -1931,7 +1989,8 @@ export default function PublicApp({ onGoAdmin }) {
                       })()}
                       {!m.winner&&<div style={{ textAlign:"center", marginTop:6, fontSize:11, color:"rgba(255,255,255,0.2)" }}></div>}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })}
