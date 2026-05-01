@@ -1825,7 +1825,7 @@ export default function PublicApp({ onGoAdmin }) {
               return (
                 <div key={round.id} style={{ marginBottom:20 }}>
                   {/* Round header - tappable to collapse */}
-                  <div onClick={()=>setCollapsedRounds(c=>({...c,[round.id]:!c[round.id]}))}
+                  <div onClick={()=>setCollapsedRounds(c=>({...c,[round.id]:c[round.id]!==false?false:true}))}
                     style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isCollapsed?4:10, flexWrap:"wrap", cursor:"pointer", padding:"6px 0" }}>
                     <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)", width:14 }}>{isCollapsed?"▶":"▼"}</span>
                     <div style={{ fontSize:14, fontWeight:700, textTransform:"uppercase", color:"rgba(255,255,255,0.7)" }}>{round.name}</div>
@@ -1861,17 +1861,41 @@ export default function PublicApp({ onGoAdmin }) {
                               <div style={{ fontSize:11, fontWeight:700, color:"#00aaff", marginTop:4 }}>{whales.filter(n=>n).join(" & ")}</div>
                             </div>
                           </div>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8, marginBottom:8 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:8, marginBottom:8,
+                            cursor:"pointer" }}
+                            onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-scr-${gi}`?null:`${round.id}-scr-${gi}`)}>
                             <div style={{ textAlign:"center" }}>
                               <div style={{ fontSize:14, fontWeight:900, color:"#ff4500" }}>{Math.round(scrOdds.nukeProb*100)}%</div>
                               <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {nHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
                             </div>
-                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)" }}>Win Probability</div>
+                            <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win Probability<br/>ODDS · Tap for Stats</div>
                             <div style={{ textAlign:"center" }}>
                               <div style={{ fontSize:14, fontWeight:900, color:"#00aaff" }}>{Math.round(scrOdds.whaleProb*100)}%</div>
                               <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {wHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
                             </div>
                           </div>
+                          {selectedMatchup===`${round.id}-scr-${gi}`&&(()=>{
+                            const allP2=[...(firstM.nukes||[]),...(firstM.whales||[])].filter(Boolean);
+                            const pStats2=allP2.map(name=>{
+                              let w=0,l=0,t=0;
+                              history.forEach(yr=>(yr.matches||[]).forEach(hm=>{
+                                if(hm.type==="heading"||!hm.winner) return;
+                                const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
+                                if(!onN&&!onW) return;
+                                const pt=onN?"nukes":"whales";
+                                if(hm.winner===pt) w++; else if(hm.winner==="tie") t++; else l++;
+                              }));
+                              return {name,w,l,t,total:w+l+t};
+                            }).filter(p=>p.total>0);
+                            if(!pStats2.length) return <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center",marginBottom:8}}>No historical data yet</div>;
+                            return <div style={{padding:"8px 10px",background:"rgba(255,255,255,0.04)",borderRadius:8,marginBottom:8}}>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:6}}><span>Player</span><span>W · T · L</span></div>
+                              {pStats2.map(p=><div key={p.name} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                                <span style={{color:"rgba(255,255,255,0.7)"}}>{p.name}<span style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginLeft:6}}>HCP {getHandicap(p.name)}</span></span>
+                                <span style={{color:"rgba(255,255,255,0.4)"}}>{p.w} · {p.t} · {p.l}</span>
+                              </div>)}
+                            </div>;
+                          })()}
                             </>);
                           })()}
                           {grp.rows.map(({mm,mmi})=>{
