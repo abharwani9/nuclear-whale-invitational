@@ -1365,7 +1365,7 @@ function ImportFromRounds({ year, rounds, showToast }) {
           nukes: (m.nukes||[]).filter(Boolean),
           whales: (m.whales||[]).filter(Boolean),
           winner: m.winner || null,
-          roundName: m.subLabel || m.competitionName || round.name || "",
+          roundName: m.subLabel==="Front 9"?"Front 9 Scramble":m.subLabel==="Back 9"?"Back 9 Scramble":m.subLabel==="18-Holes"?"18-Hole Scramble":m.subLabel||m.competitionName||round.name||"",
           pointsWorth: Number(m.pointsWorth) || 0,
           ...(m.subLabel ? { subLabel: m.subLabel } : {}),
           ...(m.scrambleGroup ? { scrambleGroup: m.scrambleGroup } : {}),
