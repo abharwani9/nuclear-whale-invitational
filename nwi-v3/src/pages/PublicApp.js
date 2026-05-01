@@ -1875,7 +1875,7 @@ export default function PublicApp({ onGoAdmin }) {
                             </>);
                           })()}
                           {grp.rows.map(({mm,mmi})=>{
-                            const lbl = mm.subLabel||(mmi===0?"Front 9":mmi===1?"Back 9":"18-Holes");
+                            const lbl = mm.subLabel==="Front 9"?"Front 9 Scramble":mm.subLabel==="Back 9"?"Back 9 Scramble":mm.subLabel==="18-Holes"?"18-Hole Scramble":mm.subLabel||(mmi===0?"Front 9 Scramble":mmi===1?"Back 9 Scramble":"18-Hole Scramble");
                             const pts = Number(mm.pointsWorth)||2;
                             const rowBg = mm.winner==="nukes"?"rgba(255,69,0,0.12)":mm.winner==="whales"?"rgba(0,170,255,0.12)":mm.winner==="tie"?"rgba(255,200,0,0.08)":"rgba(255,255,255,0.03)";
                             const rowBorder = mm.winner==="nukes"?"rgba(255,69,0,0.3)":mm.winner==="whales"?"rgba(0,170,255,0.3)":mm.winner==="tie"?"rgba(255,200,0,0.2)":"rgba(255,255,255,0.07)";
@@ -1889,6 +1889,34 @@ export default function PublicApp({ onGoAdmin }) {
                               </div>
                             );
                           })}
+                          {/* Tap for Stats */}
+                          <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center", marginTop:8, cursor:"pointer" }}
+                            onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-scr-${gi}`?null:`${round.id}-scr-${gi}`)}>
+                            ODDS · Tap for Stats
+                          </div>
+                          {selectedMatchup===`${round.id}-scr-${gi}`&&(()=>{
+                            const firstM2=grp.rows[0].mm;
+                            const allP2=[...(firstM2.nukes||[]),...(firstM2.whales||[])].filter(Boolean);
+                            const pStats2=allP2.map(name=>{
+                              let w=0,l=0,t=0;
+                              history.forEach(yr=>(yr.matches||[]).forEach(hm=>{
+                                if(hm.type==="heading"||!hm.winner) return;
+                                const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
+                                if(!onN&&!onW) return;
+                                const pt=onN?"nukes":"whales";
+                                if(hm.winner===pt) w++; else if(hm.winner==="tie") t++; else l++;
+                              }));
+                              return {name,w,l,t,total:w+l+t};
+                            }).filter(p=>p.total>0);
+                            if(!pStats2.length) return <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",textAlign:"center",marginTop:6}}>No historical data yet</div>;
+                            return <div style={{padding:"8px 10px",background:"rgba(255,255,255,0.04)",borderRadius:8,marginTop:6}}>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.3)",marginBottom:6}}><span>Player</span><span>W · T · L</span></div>
+                              {pStats2.map(p=><div key={p.name} style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                                <span style={{color:"rgba(255,255,255,0.7)"}}>{p.name}<span style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginLeft:6}}>HCP {getHandicap(p.name)}</span></span>
+                                <span style={{color:"rgba(255,255,255,0.4)"}}>{p.w} · {p.t} · {p.l}</span>
+                              </div>)}
+                            </div>;
+                          })()}
                         </div>
                       );
                     }
