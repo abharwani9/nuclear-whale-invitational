@@ -1939,7 +1939,7 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                             </div>
                           )}
                           {needsCatchUp&&catchUpPaid&&(
-                            <div style={{ fontSize:11, color:"#4ade80", marginTop:2 }}>✓ Catch-up paid (${catchUp})</div>
+                            <div style={{ fontSize:11, color:"#4ade80", marginTop:2 }}>Catch-Up Payment: ${catchUp}</div>
                           )}
                         </div>
                         {inPool&&<div style={{ fontSize:11, color:"#4ade80" }}>${entry.buyIn||0}/yr</div>}
@@ -1950,7 +1950,7 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                             saveLedger({ yearEntries: upsertYearEntry(entry.year, { catchUpPaid: updated }) });
                           }}
                             style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${catchUpPaid?"rgba(74,222,128,0.4)":"rgba(255,200,0,0.4)"}`, background:catchUpPaid?"rgba(74,222,128,0.1)":"rgba(255,200,0,0.1)", color:catchUpPaid?"#4ade80":"#ffd700", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                            {catchUpPaid?"✓ Paid":"Catch-Up?"}
+                            {catchUpPaid?"Catch-Up ✓":"Catch-Up?"}
                           </button>
                         )}
                         <button onClick={()=>togglePlayer(p.name, entry.year)}
