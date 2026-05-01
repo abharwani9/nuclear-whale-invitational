@@ -1920,12 +1920,14 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {sortedRoster.map(p=>{
                     const inPool = (entry.optedIn||[]).includes(p.name);
-                    // Only check catch-up for the current year section
-                    const isCurrentYearSection = String(entry.year)===String(currentYear);
-                    const catchUp = isCurrentYearSection ? catchUpAmount(p.name) : 0;
+                    // Catch-up applies to any year section: new player owes all years before this entry's year
+                    const wasInBefore = yearEntries.some(e=>Number(e.year)<Number(entry.year)&&(e.optedIn||[]).includes(p.name));
+                    const catchUp = inPool && !wasInBefore
+                      ? yearEntries.filter(e=>Number(e.year)<Number(entry.year)).reduce((s,e)=>s+Number(e.buyIn||0),0)
+                      : 0;
                     const needsCatchUp = inPool && catchUp > 0;
-                    const catchUpPaid = isCatchUpPaid(p.name);
-                    if(inPool && isCurrentYearSection) console.log(`[HIO] ${p.name}: catchUp=$${catchUp}, needsCatchUp=${needsCatchUp}, prevYears=`, yearEntries.filter(e=>Number(e.year)<Number(currentYear)).map(e=>({yr:e.year,buyIn:e.buyIn,in:(e.optedIn||[]).includes(p.name)})));
+                    // catchUpPaid stored per entry year
+                    const catchUpPaid = (entry.catchUpPaid||[]).includes(p.name);
                     return (
                       <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:inPool?"rgba(74,222,128,0.07)":"rgba(255,255,255,0.02)", border:`1px solid ${inPool?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.06)"}`, borderRadius:8 }}>
                         {p.photoURL?<img src={p.photoURL} alt={p.name} style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:28, height:28, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:12 }}>{p.name?.[0]}</div>}
@@ -1942,9 +1944,13 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                         </div>
                         {inPool&&<div style={{ fontSize:11, color:"#4ade80" }}>${entry.buyIn||0}/yr</div>}
                         {needsCatchUp&&(
-                          <button onClick={()=>markCatchUpPaid(p.name, !catchUpPaid)}
+                          <button onClick={()=>{
+                            const cur = entry.catchUpPaid||[];
+                            const updated = catchUpPaid ? cur.filter(n=>n!==p.name) : [...cur, p.name];
+                            saveLedger({ yearEntries: upsertYearEntry(entry.year, { catchUpPaid: updated }) });
+                          }}
                             style={{ padding:"3px 8px", borderRadius:6, border:`1px solid ${catchUpPaid?"rgba(74,222,128,0.4)":"rgba(255,200,0,0.4)"}`, background:catchUpPaid?"rgba(74,222,128,0.1)":"rgba(255,200,0,0.1)", color:catchUpPaid?"#4ade80":"#ffd700", fontFamily:"inherit", fontSize:11, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                            {catchUpPaid?"✓ Paid":"Mark Paid"}
+                            {catchUpPaid?"✓ Paid":"Catch-Up?"}
                           </button>
                         )}
                         <button onClick={()=>togglePlayer(p.name, entry.year)}
