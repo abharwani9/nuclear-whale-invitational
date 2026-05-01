@@ -665,16 +665,20 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
           onDragEnd={()=>roundDragEnd("rounds")}
           onDragOver={e=>e.preventDefault()}
           style={{ ...s.card, borderColor:dragOverRound===ri?"rgba(255,255,255,0.4)":"rgba(255,200,0,0.15)", marginBottom:12, cursor:"grab", opacity:dragOverRound===ri?0.6:1 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+          {(()=>{ const isC = collapsedRounds[round.id]!==false; return (
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isC?4:12, cursor:"pointer" }}
+            onClick={e=>{ if(e.target.closest('button')) return; toggleRound(round.id); }}>
+            <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, width:14 }}>{collapsedRounds[round.id]!==false?"▶":"▼"}</span>
             <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
               {round.competitionName&&<div style={{ fontSize:12, color:"#ffd700" }}>🏅 {round.competitionName}</div>}
             </div>
-            <button style={s.btnGhost} onClick={()=>{setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",competitionName:round.competitionName||""});}}>Edit</button>
-            <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
+            <button style={s.btnGhost} onClick={e=>{e.stopPropagation();setEditingRound(round.id);setForm({name:round.name||"",day:round.day||"Day 1",competitionName:round.competitionName||""});}}>Edit</button>
+            <button style={s.btnDanger} onClick={async e=>{e.stopPropagation();if(window.confirm("Delete?"))await firestore.delete("rounds",round.id);}}>✕</button>
           </div>
-          {(()=>{
+          ); })()}
+          {collapsedRounds[round.id]===false && (()=>{
             // Group matchups by competition for display
             const matchupList = getMatchups(round);
             const mainComps = competitions.filter(c=>c.section!=="side").sort((a,b)=>(a.order??0)-(b.order??0));
@@ -1015,6 +1019,13 @@ function ScheduleSection({ schedule, showToast }) {
                 : <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:20 }}>
                     <span style={{ fontSize:12, color:"rgba(255,255,255,0.7)" }}>{day}</span>
                     <button onClick={()=>{setEditingDayName(day);setEditingDayValue(day);}} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:11, padding:"0 0 0 2px" }}>✏️</button>
+                    <button onClick={async()=>{
+                      const hasItems=schedule.some(i=>i.day===day);
+                      if(hasItems&&!window.confirm(`Delete "${day}" and all its events?`)) return;
+                      if(hasItems) { for(const i of schedule.filter(x=>x.day===day)) await firestore.delete("schedule",i.id); }
+                      setDays(d=>d.filter(d2=>d2!==day));
+                      showToast(`"${day}" deleted`);
+                    }} style={{ background:"none", border:"none", color:"rgba(255,85,85,0.5)", cursor:"pointer", fontSize:10, padding:"0 0 0 2px" }}>✕</button>
                   </div>
               }
             </div>
@@ -1354,7 +1365,7 @@ function ImportFromRounds({ year, rounds, showToast }) {
           nukes: (m.nukes||[]).filter(Boolean),
           whales: (m.whales||[]).filter(Boolean),
           winner: m.winner || null,
-          roundName: m.competitionName || round.name || "",
+          roundName: m.subLabel || m.competitionName || round.name || "",
           pointsWorth: Number(m.pointsWorth) || 0,
           ...(m.subLabel ? { subLabel: m.subLabel } : {}),
           ...(m.scrambleGroup ? { scrambleGroup: m.scrambleGroup } : {}),
