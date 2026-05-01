@@ -1920,13 +1920,12 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {sortedRoster.map(p=>{
                     const inPool = (entry.optedIn||[]).includes(p.name);
-                    // Catch-up applies to any year section: new player owes all years before this entry's year
-                    const wasInBefore = yearEntries.some(e=>Number(e.year)<Number(entry.year)&&(e.optedIn||[]).includes(p.name));
-                    const catchUp = inPool && !wasInBefore
-                      ? yearEntries.filter(e=>Number(e.year)<Number(entry.year)).reduce((s,e)=>s+Number(e.buyIn||0),0)
+                    // Catch-up = sum of buy-ins for previous years where player was NOT opted in
+                    const prevYears = yearEntries.filter(e=>Number(e.year)<Number(entry.year));
+                    const catchUp = inPool
+                      ? prevYears.filter(e=>!(e.optedIn||[]).includes(p.name)).reduce((s,e)=>s+Number(e.buyIn||0),0)
                       : 0;
                     const needsCatchUp = inPool && catchUp > 0;
-                    // catchUpPaid stored per entry year
                     const catchUpPaid = (entry.catchUpPaid||[]).includes(p.name);
                     return (
                       <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", background:inPool?"rgba(74,222,128,0.07)":"rgba(255,255,255,0.02)", border:`1px solid ${inPool?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.06)"}`, borderRadius:8 }}>
