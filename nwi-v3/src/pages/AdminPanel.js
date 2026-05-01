@@ -1783,8 +1783,9 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
 
   // Financials — pool resets per winner year: total contributed up to & including winner year minus prior payouts
   const catchUpTotal = yearEntries.reduce((sum,e)=>{
-    const paid = e.catchUpPaid||[];
-    const amount = paid.length * yearEntries.filter(y=>Number(y.year)<Number(e.year)).reduce((s,y)=>s+Number(y.buyIn||0),0);
+    const optedInNames = e.optedIn||[];
+    const validPaid = (e.catchUpPaid||[]).filter(n=>optedInNames.includes(n));
+    const amount = validPaid.length * yearEntries.filter(y=>Number(y.year)<Number(e.year)).reduce((s,y)=>s+Number(y.buyIn||0),0);
     return sum + amount;
   }, 0);
   const totalContributed = yearEntries.reduce((sum,e)=>sum+Number(e.contributions||0),0) + catchUpTotal;
