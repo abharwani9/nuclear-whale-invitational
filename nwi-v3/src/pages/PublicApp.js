@@ -2457,9 +2457,7 @@ export default function PublicApp({ onGoAdmin }) {
           const ledger = holePool?.find(h=>h.id==="ledger");
           const yearEntries = ledger?.yearEntries || [];
           const winners = ledger?.winners || [];
-          const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0);
           const totalPaidOut = winners.reduce((sum,w)=>sum+(w.amount||0),0);
-          const runningTotal = totalContributed - totalPaidOut;
 
           // Only show owed amounts for years AFTER the last payout
           const lastPaidYear = winners.length > 0
@@ -2472,10 +2470,23 @@ export default function PublicApp({ onGoAdmin }) {
               (e.optedIn||[]).forEach(name => {
                 playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
               });
+              // Add catch-up payments for new players
+              (e.catchUpPaid||[]).forEach(name => {
+                const catchUp = yearEntries.filter(y=>y.year<e.year&&y.year>lastPaidYear).reduce((s,y)=>s+(y.buyIn||0),0);
+                if(catchUp>0) playerOwed[name] = (playerOwed[name]||0) + catchUp;
+              });
             }
           });
           const playersInPool = Object.keys(playerOwed).sort((a,b)=>playerOwed[b]-playerOwed[a]);
           const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
+          // Total including catch-up
+          const catchUpContrib = yearEntries.reduce((sum,e)=>{
+            const paid = e.catchUpPaid||[];
+            const catchUp = yearEntries.filter(y=>y.year<e.year).reduce((s,y)=>s+(y.buyIn||0),0);
+            return sum + paid.length * catchUp;
+          }, 0);
+          const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0) + catchUpContrib;
+          const runningTotal = totalContributed - totalPaidOut;
 
           return (
             <div>
@@ -2526,11 +2537,20 @@ export default function PublicApp({ onGoAdmin }) {
                             <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
                             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
                               {years.map(e=>`${e.year}: $${e.buyIn}`).join(" · ")}
+                              {(()=>{
+                                // Check if they have a catch-up payment
+                                const curEntry = yearEntries.find(e=>String(e.year)===String(meta?.year||new Date().getFullYear()));
+                                if((curEntry?.catchUpPaid||[]).includes(name)){
+                                  const catchUp = yearEntries.filter(y=>y.year<curEntry.year).reduce((s,y)=>s+(y.buyIn||0),0);
+                                  return catchUp>0?<span style={{color:"#ffd700",marginLeft:6}}>+${catchUp} catch-up</span>:null;
+                                }
+                                return null;
+                              })()}
                             </div>
                           </div>
                           <div style={{ textAlign:"right" }}>
                             <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(owed)}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total contributed</div>
                           </div>
                         </div>
                       </div>
