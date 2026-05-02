@@ -2328,9 +2328,15 @@ export default function PublicApp({ onGoAdmin }) {
                           </div>
                         )}
                         {(h.nukes_captain||h.whales_captain)&&(
-                          <div style={{ fontSize:11, marginTop:4 }}>
-                            {h.nukes_captain&&<span style={{ color:"rgba(255,69,0,0.7)", marginRight:8 }}>Ⓒ {h.nukes_captain}</span>}
-                            {h.whales_captain&&<span style={{ color:"rgba(0,170,255,0.7)" }}>Ⓒ {h.whales_captain}</span>}
+                          <div style={{ display:"flex", gap:8, marginTop:5, flexWrap:"wrap" }}>
+                            {h.nukes_captain&&<span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, color:"rgba(255,255,255,0.7)" }}>
+                              <span style={{ background:"#ff4500", color:"#fff", fontWeight:900, fontSize:10, padding:"1px 6px", borderRadius:10, letterSpacing:"0.05em" }}>C</span>
+                              {h.nukes_captain}
+                            </span>}
+                            {h.whales_captain&&<span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:11, color:"rgba(255,255,255,0.7)" }}>
+                              <span style={{ background:"#00aaff", color:"#fff", fontWeight:900, fontSize:10, padding:"1px 6px", borderRadius:10, letterSpacing:"0.05em" }}>C</span>
+                              {h.whales_captain}
+                            </span>}
                           </div>
                         )}
                       </div>
@@ -2795,7 +2801,7 @@ export default function PublicApp({ onGoAdmin }) {
                         {appearances.map(h=>{
                           const isCap=h.nukes_captain===selectedPlayer.name||h.whales_captain===selectedPlayer.name;
                           return <span key={h.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)", display:"inline-flex", alignItems:"center", gap:3 }}>
-                            {h.year}{isCap&&<span style={{ fontSize:11, color:"#ffd700", fontWeight:800 }}>Ⓒ</span>}
+                            {h.year}{isCap&&<span style={{ background:"#ffd700", color:"#000", fontWeight:900, fontSize:9, padding:"1px 5px", borderRadius:8, marginLeft:3, letterSpacing:"0.05em" }}>C</span>}
                           </span>;
                         })}
                       </div>
