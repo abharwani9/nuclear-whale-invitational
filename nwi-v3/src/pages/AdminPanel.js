@@ -943,11 +943,14 @@ function ScheduleSection({ schedule, meta, showToast }) {
   const [editing, setEditing] = useState(null);
   const [dragOver, setDragOver] = useState(null);
 
-  // Re-sync days when meta loads/changes
+  // Re-sync days when meta.scheduleDays changes (from Firestore)
   useEffect(()=>{
-    const fresh = [...new Set([...(meta?.scheduleDays||[]),...existingDays])];
-    setDays(fresh);
-  }, [meta?.scheduleDays?.join(","), existingDays.join(",")]);
+    if(meta?.scheduleDays?.length) {
+      // Also include any days from existing schedule items not in meta
+      const fresh = [...new Set([...meta.scheduleDays, ...existingDays])];
+      setDays(fresh);
+    }
+  }, [JSON.stringify(meta?.scheduleDays)]);
 
   const saveDays = async (newDays) => {
     setDays(newDays);
@@ -982,7 +985,6 @@ function ScheduleSection({ schedule, meta, showToast }) {
     }
     const renamedDays = days.map(d2=>d2===oldName?newName.trim():d2);
     await saveDays(renamedDays);
-    firestore.update("meta","tournament",{scheduleDays:renamedDays}).catch(()=>{});
     if (form.day===oldName) setForm(f=>({...f,day:newName.trim()}));
     setEditingDayName(null);
     showToast("Day renamed!");
@@ -1387,12 +1389,14 @@ function ImportFromRounds({ year, rounds, showToast }) {
           JSON.stringify((em.whales||[]).sort()) === JSON.stringify((m.whales||[]).filter(Boolean).sort())
         );
         if (alreadyImported) return;
+        const comp = (competitions||[]).find(c=>c.name===m.competitionName);
+        const defaultPts = Number(meta?.compPts?.[comp?.id]) || 2;
         newMatches.push({
           nukes: (m.nukes||[]).filter(Boolean),
           whales: (m.whales||[]).filter(Boolean),
           winner: m.winner || null,
           roundName: m.subLabel==="Front 9"?"Front 9 Scramble":m.subLabel==="Back 9"?"Back 9 Scramble":m.subLabel==="18-Holes"?"18-Hole Scramble":m.subLabel||m.competitionName||round.name||"",
-          pointsWorth: Number(m.pointsWorth) || 0,
+          pointsWorth: Number(m.pointsWorth) || defaultPts,
           ...(m.subLabel ? { subLabel: m.subLabel } : {}),
           ...(m.scrambleGroup ? { scrambleGroup: m.scrambleGroup } : {}),
         });
