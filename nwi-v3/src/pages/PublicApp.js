@@ -2099,15 +2099,7 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>
             }
             <WeatherWidget location={meta?.weatherLocation || meta?.location} tournamentDate={meta?.date}/>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {["nukes","whales"].map(t=>(
-                <div key={t} className={`card ${t==="nukes"?"nuke-card":"whale-card"}`} style={{ padding:18 }}>
-                  <div style={{ fontSize:32 }}>{TEAMS[t].emoji}</div>
-                  <div style={{ fontSize:17, fontWeight:800, color:TEAMS[t].color, marginTop:8 }}>{TEAMS[t].name}</div>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{t==="nukes"?`${nukeWins} titles`:`${whaleWins} titles`}</div>
-                </div>
-              ))}
-            </div>
+
           </div>
         )}
 
@@ -2274,10 +2266,23 @@ export default function PublicApp({ onGoAdmin }) {
           <div>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament History</div>
             {/* Series record */}
-            <div className="card" style={{ padding:"12px 16px", marginBottom:20, display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:12, alignItems:"center", textAlign:"center" }}>
-              <div><div style={{ fontSize:26, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>☢️ TITLES</div></div>
-              <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", fontWeight:700 }}>ALL TIME</div>
-              <div><div style={{ fontSize:26, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div><div style={{ fontSize:10, color:"rgba(255,255,255,0.35)", letterSpacing:"0.08em" }}>🐋 TITLES</div></div>
+            <div style={{ marginBottom:20, display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10 }}>
+              <div className="card nuke-card" style={{ padding:"16px 12px", textAlign:"center" }}>
+                <div style={{ fontSize:48, lineHeight:1 }}>☢️</div>
+                <div style={{ fontSize:42, fontWeight:900, color:"#ff4500", lineHeight:1, marginTop:6 }}>{nukeWins}</div>
+                <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,69,0,0.7)", letterSpacing:"0.1em", marginTop:4 }}>THE NUKES</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Championship{nukeWins!==1?"s":""}</div>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.2)", letterSpacing:"0.12em" }}>ALL</div>
+                <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.2)", letterSpacing:"0.12em" }}>TIME</div>
+              </div>
+              <div className="card whale-card" style={{ padding:"16px 12px", textAlign:"center" }}>
+                <div style={{ fontSize:48, lineHeight:1 }}>🐋</div>
+                <div style={{ fontSize:42, fontWeight:900, color:"#00aaff", lineHeight:1, marginTop:6 }}>{whaleWins}</div>
+                <div style={{ fontSize:11, fontWeight:700, color:"rgba(0,170,255,0.7)", letterSpacing:"0.1em", marginTop:4 }}>THE WHALES</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Championship{whaleWins!==1?"s":""}</div>
+              </div>
             </div>
 
             {[...history].sort((a,b)=>b.year-a.year).map(h=>{
