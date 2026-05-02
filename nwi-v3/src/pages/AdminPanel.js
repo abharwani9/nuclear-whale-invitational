@@ -1325,7 +1325,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
 
                 {/* Import from current tournament - show only once */}
                 {String(h.year)===String(meta?.year||2026)&&(
-                  <ImportFromRounds year={h} rounds={rounds} showToast={showToast}/>
+                  <ImportFromRounds year={h} rounds={rounds} competitions={competitions} meta={meta} showToast={showToast}/>
                 )}
 
                 {/* Year in Review admin controls */}
@@ -1373,7 +1373,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
   );
 }
 
-function ImportFromRounds({ year, rounds, showToast }) {
+function ImportFromRounds({ year, rounds, competitions, meta, showToast }) {
   const [importing, setImporting] = useState(false);
 
   const doImport = async () => {
