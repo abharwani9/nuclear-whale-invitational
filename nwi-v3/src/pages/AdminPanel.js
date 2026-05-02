@@ -969,7 +969,7 @@ function ScheduleSection({ schedule, meta, showToast }) {
     } catch(e) { showToast(e.message,true); }
   };
 
-  const addCustomDay = () => {
+  const addCustomDay = async () => {
     if (!customDay.trim()) return;
     await saveDays([...days, customDay.trim()]);
     setForm(f=>({...f,day:customDay.trim()}));
