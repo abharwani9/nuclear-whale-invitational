@@ -929,11 +929,11 @@ function SchedDayList({ items, showToast, setEditing, setForm }) {
   );
 }
 
-function ScheduleSection({ schedule, showToast }) {
-  // Custom days management
-  const defaultDays = ["Day 1","Day 2","Day 3"];
+function ScheduleSection({ schedule, meta, showToast }) {
+  // Days come from meta.scheduleDays persisted in Firestore, fall back to days found in schedule
   const existingDays = [...new Set(schedule.map(i=>i.day))];
-  const allDays = [...new Set([...defaultDays, ...existingDays])];
+  const metaDays = meta?.scheduleDays||[];
+  const allDays = [...new Set([...metaDays, ...existingDays])];
 
   const [customDay, setCustomDay] = useState("");
   const [days, setDays] = useState(allDays);
@@ -942,6 +942,17 @@ function ScheduleSection({ schedule, showToast }) {
   const [form, setForm] = useState({ day:days[0]||"Day 1", time:"", event:"", icon:"⛳", course:"" });
   const [editing, setEditing] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+
+  // Re-sync days when meta loads/changes
+  useEffect(()=>{
+    const fresh = [...new Set([...(meta?.scheduleDays||[]),...existingDays])];
+    setDays(fresh);
+  }, [meta?.scheduleDays?.join(","), existingDays.join(",")]);
+
+  const saveDays = async (newDays) => {
+    setDays(newDays);
+    await firestore.update("meta","tournament",{scheduleDays:newDays});
+  };
 
   // Keep days in sync with schedule data
   const allCurrentDays = [...new Set([...days, ...schedule.map(i=>i.day)])];
@@ -957,7 +968,7 @@ function ScheduleSection({ schedule, showToast }) {
 
   const addCustomDay = () => {
     if (!customDay.trim()) return;
-    setDays(d=>[...d,customDay.trim()]);
+    await saveDays([...days, customDay.trim()]);
     setForm(f=>({...f,day:customDay.trim()}));
     setCustomDay("");
   };
@@ -970,7 +981,7 @@ function ScheduleSection({ schedule, showToast }) {
       await firestore.update("schedule",item.id,{day:newName.trim()});
     }
     const renamedDays = days.map(d2=>d2===oldName?newName.trim():d2);
-    setDays(renamedDays);
+    await saveDays(renamedDays);
     firestore.update("meta","tournament",{scheduleDays:renamedDays}).catch(()=>{});
     if (form.day===oldName) setForm(f=>({...f,day:newName.trim()}));
     setEditingDayName(null);
@@ -1026,8 +1037,7 @@ function ScheduleSection({ schedule, showToast }) {
                       if(hasItems&&!window.confirm(`Delete "${day}" and all its events?`)) return;
                       if(hasItems) { for(const i of schedule.filter(x=>x.day===day)) await firestore.delete("schedule",i.id); }
                       const newDays2 = days.filter(d2=>d2!==day);
-                      setDays(newDays2);
-                      firestore.update("meta","tournament",{scheduleDays:newDays2}).catch(()=>{});
+                      await saveDays(newDays2);
                       showToast(`"${day}" deleted`);
                     }} style={{ background:"none", border:"none", color:"rgba(255,85,85,0.5)", cursor:"pointer", fontSize:10, padding:"0 0 0 2px" }}>✕</button>
                   </div>
@@ -1228,8 +1238,18 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
           </div>
           <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
           <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
-          <div><div style={s.label}>☢️ Nukes Captain</div><input style={s.input} value={form.nukes_captain||""} onChange={e=>setForm(f=>({...f,nukes_captain:e.target.value}))} placeholder="Captain name"/></div>
-          <div><div style={s.label}>🐋 Whales Captain</div><input style={s.input} value={form.whales_captain||""} onChange={e=>setForm(f=>({...f,whales_captain:e.target.value}))} placeholder="Captain name"/></div>
+          <div><div style={s.label}>☢️ Nukes Captain</div>
+            <select style={s.select} value={form.nukes_captain||""} onChange={e=>setForm(f=>({...f,nukes_captain:e.target.value}))}>
+              <option value="">— Select —</option>
+              {[...roster].filter(p=>{const d=drafts.find(dr=>String(dr.year)===String(form.year));return !d||d.assignments?.[p.name]==="nukes";}).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+          <div><div style={s.label}>🐋 Whales Captain</div>
+            <select style={s.select} value={form.whales_captain||""} onChange={e=>setForm(f=>({...f,whales_captain:e.target.value}))}>
+              <option value="">— Select —</option>
+              {[...roster].filter(p=>{const d=drafts.find(dr=>String(dr.year)===String(form.year));return !d||d.assignments?.[p.name]==="whales";}).sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
         </div>
         <div style={s.grid2}>
           <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Myrtle Beach, SC"/></div>
