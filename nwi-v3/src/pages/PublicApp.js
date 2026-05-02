@@ -2327,6 +2327,12 @@ export default function PublicApp({ onGoAdmin }) {
                             {h.location&&<span>📍 {h.location}</span>}
                           </div>
                         )}
+                        {(h.nukes_captain||h.whales_captain)&&(
+                          <div style={{ fontSize:11, marginTop:4 }}>
+                            {h.nukes_captain&&<span style={{ color:"rgba(255,69,0,0.7)", marginRight:8 }}>Ⓒ {h.nukes_captain}</span>}
+                            {h.whales_captain&&<span style={{ color:"rgba(0,170,255,0.7)" }}>Ⓒ {h.whales_captain}</span>}
+                          </div>
+                        )}
                       </div>
                       <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)" }}>{isExp?"▲":"▼"}</div>
                     </div>
@@ -2786,7 +2792,12 @@ export default function PublicApp({ onGoAdmin }) {
                     <div>
                       <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8, letterSpacing:"0.08em" }}>TOURNAMENT APPEARANCES</div>
                       <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                        {appearances.map(h=><span key={h.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)" }}>{h.year}</span>)}
+                        {appearances.map(h=>{
+                          const isCap=h.nukes_captain===selectedPlayer.name||h.whales_captain===selectedPlayer.name;
+                          return <span key={h.id} style={{ fontSize:12, padding:"3px 10px", borderRadius:20, background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.55)", display:"inline-flex", alignItems:"center", gap:3 }}>
+                            {h.year}{isCap&&<span style={{ fontSize:11, color:"#ffd700", fontWeight:800 }}>Ⓒ</span>}
+                          </span>;
+                        })}
                       </div>
                     </div>
                   )}
