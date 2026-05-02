@@ -2268,9 +2268,9 @@ export default function PublicApp({ onGoAdmin }) {
             {/* Series record */}
             <div style={{ marginBottom:20, display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10 }}>
               <div className="card nuke-card" style={{ padding:"16px 12px", textAlign:"center" }}>
-                <div style={{ fontSize:48, lineHeight:1 }}>☢️</div>
+                <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,69,0,0.7)", letterSpacing:"0.1em" }}>THE NUKES</div>
+                <div style={{ fontSize:48, lineHeight:1, marginTop:4 }}>☢️</div>
                 <div style={{ fontSize:42, fontWeight:900, color:"#ff4500", lineHeight:1, marginTop:6 }}>{nukeWins}</div>
-                <div style={{ fontSize:11, fontWeight:700, color:"rgba(255,69,0,0.7)", letterSpacing:"0.1em", marginTop:4 }}>THE NUKES</div>
                 <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Championship{nukeWins!==1?"s":""}</div>
               </div>
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4 }}>
@@ -2278,9 +2278,9 @@ export default function PublicApp({ onGoAdmin }) {
                 <div style={{ fontSize:10, fontWeight:700, color:"rgba(255,255,255,0.2)", letterSpacing:"0.12em" }}>TIME</div>
               </div>
               <div className="card whale-card" style={{ padding:"16px 12px", textAlign:"center" }}>
-                <div style={{ fontSize:48, lineHeight:1 }}>🐋</div>
+                <div style={{ fontSize:11, fontWeight:700, color:"rgba(0,170,255,0.7)", letterSpacing:"0.1em" }}>THE WHALES</div>
+                <div style={{ fontSize:48, lineHeight:1, marginTop:4 }}>🐋</div>
                 <div style={{ fontSize:42, fontWeight:900, color:"#00aaff", lineHeight:1, marginTop:6 }}>{whaleWins}</div>
-                <div style={{ fontSize:11, fontWeight:700, color:"rgba(0,170,255,0.7)", letterSpacing:"0.1em", marginTop:4 }}>THE WHALES</div>
                 <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Championship{whaleWins!==1?"s":""}</div>
               </div>
             </div>
