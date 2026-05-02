@@ -145,7 +145,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
         {section==="roster"       && <RosterSection roster={roster} showToast={showToast}/>}
         {section==="draft"        && <DraftSection roster={roster} drafts={drafts} showToast={showToast}/>}
         {section==="rounds"       && <RoundsSection rounds={rounds} roster={roster} drafts={drafts} competitions={competitions} meta={meta} showToast={showToast}/>}
-        {section==="schedule"     && <ScheduleSection schedule={schedule} showToast={showToast}/>}
+        {section==="schedule"     && <ScheduleSection schedule={schedule} meta={meta} showToast={showToast}/>}
         {section==="competitions" && <CompetitionsSection competitions={competitions} showToast={showToast}/>}
         {section==="hole"         && <HoleInOneSection roster={roster} holePool={holePool} meta={meta} showToast={showToast}/>}
         {section==="media"        && <AdminMedia showToast={showToast}/>}
@@ -969,7 +969,9 @@ function ScheduleSection({ schedule, showToast }) {
     for (const item of toUpdate) {
       await firestore.update("schedule",item.id,{day:newName.trim()});
     }
-    setDays(d=>d.map(d2=>d2===oldName?newName.trim():d2));
+    const renamedDays = days.map(d2=>d2===oldName?newName.trim():d2);
+    setDays(renamedDays);
+    firestore.update("meta","tournament",{scheduleDays:renamedDays}).catch(()=>{});
     if (form.day===oldName) setForm(f=>({...f,day:newName.trim()}));
     setEditingDayName(null);
     showToast("Day renamed!");
@@ -1023,7 +1025,9 @@ function ScheduleSection({ schedule, showToast }) {
                       const hasItems=schedule.some(i=>i.day===day);
                       if(hasItems&&!window.confirm(`Delete "${day}" and all its events?`)) return;
                       if(hasItems) { for(const i of schedule.filter(x=>x.day===day)) await firestore.delete("schedule",i.id); }
-                      setDays(d=>d.filter(d2=>d2!==day));
+                      const newDays2 = days.filter(d2=>d2!==day);
+                      setDays(newDays2);
+                      firestore.update("meta","tournament",{scheduleDays:newDays2}).catch(()=>{});
                       showToast(`"${day}" deleted`);
                     }} style={{ background:"none", border:"none", color:"rgba(255,85,85,0.5)", cursor:"pointer", fontSize:10, padding:"0 0 0 2px" }}>✕</button>
                   </div>
@@ -1199,7 +1203,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
 
   const save = async () => {
     try {
-      const data = { ...form, year:Number(form.year), nukes_pts:Number(form.nukes_pts)||0, whales_pts:Number(form.whales_pts)||0 };
+      const data = { ...form, year:Number(form.year), nukes_pts:Number(form.nukes_pts)||0, whales_pts:Number(form.whales_pts)||0, nukes_captain:form.nukes_captain||"", whales_captain:form.whales_captain||"" };
       if (editing) { await firestore.update("history",editing,data); showToast("Updated!"); setEditing(null); }
       else { await firestore.add("history",{...data,matches:[],superlatives:[]}); showToast("Year added!"); }
       setForm(blank);
@@ -1224,6 +1228,8 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
           </div>
           <div><div style={s.label}>Nukes Points</div><input style={s.input} type="number" value={form.nukes_pts} onChange={e=>setForm(f=>({...f,nukes_pts:e.target.value}))}/></div>
           <div><div style={s.label}>Whales Points</div><input style={s.input} type="number" value={form.whales_pts} onChange={e=>setForm(f=>({...f,whales_pts:e.target.value}))}/></div>
+          <div><div style={s.label}>☢️ Nukes Captain</div><input style={s.input} value={form.nukes_captain||""} onChange={e=>setForm(f=>({...f,nukes_captain:e.target.value}))} placeholder="Captain name"/></div>
+          <div><div style={s.label}>🐋 Whales Captain</div><input style={s.input} value={form.whales_captain||""} onChange={e=>setForm(f=>({...f,whales_captain:e.target.value}))} placeholder="Captain name"/></div>
         </div>
         <div style={s.grid2}>
           <div style={{ marginTop:10 }}><div style={s.label}>Location</div><input style={s.input} value={form.location||""} onChange={e=>setForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Myrtle Beach, SC"/></div>
@@ -1271,7 +1277,7 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
                 </div>
                 <div style={s.row}>
                   <button style={s.btnGhost} onClick={()=>setExpanded(isExpanded?null:h.id)}>{isExpanded?"▲ Hide":"▼ Edit"}</button>
-                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||""});}}>✏️</button>
+                  <button style={s.btnGhost} onClick={()=>{setEditing(h.id);setForm({year:h.year,winner:h.winner,notes:h.notes||"",nukes_pts:h.nukes_pts||"",whales_pts:h.whales_pts||"",location:h.location||"",course:h.course||"",nukes_captain:h.nukes_captain||"",whales_captain:h.whales_captain||""});}}>✏️</button>
                   <button style={s.btnDanger} onClick={async()=>{if(window.confirm("Delete this year?"))await firestore.delete("history",h.id);}}>✕</button>
                 </div>
               </div>
