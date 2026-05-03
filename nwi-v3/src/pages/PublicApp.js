@@ -97,7 +97,7 @@ function SuperlativesTab({ meta, roster, votes, drafts }) {
   return (
     <div>
       <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏅 Superlatives</div>
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Vote for one player in each category. One submission per device.</div>
+      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Vote for one player in each category. One submission per person.</div>
       {categories.map(cat => (
         <div key={cat} style={{ marginBottom:24 }}>
           <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>{cat}</div>
@@ -2482,17 +2482,22 @@ export default function PublicApp({ onGoAdmin }) {
             : 0;
 
           const playerOwed = {};
-          yearEntries.forEach(e => {
-            if (e.year > lastPaidYear) {
+          const sortedEntries = [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year));
+          sortedEntries.forEach(e => {
+            if (Number(e.year) > lastPaidYear) {
               (e.optedIn||[]).forEach(name => {
-                playerOwed[name] = (playerOwed[name]||0) + (Number(e.buyIn)||0);
+                playerOwed[name] = (playerOwed[name]||0) + Number(e.buyIn||0);
               });
-              // Add catch-up payments for new players
-              // Only count catch-up for players currently opted in this year
-              const optedInThisYear = e.optedIn||[];
-              (e.catchUpPaid||[]).filter(name=>optedInThisYear.includes(name)).forEach(name => {
-                const catchUp = yearEntries.filter(y=>Number(y.year)<Number(e.year)&&Number(y.year)>lastPaidYear).reduce((s,y)=>s+Number(y.buyIn||0),0);
-                if(catchUp>0) playerOwed[name] = (playerOwed[name]||0) + catchUp;
+              // Add catch-up for players who paid it this year — only uncovered missed years
+              (e.catchUpPaid||[]).filter(name=>(e.optedIn||[]).includes(name)).forEach(name => {
+                const prevYrs = sortedEntries.filter(y=>Number(y.year)<Number(e.year));
+                const alreadyCovered = new Set();
+                prevYrs.forEach(y=>{
+                  if((y.catchUpPaid||[]).includes(name))
+                    prevYrs.filter(z=>Number(z.year)<Number(y.year)&&!(z.optedIn||[]).includes(name)).forEach(z=>alreadyCovered.add(String(z.year)));
+                });
+                const missedAmt = prevYrs.filter(y=>!(y.optedIn||[]).includes(name)&&!alreadyCovered.has(String(y.year))&&Number(y.year)>lastPaidYear).reduce((s,y)=>s+Number(y.buyIn||0),0);
+                if(missedAmt>0) playerOwed[name] = (playerOwed[name]||0) + missedAmt;
               });
             }
           });
@@ -2547,8 +2552,26 @@ export default function PublicApp({ onGoAdmin }) {
                   {playersInPool.map(name=>{
                     const p = roster.find(r=>r.name===name);
                     const owed = playerOwed[name]||0;
-                    // Show per-year breakdown
-                    const years = yearEntries.filter(e=>(e.optedIn||[]).includes(name)).sort((a,b)=>a.year-b.year);
+                    // Build per-year breakdown including catch-up payments
+                    const sortedYears = [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year));
+                    const yearLines = [];
+                    sortedYears.forEach(e=>{
+                      const inThisYear = (e.optedIn||[]).includes(name);
+                      const paidCatchUp = (e.catchUpPaid||[]).includes(name);
+                      if(inThisYear){
+                        // Calculate catch-up for this re-join (years missed not already covered)
+                        const prevYrs = sortedYears.filter(y=>Number(y.year)<Number(e.year));
+                        const alreadyCovered = new Set();
+                        prevYrs.forEach(y=>{
+                          if((y.catchUpPaid||[]).includes(name))
+                            prevYrs.filter(z=>Number(z.year)<Number(y.year)&&!(z.optedIn||[]).includes(name)).forEach(z=>alreadyCovered.add(String(z.year)));
+                        });
+                        const missedAmt = paidCatchUp
+                          ? prevYrs.filter(y=>!(y.optedIn||[]).includes(name)&&!alreadyCovered.has(String(y.year))).reduce((s,y)=>s+Number(y.buyIn||0),0)
+                          : 0;
+                        yearLines.push({ year:e.year, buyIn:Number(e.buyIn||0), catchUp:missedAmt });
+                      }
+                    });
                     return (
                       <div key={name} className="card" style={{ padding:"12px 14px", marginBottom:8, borderColor:"rgba(74,222,128,0.12)", background:"rgba(74,222,128,0.03)" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -2556,21 +2579,17 @@ export default function PublicApp({ onGoAdmin }) {
                           <div style={{ flex:1 }}>
                             <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
                             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
-                              {years.map(e=>`${e.year}: $${e.buyIn}`).join(" · ")}
-                              {(()=>{
-                                // Check if they have a catch-up payment
-                                const curEntry = yearEntries.find(e=>String(e.year)===String(meta?.year||new Date().getFullYear()));
-                                if((curEntry?.catchUpPaid||[]).includes(name)){
-                                  const catchUp = yearEntries.filter(y=>y.year<curEntry.year).reduce((s,y)=>s+(y.buyIn||0),0);
-                                  return catchUp>0?<span style={{color:"#ffd700",marginLeft:6}}>+${catchUp} catch-up</span>:null;
-                                }
-                                return null;
-                              })()}
+                              {yearLines.map(yl=>(
+                                <span key={yl.year} style={{ marginRight:8 }}>
+                                  {yl.year}: ${yl.buyIn}
+                                  {yl.catchUp>0&&<span style={{ color:"#ffd700" }}> +${yl.catchUp} catch-up</span>}
+                                </span>
+                              ))}
                             </div>
                           </div>
                           <div style={{ textAlign:"right" }}>
                             <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(owed)}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total contributed</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
                           </div>
                         </div>
                       </div>
