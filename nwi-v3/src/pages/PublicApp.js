@@ -1324,22 +1324,29 @@ export default function PublicApp({ onGoAdmin }) {
       const hasResult = m.winner === "nukes" || m.winner === "whales" || m.winner === "tie";
       // Always count team pts available for clinch/elimination math
       teamPtsAvail.nukes += pts; teamPtsAvail.whales += pts;
-      // Only count player ptsAvail and stats for completed matches
-      if (hasResult) {
-        nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
-        wh.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
-      }
-      if (m.winner === "nukes") {
-        teamPoints.nukes += pts;
-        nk.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
-        wh.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
-      } else if (m.winner === "whales") {
-        teamPoints.whales += pts;
-        wh.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
-        nk.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
-      } else if (m.winner === "tie") {
-        teamPoints.nukes += tiePts; teamPoints.whales += tiePts;
-        [...nk, ...wh].forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += tiePts; playerStats[n].ties++; playerStats[n].matchTies++; } });
+      // Only update playerStats if current year not already in history (avoid double count)
+      if (!currentYearImported) {
+        if (hasResult) {
+          nk.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
+          wh.forEach(n => { if (playerStats[n]) playerStats[n].ptsAvail += pts; });
+        }
+        if (m.winner === "nukes") {
+          teamPoints.nukes += pts;
+          nk.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
+          wh.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
+        } else if (m.winner === "whales") {
+          teamPoints.whales += pts;
+          wh.forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += pts; playerStats[n].wins++; playerStats[n].matchWins++; } });
+          nk.forEach(n => { if (playerStats[n]) { playerStats[n].losses++; playerStats[n].matchLosses++; } });
+        } else if (m.winner === "tie") {
+          teamPoints.nukes += tiePts; teamPoints.whales += tiePts;
+          [...nk, ...wh].forEach(n => { if (playerStats[n]) { playerStats[n].ptsWon += tiePts; playerStats[n].ties++; playerStats[n].matchTies++; } });
+        }
+      } else {
+        // Still need teamPoints from rounds even when imported
+        if (m.winner === "nukes")  teamPoints.nukes += pts;
+        else if (m.winner === "whales") teamPoints.whales += pts;
+        else if (m.winner === "tie") { teamPoints.nukes += tiePts; teamPoints.whales += tiePts; }
       }
     });
   });
