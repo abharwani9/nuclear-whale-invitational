@@ -1383,6 +1383,7 @@ function ImportFromRounds({ year, rounds, competitions, meta, showToast }) {
     rounds.forEach(round => {
       (round.matchups || []).forEach(m => {
         if (!m.nukes?.some(Boolean) && !m.whales?.some(Boolean)) return; // skip empty
+        if (!m.winner) return; // only import completed matches
         // Check if this matchup already exists (by player names) to avoid double counting
         const alreadyImported = currentMatches.some(em =>
           JSON.stringify((em.nukes||[]).sort()) === JSON.stringify((m.nukes||[]).filter(Boolean).sort()) &&
@@ -1798,6 +1799,11 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const ledger = holePool?.find(h => h.id === "ledger");
   const [poolDesc, setPoolDesc] = useState(meta?.holePoolDescription||"");
 
+  // Sync poolDesc when meta loads from Firestore (useState only runs once on mount)
+  useEffect(()=>{
+    if(meta?.holePoolDescription !== undefined) setPoolDesc(meta.holePoolDescription);
+  }, [meta?.holePoolDescription]);
+
   const [winnerYear, setWinnerYear]     = useState(String(currentYear));
   const [winnerName, setWinnerName]     = useState("");
   const [winnerDate, setWinnerDate]     = useState("");
@@ -1825,9 +1831,27 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
 
   // Pool at a given year = contributions from all years up to & including that year minus prior payouts
   const poolAtYear = (yr) => {
-    const contrib = yearEntries.filter(e=>e.year<=Number(yr)).reduce((s,e)=>s+(e.contributions||0),0);
-    const paid = winners.filter(w=>w.year<=Number(yr)).reduce((s,w)=>s+(w.amount||0),0);
-    return contrib - paid;
+    const sortedE = [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year));
+    // Base contributions for years up to and including yr
+    const contrib = sortedE.filter(e=>Number(e.year)<=yr).reduce((s,e)=>s+Number(e.contributions||0),0);
+    // Catch-up payments for years up to and including yr
+    const catchUpContrib = sortedE.filter(e=>Number(e.year)<=yr).reduce((sum,e)=>{
+      const optedInNames = e.optedIn||[];
+      const validPaid = (e.catchUpPaid||[]).filter(n=>optedInNames.includes(n));
+      const prevYrs = sortedE.filter(y=>Number(y.year)<Number(e.year));
+      const perPerson = validPaid.reduce((s,name)=>{
+        const alreadyCovered = new Set();
+        prevYrs.forEach(y=>{
+          if((y.catchUpPaid||[]).includes(name))
+            prevYrs.filter(z=>Number(z.year)<Number(y.year)&&!(z.optedIn||[]).includes(name)).forEach(z=>alreadyCovered.add(String(z.year)));
+        });
+        const missed = prevYrs.filter(y=>!(y.optedIn||[]).includes(name)&&!alreadyCovered.has(String(y.year))).reduce((ss,y)=>ss+Number(y.buyIn||0),0);
+        return s+missed;
+      },0);
+      return sum+perPerson;
+    },0);
+    const paid = winners.filter(w=>Number(w.year)<=yr).reduce((s,w)=>s+Number(w.amount||0),0);
+    return contrib + catchUpContrib - paid;
   };
 
   const currentOptedIn = currentEntry?.optedIn || [];
