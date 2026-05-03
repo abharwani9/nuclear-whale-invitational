@@ -1933,7 +1933,21 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:700 }}>
                     {isCurrentYear?`⭐ ${entry.year} (Current Year)`:String(entry.year)}
-                    <span style={{ fontSize:12, fontWeight:400, color:"rgba(255,255,255,0.35)", marginLeft:8 }}>${entry.buyIn||0}/player · {(entry.optedIn||[]).length} players · ${entry.contributions||0}</span>
+                    <span style={{ fontSize:12, fontWeight:400, color:"rgba(255,255,255,0.35)", marginLeft:8 }}>
+                      ${entry.buyIn||0}/player · {(entry.optedIn||[]).length} players · ${(entry.contributions||0)} base
+                      {(()=>{
+                        const catchUpNames = (entry.catchUpPaid||[]).filter(n=>(entry.optedIn||[]).includes(n));
+                        const catchUpAmt = catchUpNames.reduce((s,n)=>{
+                          const prev = yearEntries.filter(y=>Number(y.year)<Number(entry.year));
+                          // Only count years not already covered by earlier payments
+                          const coveredYrs = new Set();
+                          prev.forEach(e=>{if((e.catchUpPaid||[]).includes(n)) prev.filter(y=>Number(y.year)<Number(e.year)&&!(y.optedIn||[]).includes(n)).forEach(y=>coveredYrs.add(String(y.year)));});
+                          return s + prev.filter(e=>!(e.optedIn||[]).includes(n)&&!coveredYrs.has(String(e.year))).reduce((ss,e)=>ss+Number(e.buyIn||0),0);
+                        },0);
+                        if(!catchUpAmt) return null;
+                        return <> · <span style={{color:"#ffd700"}}>${catchUpAmt} catch-up · ${Number(entry.contributions||0)+catchUpAmt} total</span></>;
+                      })()}
+                    </span>
                   </div>
                 </div>
                 <span style={{ color:"rgba(255,255,255,0.3)", fontSize:12 }}>{isCollapsed?"▶ Show":"▼ Hide"}</span>
@@ -1951,11 +1965,21 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
                 <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                   {sortedRoster.map(p=>{
                     const inPool = (entry.optedIn||[]).includes(p.name);
-                    // Catch-up = sum of buy-ins for previous years where player was NOT opted in
-                    const prevYears = yearEntries.filter(e=>Number(e.year)<Number(entry.year));
-                    const catchUp = inPool
-                      ? prevYears.filter(e=>!(e.optedIn||[]).includes(p.name)).reduce((s,e)=>s+Number(e.buyIn||0),0)
-                      : 0;
+                    // Catch-up = years they missed MINUS years they already paid catch-up for in a prior re-join
+                    const prevYears = yearEntries.filter(e=>Number(e.year)<Number(entry.year)).sort((a,b)=>Number(a.year)-Number(b.year));
+                    // Build set of years already covered by a previous catch-up payment
+                    const alreadyCoveredYears = new Set();
+                    prevYears.forEach(e=>{
+                      if((e.catchUpPaid||[]).includes(p.name)){
+                        // This catch-up payment covered all years before e.year where they weren't opted in
+                        prevYears.filter(y=>Number(y.year)<Number(e.year)&&!(y.optedIn||[]).includes(p.name))
+                          .forEach(y=>alreadyCoveredYears.add(String(y.year)));
+                      }
+                    });
+                    const missedYears = inPool
+                      ? prevYears.filter(e=>!(e.optedIn||[]).includes(p.name)&&!alreadyCoveredYears.has(String(e.year)))
+                      : [];
+                    const catchUp = missedYears.reduce((s,e)=>s+Number(e.buyIn||0),0);
                     const needsCatchUp = inPool && catchUp > 0;
                     const catchUpPaid = (entry.catchUpPaid||[]).includes(p.name);
                     return (
