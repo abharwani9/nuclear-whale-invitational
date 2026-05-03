@@ -1796,6 +1796,7 @@ function RulesSection({ rules, showToast }) {
 function HoleInOneSection({ roster, holePool, meta, showToast }) {
   const currentYear = meta?.year || new Date().getFullYear();
   const ledger = holePool?.find(h => h.id === "ledger");
+  const [poolDesc, setPoolDesc] = useState(meta?.holePoolDescription||"");
 
   const [winnerYear, setWinnerYear]     = useState(String(currentYear));
   const [winnerName, setWinnerName]     = useState("");
@@ -1899,8 +1900,20 @@ function HoleInOneSection({ roster, holePool, meta, showToast }) {
   return (
     <div>
       <div style={s.sectionTitle}>⛳ Hole-in-One Pool</div>
-      <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>
-        Rolls over every year. Full cumulative pot goes to whoever hits a hole-in-one.
+
+      {/* Editable description */}
+      <div style={{ ...s.card, marginBottom:16 }}>
+        <div style={{ fontSize:13, fontWeight:700, marginBottom:8 }}>📝 Pool Description</div>
+        <textarea
+          style={{ ...s.input, width:"100%", minHeight:72, resize:"vertical", fontFamily:"inherit", fontSize:12, lineHeight:1.5 }}
+          value={poolDesc}
+          onChange={e=>setPoolDesc(e.target.value)}
+          placeholder="Describe the pool rules, how it works, etc."
+        />
+        <button style={{ ...s.btn, marginTop:8, fontSize:12 }} onClick={async()=>{
+          await firestore.update("meta","tournament",{holePoolDescription:poolDesc});
+          showToast("Description saved!");
+        }}>Save Description</button>
       </div>
 
       {/* Running total */}
