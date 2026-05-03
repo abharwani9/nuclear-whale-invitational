@@ -1333,8 +1333,10 @@ export default function PublicApp({ onGoAdmin }) {
   }).sort((a, b) => b.ptsWon - a.ptsWon || b.ptsWinPct - a.ptsWinPct);
 
   // All-time stats
+  const currentTournamentYear = meta?.year || new Date().getFullYear();
   const allTimeStats = {};
   history.forEach(yr => {
+    if (Number(yr.year) === Number(currentTournamentYear)) return; // exclude current year - tracked live via rounds
     (yr.matches || []).forEach(m => {
       if (m.type === "heading") return; // skip headings
       const pts = m.pointsWorth || 0, tiePts = pts / 2;
@@ -2145,8 +2147,14 @@ export default function PublicApp({ onGoAdmin }) {
               const renderComp = (c) => {
                 // Get all matchups for this competition across all rounds
                 const compMatchups = rounds.flatMap(r=>
-                  (r.matchups||[]).filter(m=>m.competitionName===c.name).map(m=>({...m,roundName:r.name,pointsPerWin:r.pointsPerWin}))
+                  (r.matchups||[]).filter(m=>m.competitionName===c.name&&!m.scrambleGroup).map(m=>({...m,roundName:r.name,pointsPerWin:r.pointsPerWin}))
                 );
+                // Group scramble results separately
+                const scrambleGroups = {};
+                rounds.flatMap(r=>(r.matchups||[]).filter(m=>m.competitionName===c.name&&m.scrambleGroup).map(m=>({...m}))).forEach(m=>{
+                  if(!scrambleGroups[m.scrambleGroup]) scrambleGroups[m.scrambleGroup]=[];
+                  scrambleGroups[m.scrambleGroup].push(m);
+                });
                 const played = compMatchups.filter(m=>m.winner);
                 const nukeWins = played.filter(m=>m.winner==="nukes").length;
                 const whaleWins = played.filter(m=>m.winner==="whales").length;
@@ -2177,18 +2185,33 @@ export default function PublicApp({ onGoAdmin }) {
                             <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>🐋 Whale Wins</div>
                           </div>
                         </div>
-                        {compMatchups.map((m,mi)=>{
-                          if(!m.winner) return null;
+                        {compMatchups.filter(m=>m.winner).map((m,mi)=>{
                           const pts = m.pointsWorth||m.pointsPerWin||2;
                           return (
-                            <div key={mi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:4, fontSize:12 }}>
-                              <span style={{ color:"rgba(255,255,255,0.5)" }}>{(m.nukes||[]).join(" & ")} vs {(m.whales||[]).join(" & ")}</span>
+                            <div key={mi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:3, fontSize:12 }}>
                               <span style={{ fontWeight:700, color:m.winner==="nukes"?"#ff4500":m.winner==="whales"?"#00aaff":"#ffd700" }}>
-                                {m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"} · {pts}pts
+                                {m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"}
                               </span>
+                              <span style={{ color:"rgba(255,255,255,0.35)" }}>{pts}pts</span>
                             </div>
                           );
                         })}
+                        {Object.entries(scrambleGroups).map(([grpId, rows])=>(
+                          <div key={grpId} style={{ background:"rgba(255,200,0,0.04)", border:"1px solid rgba(255,200,0,0.12)", borderRadius:8, padding:"8px 10px", marginBottom:4 }}>
+                            <div style={{ fontSize:11, color:"rgba(255,200,0,0.7)", fontWeight:700, marginBottom:5 }}>🏌️ 9-9-18 Scramble</div>
+                            {rows.map((m,ri)=>{
+                              const lbl=m.subLabel==="Front 9"?"Front 9 Scramble":m.subLabel==="Back 9"?"Back 9 Scramble":m.subLabel==="18-Holes"?"18-Hole Scramble":m.subLabel||"";
+                              const pts=Number(m.pointsWorth)||2;
+                              const wc=m.winner==="nukes"?"#ff4500":m.winner==="whales"?"#00aaff":m.winner==="tie"?"#ffd700":"rgba(255,255,255,0.25)";
+                              return m.winner?(
+                                <div key={ri} style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:2 }}>
+                                  <span style={{ color:"rgba(255,255,255,0.45)" }}>{lbl}</span>
+                                  <span style={{ fontWeight:700, color:wc }}>{m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"} · {pts}pts</span>
+                                </div>
+                              ):null;
+                            })}
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -2290,7 +2313,7 @@ export default function PublicApp({ onGoAdmin }) {
               const isWhale=h.winner==="THE WHALES";
               const isTBD=!h.winner||h.winner==="TBD";
               const isExp=expandedHistory===h.id;
-              const matchCount=(h.matches||[]).filter(m=>m.type!=="heading").length;
+              const matchCount=(h.matches||[]).filter(m=>m.type!=="heading"&&m.winner).length;
               // Compute pts live from matches so edits reflect immediately
               const computedNukePts = (h.matches||[]).filter(m=>m.type!=="heading"&&m.winner).reduce((sum,m)=>{
                 const pts=Number(m.pointsWorth)||0;
