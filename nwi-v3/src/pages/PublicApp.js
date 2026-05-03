@@ -2736,16 +2736,12 @@ export default function PublicApp({ onGoAdmin }) {
             {/* All-time stats */}
             {(() => {
               const at = allTimeStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
-              // Only add current rounds stats if NOT already imported to history
-              const cur = !currentYearImported
-                ? (playerStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 })
-                : { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
-              const totalPtsWon = (at.ptsWon||0) + (cur.ptsWon||0);
-              const totalPtsAvail = (at.ptsAvail||0) + (cur.ptsAvail||0);
-              const totalW = (at.matchWins||0) + (cur.matchWins||0);
-              const totalL = (at.matchLosses||0) + (cur.matchLosses||0);
-              const totalT = (at.matchTies||0) + (cur.matchTies||0);
+              const totalW = at.matchWins||0;
+              const totalL = at.matchLosses||0;
+              const totalT = at.matchTies||0;
               const totalM = totalW + totalL + totalT;
+              const totalPtsWon = at.ptsWon||0;
+              const totalPtsAvail = at.ptsAvail||0;
               if (totalM === 0 && totalPtsAvail === 0) return null;
               const pct = totalPtsAvail > 0 ? Math.round((totalPtsWon/totalPtsAvail)*100) : 0;
               const winPct = totalM > 0 ? Math.round((totalW/totalM)*100) : null;
