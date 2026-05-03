@@ -1297,8 +1297,8 @@ export default function PublicApp({ onGoAdmin }) {
     playerStats[p.name] = { wins:0, losses:0, ties:0, ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
   });
 
-  // Only count rounds data if current year NOT yet imported to history
-  if (!currentYearImported) {
+  // Always compute teamPoints/teamPtsAvail from rounds (live score)
+  // Only use rounds for playerStats if current year NOT yet imported to history
   rounds.forEach(round => {
     (round.matchups || []).forEach(m => {
       const _comp = (competitions||[]).find(c=>c.name===m.competitionName); const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[_comp?.id]) || 2;
@@ -1326,7 +1326,6 @@ export default function PublicApp({ onGoAdmin }) {
       }
     });
   });
-  } // end if (!currentYearImported)
 
   const individualLb = activePlayers.map(p => {
     const st = playerStats[p.name] || {};
