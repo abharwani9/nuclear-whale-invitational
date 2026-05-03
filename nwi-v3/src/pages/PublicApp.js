@@ -1351,10 +1351,33 @@ export default function PublicApp({ onGoAdmin }) {
     });
   });
 
+  // Individual leaderboard always uses live rounds data (current tournament only)
+  const individualLbStats = {};
+  activePlayers.forEach(p => {
+    individualLbStats[p.name] = { wins:0, losses:0, ties:0, ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
+  });
+  rounds.forEach(round => {
+    (round.matchups || []).forEach(m => {
+      const _comp = (competitions||[]).find(c=>c.name===m.competitionName);
+      const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[_comp?.id]) || 2;
+      const tiePts = pts / 2;
+      const nk = m.nukes || [], wh = m.whales || [];
+      if (m.winner === "nukes") {
+        nk.forEach(n => { if (individualLbStats[n]) { individualLbStats[n].ptsWon += pts; individualLbStats[n].ptsAvail += pts; individualLbStats[n].wins++; individualLbStats[n].matchWins++; } });
+        wh.forEach(n => { if (individualLbStats[n]) { individualLbStats[n].ptsAvail += pts; individualLbStats[n].losses++; individualLbStats[n].matchLosses++; } });
+      } else if (m.winner === "whales") {
+        wh.forEach(n => { if (individualLbStats[n]) { individualLbStats[n].ptsWon += pts; individualLbStats[n].ptsAvail += pts; individualLbStats[n].wins++; individualLbStats[n].matchWins++; } });
+        nk.forEach(n => { if (individualLbStats[n]) { individualLbStats[n].ptsAvail += pts; individualLbStats[n].losses++; individualLbStats[n].matchLosses++; } });
+      } else if (m.winner === "tie") {
+        [...nk, ...wh].forEach(n => { if (individualLbStats[n]) { individualLbStats[n].ptsWon += tiePts; individualLbStats[n].ptsAvail += pts; individualLbStats[n].ties++; individualLbStats[n].matchTies++; } });
+      } else {
+        [...nk, ...wh].forEach(n => { if (individualLbStats[n]) individualLbStats[n].ptsAvail += pts; });
+      }
+    });
+  });
+
   const individualLb = activePlayers.map(p => {
-    // If current year imported, use allTimeStats for current year (from history)
-    // Otherwise use live playerStats from rounds
-    const st = playerStats[p.name] || {};
+    const st = individualLbStats[p.name] || {};
     const assignedTeam = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
     return { ...p, team: assignedTeam, ...st,
       ptsWinPct:   st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0,
