@@ -1305,6 +1305,7 @@ export default function PublicApp({ onGoAdmin }) {
   // ── Points engine ───────────────────────────────────────────────────────────
   const teamPoints = { nukes: 0, whales: 0 };
   const teamPtsAvail = { nukes: 0, whales: 0 };
+  const currentTournamentYear = meta?.year || new Date().getFullYear();
   const currentYearHistory = history.find(h=>Number(h.year)===Number(currentTournamentYear));
   const currentYearImported = currentYearHistory && (currentYearHistory.matches||[]).some(m=>m.winner);
 
@@ -1354,7 +1355,6 @@ export default function PublicApp({ onGoAdmin }) {
   }).sort((a, b) => b.ptsWon - a.ptsWon || b.ptsWinPct - a.ptsWinPct);
 
   // All-time stats
-  const currentTournamentYear = meta?.year || new Date().getFullYear();
   // Check if current year has been imported to history
   const allTimeStats = {};
   history.forEach(yr => {
