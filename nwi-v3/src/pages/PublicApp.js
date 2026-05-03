@@ -1294,6 +1294,8 @@ export default function PublicApp({ onGoAdmin }) {
     playerStats[p.name] = { wins:0, losses:0, ties:0, ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
   });
 
+  // Only count rounds data if current year NOT yet imported to history
+  if (!currentYearImported) {
   rounds.forEach(round => {
     (round.matchups || []).forEach(m => {
       const _comp = (competitions||[]).find(c=>c.name===m.competitionName); const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[_comp?.id]) || 2;
@@ -1321,6 +1323,7 @@ export default function PublicApp({ onGoAdmin }) {
       }
     });
   });
+  } // end if (!currentYearImported)
 
   const individualLb = activePlayers.map(p => {
     const st = playerStats[p.name] || {};
@@ -1334,9 +1337,14 @@ export default function PublicApp({ onGoAdmin }) {
 
   // All-time stats
   const currentTournamentYear = meta?.year || new Date().getFullYear();
+  // Check if current year has been imported to history
+  const currentYearHistory = history.find(h=>Number(h.year)===Number(currentTournamentYear));
+  const currentYearImported = currentYearHistory && (currentYearHistory.matches||[]).some(m=>m.winner);
   const allTimeStats = {};
   history.forEach(yr => {
-    if (Number(yr.year) === Number(currentTournamentYear)) return; // exclude current year - tracked live via rounds
+    // If current year is imported to history, use history for it too (skip rounds for that year)
+    // If NOT imported, exclude current year from history (use rounds live data)
+    if (!currentYearImported && Number(yr.year) === Number(currentTournamentYear)) return;
     (yr.matches || []).forEach(m => {
       if (m.type === "heading") return; // skip headings
       const pts = m.pointsWorth || 0, tiePts = pts / 2;
@@ -2156,9 +2164,6 @@ export default function PublicApp({ onGoAdmin }) {
                   scrambleGroups[m.scrambleGroup].push(m);
                 });
                 const played = compMatchups.filter(m=>m.winner);
-                const nukeWins = played.filter(m=>m.winner==="nukes").length;
-                const whaleWins = played.filter(m=>m.winner==="whales").length;
-                const ties = played.filter(m=>m.winner==="tie").length;
                 return (
                   <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
                     <div style={{ display:"flex", gap:12, marginBottom: played.length ? 12 : 0 }}>
@@ -2171,20 +2176,6 @@ export default function PublicApp({ onGoAdmin }) {
                     </div>
                     {played.length>0&&(
                       <div style={{ marginTop:8 }}>
-                        <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-                          <div style={{ flex:1, padding:"8px", background:"rgba(255,69,0,0.08)", border:"1px solid rgba(255,69,0,0.2)", borderRadius:8, textAlign:"center" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#ff4500" }}>{nukeWins}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>☢️ Nuke Wins</div>
-                          </div>
-                          {ties>0&&<div style={{ flex:1, padding:"8px", background:"rgba(255,200,0,0.06)", border:"1px solid rgba(255,200,0,0.15)", borderRadius:8, textAlign:"center" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#ffd700" }}>{ties}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>🤝 Ties</div>
-                          </div>}
-                          <div style={{ flex:1, padding:"8px", background:"rgba(0,170,255,0.06)", border:"1px solid rgba(0,170,255,0.15)", borderRadius:8, textAlign:"center" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#00aaff" }}>{whaleWins}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)" }}>🐋 Whale Wins</div>
-                          </div>
-                        </div>
                         {compMatchups.filter(m=>m.winner).map((m,mi)=>{
                           const pts = m.pointsWorth||m.pointsPerWin||2;
                           return (
@@ -2214,7 +2205,6 @@ export default function PublicApp({ onGoAdmin }) {
                         ))}
                       </div>
                     )}
-
                   </div>
                 );
               };
