@@ -9,6 +9,22 @@ const TEAMS = {
   whales: { name: "THE WHALES", emoji: "🐋", color: "#00aaff", bg: "rgba(0,170,255,0.1)" },
 };
 
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error:null }; }
+  static getDerivedStateFromError(e) { return { error:e }; }
+  render() {
+    if (this.state.error) return (
+      <div style={{color:"#ff5555",padding:20,fontFamily:"monospace",background:"#07090e",minHeight:"100vh"}}>
+        <h2 style={{marginBottom:10}}>App Error</h2>
+        <pre style={{whiteSpace:"pre-wrap",fontSize:12}}>{this.state.error?.message}</pre>
+        <pre style={{whiteSpace:"pre-wrap",fontSize:10,color:"rgba(255,255,255,0.4)",marginTop:10}}>{this.state.error?.stack}</pre>
+        <button onClick={()=>window.location.reload()} style={{marginTop:16,padding:"8px 16px",background:"#ff4500",border:"none",borderRadius:8,color:"#fff",cursor:"pointer"}}>Reload</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
 const TABS = [
   { id: "leaderboard",  label: "Leaderboard",  icon: "🏆" },
   { id: "matchups",     label: "Matchups",      icon: "⚔️"  },
@@ -1421,6 +1437,7 @@ export default function PublicApp({ onGoAdmin }) {
   `;
 
   return (
+    <ErrorBoundary>
     <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
       <style>{css}</style>
 
@@ -2965,5 +2982,6 @@ export default function PublicApp({ onGoAdmin }) {
         );
       })()}
     </div>
+    </ErrorBoundary>
   );
 }
