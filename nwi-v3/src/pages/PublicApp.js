@@ -1345,12 +1345,13 @@ export default function PublicApp({ onGoAdmin }) {
   });
 
   const individualLb = activePlayers.map(p => {
+    // If current year imported, use allTimeStats for current year (from history)
+    // Otherwise use live playerStats from rounds
     const st = playerStats[p.name] || {};
-    const tot = st.matchWins + st.matchLosses + st.matchTies;
     const assignedTeam = teamAssign[p.name]==="tbd" ? null : teamAssign[p.name];
     return { ...p, team: assignedTeam, ...st,
       ptsWinPct:   st.ptsAvail > 0 ? Math.round((st.ptsWon / st.ptsAvail) * 100) : 0,
-      matchWinPct: tot > 0 ? Math.round((st.matchWins / tot) * 100) : 0,
+      matchWinPct: (st.matchWins+st.matchLosses+st.matchTies) > 0 ? Math.round((st.matchWins / (st.matchWins+st.matchLosses+st.matchTies)) * 100) : 0,
     };
   }).sort((a, b) => b.ptsWon - a.ptsWon || b.ptsWinPct - a.ptsWinPct);
 
@@ -2705,7 +2706,10 @@ export default function PublicApp({ onGoAdmin }) {
             {/* All-time stats */}
             {(() => {
               const at = allTimeStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
-              const cur = playerStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
+              // Only add current rounds stats if NOT already imported to history
+              const cur = !currentYearImported
+                ? (playerStats[selectedPlayer.name] || { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 })
+                : { ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
               const totalPtsWon = (at.ptsWon||0) + (cur.ptsWon||0);
               const totalPtsAvail = (at.ptsAvail||0) + (cur.ptsAvail||0);
               const totalW = (at.matchWins||0) + (cur.matchWins||0);
