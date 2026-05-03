@@ -1289,6 +1289,9 @@ export default function PublicApp({ onGoAdmin }) {
   // ── Points engine ───────────────────────────────────────────────────────────
   const teamPoints = { nukes: 0, whales: 0 };
   const teamPtsAvail = { nukes: 0, whales: 0 };
+  const currentYearHistory = history.find(h=>Number(h.year)===Number(currentTournamentYear));
+  const currentYearImported = currentYearHistory && (currentYearHistory.matches||[]).some(m=>m.winner);
+
   const playerStats = {};
   activePlayers.forEach(p => {
     playerStats[p.name] = { wins:0, losses:0, ties:0, ptsWon:0, ptsAvail:0, matchWins:0, matchLosses:0, matchTies:0 };
@@ -1338,8 +1341,6 @@ export default function PublicApp({ onGoAdmin }) {
   // All-time stats
   const currentTournamentYear = meta?.year || new Date().getFullYear();
   // Check if current year has been imported to history
-  const currentYearHistory = history.find(h=>Number(h.year)===Number(currentTournamentYear));
-  const currentYearImported = currentYearHistory && (currentYearHistory.matches||[]).some(m=>m.winner);
   const allTimeStats = {};
   history.forEach(yr => {
     // If current year is imported to history, use history for it too (skip rounds for that year)
@@ -2152,62 +2153,18 @@ export default function PublicApp({ onGoAdmin }) {
               const sorted = [...competitions].sort((a,b)=>(a.order??0)-(b.order??0));
               const mainComps = sorted.filter(c=>c.section!=="side");
               const sideComps = sorted.filter(c=>c.section==="side");
-              const renderComp = (c) => {
-                // Get all matchups for this competition across all rounds
-                const compMatchups = rounds.flatMap(r=>
-                  (r.matchups||[]).filter(m=>m.competitionName===c.name&&!m.scrambleGroup).map(m=>({...m,roundName:r.name,pointsPerWin:r.pointsPerWin}))
-                );
-                // Group scramble results separately
-                const scrambleGroups = {};
-                rounds.flatMap(r=>(r.matchups||[]).filter(m=>m.competitionName===c.name&&m.scrambleGroup).map(m=>({...m}))).forEach(m=>{
-                  if(!scrambleGroups[m.scrambleGroup]) scrambleGroups[m.scrambleGroup]=[];
-                  scrambleGroups[m.scrambleGroup].push(m);
-                });
-                const played = compMatchups.filter(m=>m.winner);
-                return (
-                  <div key={c.id} className={`card ${c.winnerTeam==="nukes"?"nuke-card":c.winnerTeam==="whales"?"whale-card":""}`} style={{ padding:18, marginBottom:10 }}>
-                    <div style={{ display:"flex", gap:12, marginBottom: played.length ? 12 : 0 }}>
-                      <div style={{ fontSize:28 }}>{c.icon}</div>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
-                        <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>
-                        {c.detail&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{c.detail}</div>}
-                      </div>
+              const renderComp = (c) => (
+                <div key={c.id} className="card" style={{ padding:18, marginBottom:10 }}>
+                  <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ fontSize:28 }}>{c.icon}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:17, fontWeight:800, marginBottom:4 }}>{c.name}</div>
+                      {c.desc&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.4)" }}>{c.desc}</div>}
+                      {c.detail&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", marginTop:4 }}>{c.detail}</div>}
                     </div>
-                    {played.length>0&&(
-                      <div style={{ marginTop:8 }}>
-                        {compMatchups.filter(m=>m.winner).map((m,mi)=>{
-                          const pts = m.pointsWorth||m.pointsPerWin||2;
-                          return (
-                            <div key={mi} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 10px", background:"rgba(255,255,255,0.03)", borderRadius:7, marginBottom:3, fontSize:12 }}>
-                              <span style={{ fontWeight:700, color:m.winner==="nukes"?"#ff4500":m.winner==="whales"?"#00aaff":"#ffd700" }}>
-                                {m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"}
-                              </span>
-                              <span style={{ color:"rgba(255,255,255,0.35)" }}>{pts}pts</span>
-                            </div>
-                          );
-                        })}
-                        {Object.entries(scrambleGroups).map(([grpId, rows])=>(
-                          <div key={grpId} style={{ background:"rgba(255,200,0,0.04)", border:"1px solid rgba(255,200,0,0.12)", borderRadius:8, padding:"8px 10px", marginBottom:4 }}>
-                            <div style={{ fontSize:11, color:"rgba(255,200,0,0.7)", fontWeight:700, marginBottom:5 }}>🏌️ 9-9-18 Scramble</div>
-                            {rows.map((m,ri)=>{
-                              const lbl=m.subLabel==="Front 9"?"Front 9 Scramble":m.subLabel==="Back 9"?"Back 9 Scramble":m.subLabel==="18-Holes"?"18-Hole Scramble":m.subLabel||"";
-                              const pts=Number(m.pointsWorth)||2;
-                              const wc=m.winner==="nukes"?"#ff4500":m.winner==="whales"?"#00aaff":m.winner==="tie"?"#ffd700":"rgba(255,255,255,0.25)";
-                              return m.winner?(
-                                <div key={ri} style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:2 }}>
-                                  <span style={{ color:"rgba(255,255,255,0.45)" }}>{lbl}</span>
-                                  <span style={{ fontWeight:700, color:wc }}>{m.winner==="nukes"?"☢️ Nukes":m.winner==="whales"?"🐋 Whales":"🤝 Tie"} · {pts}pts</span>
-                                </div>
-                              ):null;
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                );
-              };
+                </div>
+              );
               return (<>
                 {mainComps.length>0&&<>
                   <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(74,222,128,0.7)",marginBottom:10}}>⭐ Main Events</div>
