@@ -2516,7 +2516,7 @@ export default function PublicApp({ onGoAdmin }) {
           return (
             <div>
               <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One Pool</div>
-              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Rolls over every year — whoever hits a hole-in-one takes the full cumulative pot.</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>{meta?.holePoolDescription||"Rolls over every year — whoever hits a hole-in-one takes the full cumulative pot."}</div>
 
               {/* Big green total */}
               <div className="card" style={{ padding:"28px 20px", marginBottom:20, textAlign:"center", background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.25)" }}>
