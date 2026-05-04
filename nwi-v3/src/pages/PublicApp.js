@@ -1692,15 +1692,16 @@ export default function PublicApp({ onGoAdmin }) {
                       const arrow = (col) => atSort===col ? (atDir==="desc"?" ▼":" ▲") : " ↕";
                       return (
                         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
-                          <table>
+                          <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+                          <table style={{ fontSize:11, minWidth:420 }}>
                             <thead><tr>
-                              <th>#</th>
-                              <th>Player</th>
-                              <th style={thStyle("championships")} onClick={()=>handleSort("championships")}>Championships{arrow("championships")}</th>
-                              <th style={thStyle("ptsWon")} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
-                              <th style={thStyle("ptsWinPct")} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
-                              <th style={thStyle("record")} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
-                              <th style={thStyle("winPct")} onClick={()=>handleSort("winPct")}>Win%{arrow("winPct")}</th>
+                              <th style={{ padding:"8px 6px" }}>#</th>
+                              <th style={{ padding:"8px 6px" }}>Player</th>
+                              <th style={{...thStyle("championships"), padding:"8px 4px"}} onClick={()=>handleSort("championships")}>Championships{arrow("championships")}</th>
+                              <th style={{...thStyle("ptsWon"), padding:"8px 4px"}} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
+                              <th style={{...thStyle("ptsWinPct"), padding:"8px 4px"}} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
+                              <th style={{...thStyle("record"), padding:"8px 4px"}} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
+                              <th style={{...thStyle("winPct"), padding:"8px 4px"}} onClick={()=>handleSort("winPct")}>Win%{arrow("winPct")}</th>
                             </tr></thead>
                             <tbody>
                               {sorted.map((p,i)=>{
@@ -1741,6 +1742,7 @@ export default function PublicApp({ onGoAdmin }) {
                               })}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       );
                     })()
