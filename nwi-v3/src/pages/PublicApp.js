@@ -1693,11 +1693,11 @@ export default function PublicApp({ onGoAdmin }) {
                       return (
                         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:12, overflow:"hidden" }}>
                           <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
-                          <table style={{ fontSize:11, minWidth:420 }}>
+                          <table style={{ fontSize:11, width:"100%" }}>
                             <thead><tr>
-                              <th style={{ padding:"8px 6px" }}>#</th>
-                              <th style={{ padding:"8px 6px" }}>Player</th>
-                              <th style={{...thStyle("championships"), padding:"8px 4px"}} onClick={()=>handleSort("championships")}>Championships{arrow("championships")}</th>
+                              <th style={{ padding:"8px 4px" }}>#</th>
+                              <th style={{ padding:"8px 4px" }}>Player</th>
+                              <th style={{...thStyle("championships"), padding:"8px 4px"}} onClick={()=>handleSort("championships")}>Titles{arrow("championships")}</th>
                               <th style={{...thStyle("ptsWon"), padding:"8px 4px"}} onClick={()=>handleSort("ptsWon")}>Pts{arrow("ptsWon")}</th>
                               <th style={{...thStyle("ptsWinPct"), padding:"8px 4px"}} onClick={()=>handleSort("ptsWinPct")}>Pts%{arrow("ptsWinPct")}</th>
                               <th style={{...thStyle("record"), padding:"8px 4px"}} onClick={()=>handleSort("record")}>Record{arrow("record")}</th>
