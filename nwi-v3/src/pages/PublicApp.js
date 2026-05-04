@@ -1731,7 +1731,7 @@ export default function PublicApp({ onGoAdmin }) {
                                     </td>
                                     <td style={{ color:"#ff8c00", fontWeight:700 }}>{p.ptsWon}</td>
                                     <td style={{ fontWeight:800 }}>{p.ptsWinPct}%</td>
-                                    <td>
+                                    <td style={{ whiteSpace:"nowrap" }}>
                                       <span style={{ fontWeight:700, color:"#4ade80" }}>{p.matchWins}W</span>
                                       {" "}<span style={{ fontWeight:700, color:"#ffd700" }}>{p.matchTies}T</span>
                                       {" "}<span style={{ fontWeight:700, color:"#ff5555" }}>{p.matchLosses}L</span>
