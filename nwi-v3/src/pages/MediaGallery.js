@@ -3,6 +3,67 @@ import { useState, useRef } from "react";
 import { useCollection, firestore } from "../firebase/hooks";
 import { uploadToCloudinary } from "../cloudinary/config";
 
+function PublicVideoUpload() {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [name, setName] = useState("");
+  const [file, setFile] = useState(null);
+  const [done, setDone] = useState(false);
+  const inputRef = useRef();
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true);
+    setProgress(0);
+    try {
+      const url = await uploadToCloudinary(file, "video", p => setProgress(p));
+      await firestore.add("media", {
+        type: "video",
+        url,
+        name: name.trim() || file.name,
+        uploadedAt: new Date().toISOString(),
+      });
+      setDone(true);
+      setFile(null);
+      setName("");
+      setTimeout(() => setDone(false), 3000);
+    } catch(e) {
+      alert("Upload failed: " + e.message);
+    }
+    setUploading(false);
+    setProgress(0);
+  };
+
+  return (
+    <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:16, marginBottom:16 }}>
+      <div style={{ fontSize:14, fontWeight:700, marginBottom:10 }}>🎬 Upload a Video</div>
+      {done
+        ? <div style={{ color:"#4ade80", fontSize:13, textAlign:"center", padding:"10px 0" }}>✓ Video uploaded!</div>
+        : <>
+          <input type="text" placeholder="Title (optional)" value={name} onChange={e=>setName(e.target.value)}
+            style={{ width:"100%", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:8, color:"#e8edf3", fontFamily:"inherit", fontSize:13, padding:"8px 12px", marginBottom:8, boxSizing:"border-box" }}/>
+          <div onClick={()=>inputRef.current?.click()}
+            style={{ border:"2px dashed rgba(255,255,255,0.15)", borderRadius:8, padding:"14px", textAlign:"center", cursor:"pointer", marginBottom:8 }}>
+            {file
+              ? <span style={{ fontSize:13, color:"#4ade80" }}>✓ {file.name}</span>
+              : <span style={{ fontSize:13, color:"rgba(255,255,255,0.35)" }}>Tap to choose video</span>}
+          </div>
+          <input ref={inputRef} type="file" accept="video/*,.mp4,.mov,.m4v,.webm" style={{ display:"none" }}
+            onChange={e=>setFile(e.target.files[0]||null)}/>
+          {uploading
+            ? <div style={{ background:"rgba(255,255,255,0.06)", borderRadius:20, overflow:"hidden", height:8, marginBottom:8 }}>
+                <div style={{ width:`${progress}%`, background:"#4ade80", height:"100%", transition:"width 0.3s" }}/>
+              </div>
+            : null}
+          <button disabled={!file||uploading} onClick={handleUpload}
+            style={{ width:"100%", padding:"10px", background:file&&!uploading?"linear-gradient(135deg,#4ade80,#22c55e)":"rgba(255,255,255,0.06)", border:"none", borderRadius:8, color:file&&!uploading?"#000":"rgba(255,255,255,0.3)", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:file&&!uploading?"pointer":"default" }}>
+            {uploading?`Uploading ${progress}%...`:"Upload Video"}
+          </button>
+        </>}
+    </div>
+  );
+}
+
 export default function MediaGallery() {
   const [mediaTab, setMediaTab] = useState("photos");
   const [lightbox, setLightbox] = useState(null);
@@ -10,7 +71,7 @@ export default function MediaGallery() {
   const { data: media, loading } = useCollection("media");
 
   const photos = media.filter(m => m.type === "photo");
-  const audio  = media.filter(m => m.type === "audio");
+  const video  = media.filter(m => m.type === "video");
   const docs   = media.filter(m => m.type === "doc");
   const links  = media.filter(m => m.type === "link");
 
@@ -35,7 +96,7 @@ export default function MediaGallery() {
       <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:16 }}>Media Vault</div>
 
       <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
-        {[["photos",`📸 Photos (${photos.length})`],["audio",`🎵 Audio (${audio.length})`],["docs",`📄 Docs (${docs.length})`],["links",`🔗 Links (${links.length})`]].map(([id,label])=>(
+        {[["photos",`📸 Photos (${photos.length})`],["video",`🎬 Video (${video.length})`],["docs",`📄 Docs (${docs.length})`],["links",`🔗 Links (${links.length})`]].map(([id,label])=>(
           <button key={id} className={`media-tab-btn${mediaTab===id?" active":""}`} onClick={()=>setMediaTab(id)}>{label}</button>
         ))}
       </div>
@@ -65,21 +126,23 @@ export default function MediaGallery() {
       )}
 
       {/* AUDIO */}
-      {mediaTab==="audio" && (
+      {mediaTab==="video" && (
         <div>
-          {audio.length===0
-            ? <EmptyState icon="🎵" text="No audio yet — admins can add theme songs from the Admin Panel"/>
-            : audio.map(a=>(
+          {/* Public upload */}
+          <PublicVideoUpload/>
+          {video.length===0
+            ? <EmptyState icon="🎬" text="No videos yet — be the first to upload!"/>
+            : video.map(a=>(
               <div key={a.id} style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:16, marginBottom:10 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <div style={{ fontSize:26 }}>🎵</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:15, fontWeight:700 }}>{a.name||"Audio"}</div>
+                    <div style={{ fontSize:15, fontWeight:700 }}>{a.name||"Video"}</div>
                     {a.description&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{a.description}</div>}
                   </div>
-                  <a href={a.url} download={a.name||"audio"} className="dl-btn">⬇</a>
+                  <a href={a.url} download={a.name||"video"} className="dl-btn">⬇</a>
                 </div>
-                <audio controls src={a.url} preload="none"/>
+                <video controls src={a.url} style={{ width:"100%", borderRadius:8, marginTop:6 }} preload="none"/>
               </div>
             ))
           }
