@@ -135,7 +135,7 @@ export default function MediaGallery() {
             : video.map(a=>(
               <div key={a.id} style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:16, marginBottom:10 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ fontSize:26 }}>🎵</div>
+                  <div style={{ fontSize:26 }}>🎬</div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:15, fontWeight:700 }}>{a.name||"Video"}</div>
                     {a.description&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>{a.description}</div>}
