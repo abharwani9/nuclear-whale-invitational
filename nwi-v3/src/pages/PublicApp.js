@@ -1778,28 +1778,44 @@ export default function PublicApp({ onGoAdmin }) {
           const getWeightedWinRateMatchups = (players, compName) => {
             if (!players?.length) return null;
             let weightedWins = 0, totalWeight = 0;
+
+            // Helper to process a single matchup
+            const processMatch = (m) => {
+              if (!m.winner) return;
+              if (compName) {
+                const mc = (m.roundName||m.competitionName||"").toLowerCase();
+                if (!mc.includes(compName.toLowerCase().split(" ")[0])) return;
+              }
+              const inN = players.some(p => (m.nukes||[]).includes(p));
+              const inW = players.some(p => (m.whales||[]).includes(p));
+              if (!inN && !inW) return;
+              const oppTeam = inN ? "whales" : "nukes";
+              const oppPlayers = m[oppTeam] || [];
+              const oppAvgHcp = oppPlayers.length > 0
+                ? oppPlayers.map(n => getHandicap(n)).reduce((s,h)=>s+h,0) / oppPlayers.length
+                : 18;
+              const weight = Math.max(0.5, 1 + (18 - oppAvgHcp) / 18);
+              const pt = inN ? "nukes" : "whales";
+              const won = m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0;
+              weightedWins += won * weight;
+              totalWeight += weight;
+            };
+
+            // Historical matches
             history.forEach(yr => {
               (yr.matches||[]).forEach(m => {
-                if (m.type === "heading" || !m.winner) return;
-                if (compName) {
-                  const mc = (m.roundName||m.competitionName||"").toLowerCase();
-                  if (!mc.includes(compName.toLowerCase().split(" ")[0])) return;
-                }
-                const inN = players.some(p => (m.nukes||[]).includes(p));
-                const inW = players.some(p => (m.whales||[]).includes(p));
-                if (!inN && !inW) return;
-                const oppTeam = inN ? "whales" : "nukes";
-                const oppPlayers = m[oppTeam] || [];
-                const oppAvgHcp = oppPlayers.length > 0
-                  ? oppPlayers.map(n => getHandicap(n)).reduce((s,h)=>s+h,0) / oppPlayers.length
-                  : 18;
-                const weight = Math.max(0.5, 1 + (18 - oppAvgHcp) / 18);
-                const pt = inN ? "nukes" : "whales";
-                const won = m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0;
-                weightedWins += won * weight;
-                totalWeight += weight;
+                if (m.type === "heading") return;
+                processMatch(m);
               });
             });
+
+            // Current year rounds (always include live results for odds)
+            if (!currentYearImported) {
+              rounds.forEach(r => {
+                (r.matchups||[]).forEach(m => processMatch(m));
+              });
+            }
+
             return totalWeight >= 2 ? weightedWins / totalWeight : null;
           };
 
@@ -1940,8 +1956,18 @@ export default function PublicApp({ onGoAdmin }) {
                             const allP2=[...(firstM.nukes||[]),...(firstM.whales||[])].filter(Boolean);
                             const pStats2=allP2.map(name=>{
                               let w=0,l=0,t=0;
-                              history.forEach(yr=>(yr.matches||[]).forEach(hm=>{
-                                if(hm.type==="heading"||!hm.winner) return;
+                              history.forEach(yr=>{
+                                if(currentYearImported&&Number(yr.year)===Number(currentTournamentYear)) return;
+                                (yr.matches||[]).forEach(hm=>{
+                                  if(hm.type==="heading"||!hm.winner) return;
+                                  const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
+                                  if(!onN&&!onW) return;
+                                  const pt=onN?"nukes":"whales";
+                                  if(hm.winner===pt) w++; else if(hm.winner==="tie") t++; else l++;
+                                });
+                              });
+                              rounds.forEach(r=>(r.matchups||[]).forEach(hm=>{
+                                if(!hm.winner) return;
                                 const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
                                 if(!onN&&!onW) return;
                                 const pt=onN?"nukes":"whales";
@@ -1985,8 +2011,18 @@ export default function PublicApp({ onGoAdmin }) {
                             const allP2=[...(firstM2.nukes||[]),...(firstM2.whales||[])].filter(Boolean);
                             const pStats2=allP2.map(name=>{
                               let w=0,l=0,t=0;
-                              history.forEach(yr=>(yr.matches||[]).forEach(hm=>{
-                                if(hm.type==="heading"||!hm.winner) return;
+                              history.forEach(yr=>{
+                                if(currentYearImported&&Number(yr.year)===Number(currentTournamentYear)) return;
+                                (yr.matches||[]).forEach(hm=>{
+                                  if(hm.type==="heading"||!hm.winner) return;
+                                  const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
+                                  if(!onN&&!onW) return;
+                                  const pt=onN?"nukes":"whales";
+                                  if(hm.winner===pt) w++; else if(hm.winner==="tie") t++; else l++;
+                                });
+                              });
+                              rounds.forEach(r=>(r.matchups||[]).forEach(hm=>{
+                                if(!hm.winner) return;
                                 const onN=(hm.nukes||[]).includes(name),onW=(hm.whales||[]).includes(name);
                                 if(!onN&&!onW) return;
                                 const pt=onN?"nukes":"whales";
@@ -2096,9 +2132,24 @@ export default function PublicApp({ onGoAdmin }) {
                         const allPlayers = [...(m.nukes||[]), ...(m.whales||[])];
                         const playerStats = allPlayers.map(name => {
                           let w=0,l=0,t=0;
+                          // Historical results
                           history.forEach(yr => {
+                            if (currentYearImported && Number(yr.year)===Number(currentTournamentYear)) return; // skip if also in rounds below
                             (yr.matches||[]).forEach(hm => {
                               if (hm.type==="heading"||!hm.winner) return;
+                              const onNukes = (hm.nukes||[]).includes(name);
+                              const onWhales = (hm.whales||[]).includes(name);
+                              if (!onNukes && !onWhales) return;
+                              const playerTeam = onNukes?"nukes":"whales";
+                              if (hm.winner===playerTeam) w++;
+                              else if (hm.winner==="tie") t++;
+                              else l++;
+                            });
+                          });
+                          // Current year rounds (always include live results)
+                          rounds.forEach(r => {
+                            (r.matchups||[]).forEach(hm => {
+                              if (!hm.winner) return;
                               const onNukes = (hm.nukes||[]).includes(name);
                               const onWhales = (hm.whales||[]).includes(name);
                               if (!onNukes && !onWhales) return;
