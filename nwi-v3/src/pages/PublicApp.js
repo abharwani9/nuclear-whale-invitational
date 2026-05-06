@@ -1926,12 +1926,14 @@ export default function PublicApp({ onGoAdmin }) {
                             onClick={()=>setSelectedMatchup(selectedMatchup===`${round.id}-scr-${gi}`?null:`${round.id}-scr-${gi}`)}>
                             <div style={{ textAlign:"center" }}>
                               <div style={{ fontSize:14, fontWeight:900, color:"#ff4500" }}>{Math.round(scrOdds.nukeProb*100)}%</div>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {nHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#ff4500" }}>{scrOdds.nukeOdds}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>Team HCP {nHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
                             </div>
                             <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win Probability<br/>ODDS · Tap for Stats</div>
                             <div style={{ textAlign:"center" }}>
                               <div style={{ fontSize:14, fontWeight:900, color:"#00aaff" }}>{Math.round(scrOdds.whaleProb*100)}%</div>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>HCP {wHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#00aaff" }}>{scrOdds.whaleOdds}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)" }}>Team HCP {wHcp}{isAdj2?` (${scrAllow}%)`:""}</div>
                             </div>
                           </div>
                           {selectedMatchup===`${round.id}-scr-${gi}`&&(()=>{
@@ -2076,13 +2078,15 @@ export default function PublicApp({ onGoAdmin }) {
                             <div style={{ textAlign:"center", flex:1 }}>
                               <div style={{ fontSize:12, fontWeight:800, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)" }}>Win Probability</div>
                               <div style={{ fontSize:18, fontWeight:900, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)", lineHeight:1.1 }}>{Math.round(odds.nukeProb*100)}%</div>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)", marginTop:2 }}>HCP {nukeHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:odds.nukeFav?"#ff4500":"rgba(255,100,0,0.6)", marginTop:1 }}>{odds.nukeOdds}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.3)", marginTop:2 }}>Team HCP {nukeHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
                             </div>
                             <div style={{ fontSize:9, color:"rgba(255,255,255,0.2)", textAlign:"center" }}>ODDS · Tap for Stats</div>
                             <div style={{ textAlign:"center", flex:1 }}>
                               <div style={{ fontSize:12, fontWeight:800, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)" }}>Win Probability</div>
                               <div style={{ fontSize:18, fontWeight:900, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)", lineHeight:1.1 }}>{Math.round(odds.whaleProb*100)}%</div>
-                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:2 }}>HCP {whaleHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:!odds.nukeFav?"#00aaff":"rgba(0,150,255,0.6)", marginTop:1 }}>{odds.whaleOdds}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,0.25)", marginTop:2 }}>Team HCP {whaleHcp}{isAdj?` (${allowance}% allow.)`:""}</div>
                             </div>
                           </div>
                         );
