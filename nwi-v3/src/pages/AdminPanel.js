@@ -39,7 +39,36 @@ function useDragList(initialItems) {
     await saveOrder(items, collection);
   };
 
-  return { items, dragOver, onDragStart, onDragEnter, onDragEnd };
+  // Touch support for mobile drag-to-reorder
+  const onTouchStart = (i) => (e) => {
+    dragIdx.current = i;
+    setDragOver(i);
+  };
+  const onTouchMove = (i) => (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const row = el?.closest('[data-drag-idx]');
+    if (!row) return;
+    const newIdx = parseInt(row.getAttribute('data-drag-idx'), 10);
+    if (!isNaN(newIdx) && newIdx !== dragIdx.current) {
+      setItems(prev => {
+        const arr = [...prev];
+        const [moved] = arr.splice(dragIdx.current, 1);
+        arr.splice(newIdx, 0, moved);
+        dragIdx.current = newIdx;
+        return arr;
+      });
+      setDragOver(newIdx);
+    }
+  };
+  const onTouchEnd = async (collection) => {
+    dragIdx.current = null;
+    setDragOver(null);
+    await saveOrder(items, collection);
+  };
+
+  return { items, dragOver, onDragStart, onDragEnter, onDragEnd, onTouchStart, onTouchMove, onTouchEnd };
 }
 
 const ADMIN_CODES = ["nuke2026", "whale2026", "admin2026"];
@@ -514,7 +543,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
   const [newSegment, setNewSegment] = useState("");
   const [addingSegment, setAddingSegment] = useState(false);
   const sortedRounds = [...rounds].sort((a,b)=>(a.order??0)-(b.order??0));
-  const { items:dragRounds, dragOver:dragOverRound, onDragStart:roundDragStart, onDragEnter:roundDragEnter, onDragEnd:roundDragEnd } = useDragList(sortedRounds);
+  const { items:dragRounds, dragOver:dragOverRound, onDragStart:roundDragStart, onDragEnter:roundDragEnter, onDragEnd:roundDragEnd, onTouchStart:roundTouchStart, onTouchMove:roundTouchMove, onTouchEnd:roundTouchEnd } = useDragList(sortedRounds);
 
   const addSegment = async () => {
     if (!newSegment.trim()) return;
@@ -649,9 +678,13 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
         round.type==="segment" ? (
           /* Segment subheading */
           <div key={round.id} draggable
+            data-drag-idx={ri}
             onDragStart={()=>roundDragStart(ri)}
             onDragEnter={()=>roundDragEnter(ri)}
             onDragEnd={()=>roundDragEnd("rounds")}
+            onTouchStart={roundTouchStart(ri)}
+            onTouchMove={roundTouchMove(ri)}
+            onTouchEnd={()=>roundTouchEnd("rounds")}
             onDragOver={e=>e.preventDefault()}
             style={{ display:"flex", alignItems:"center", gap:8, marginTop:16, marginBottom:8, cursor:"grab", opacity:dragOverRound===ri?0.5:1 }}>
             <span style={{ color:"rgba(255,255,255,0.25)", fontSize:16 }}>⠿</span>
@@ -659,10 +692,13 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:11 }} onClick={async()=>{ if(window.confirm("Delete subsection?")) await firestore.delete("rounds",round.id); }}>✕</button>
           </div>
         ) : (
-        <div key={round.id} draggable
+        <div key={round.id} draggable data-drag-idx={ri}
           onDragStart={()=>roundDragStart(ri)}
           onDragEnter={()=>roundDragEnter(ri)}
           onDragEnd={()=>roundDragEnd("rounds")}
+          onTouchStart={roundTouchStart(ri)}
+          onTouchMove={roundTouchMove(ri)}
+          onTouchEnd={()=>roundTouchEnd("rounds")}
           onDragOver={e=>e.preventDefault()}
           style={{ ...s.card, borderColor:dragOverRound===ri?"rgba(255,255,255,0.4)":"rgba(255,200,0,0.15)", marginBottom:12, cursor:"grab", opacity:dragOverRound===ri?0.6:1 }}>
           {(()=>{ const isC = collapsedRounds[round.id]!==false; return (
@@ -907,14 +943,18 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 
 // ── SCHEDULE ────────────────────────────────────────────────────────────────
 function SchedDayList({ items, showToast, setEditing, setForm }) {
-  const { items:dragItems, dragOver, onDragStart, onDragEnter, onDragEnd } = useDragList(items);
+  const { items:dragItems, dragOver, onDragStart, onDragEnter, onDragEnd, onTouchStart, onTouchMove, onTouchEnd } = useDragList(items);
   return (
     <>
       {dragItems.map((item,ii)=>(
         <div key={item.id} draggable
+          data-drag-idx={ii}
           onDragStart={()=>onDragStart(ii)}
           onDragEnter={()=>onDragEnter(ii)}
           onDragEnd={()=>onDragEnd("schedule")}
+          onTouchStart={onTouchStart(ii)}
+          onTouchMove={onTouchMove(ii)}
+          onTouchEnd={()=>onTouchEnd("schedule")}
           onDragOver={e=>e.preventDefault()}
           style={{ ...{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"10px 12px", marginBottom:10 }, display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", opacity:dragOver===ii?0.5:1, borderColor:dragOver===ii?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
           <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14 }}>⠿</span>
@@ -942,6 +982,16 @@ function ScheduleSection({ schedule, meta, showToast }) {
   const [form, setForm] = useState({ day:days[0]||"Day 1", time:"", event:"", icon:"⛳", course:"" });
   const [editing, setEditing] = useState(null);
   const [dragOver, setDragOver] = useState(null);
+
+  // Accommodations state
+  const [accomm, setAccomm] = useState({ address:"", link:"", notes:"" });
+  useEffect(()=>{
+    if(meta?.accommodation) setAccomm({
+      address: meta.accommodation.address||"",
+      link: meta.accommodation.link||"",
+      notes: meta.accommodation.notes||"",
+    });
+  }, [JSON.stringify(meta?.accommodation)]);
 
   // Re-sync days when meta.scheduleDays changes (from Firestore)
   useEffect(()=>{
@@ -1733,7 +1783,7 @@ function RulesSection({ rules, showToast }) {
   const [form, setForm]     = useState(blank);
   const [editing, setEditing] = useState(null);
   const sortedRules = [...rules].sort((a,b)=>(a.order||0)-(b.order||0));
-  const { items:dragRules, dragOver:dragOverRule, onDragStart:ruleDragStart, onDragEnter:ruleDragEnter, onDragEnd:ruleDragEnd } = useDragList(sortedRules);
+  const { items:dragRules, dragOver:dragOverRule, onDragStart:ruleDragStart, onDragEnter:ruleDragEnter, onDragEnd:ruleDragEnd, onTouchStart:ruleTouchStart, onTouchMove:ruleTouchMove, onTouchEnd:ruleTouchEnd } = useDragList(sortedRules);
   const sorted = dragRules;
 
   const save = async () => {
@@ -1762,9 +1812,13 @@ function RulesSection({ rules, showToast }) {
       <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:8 }}>⠿ Drag to reorder</div>
       {sorted.map((r,ri)=>(
         <div key={r.id} draggable
+          data-drag-idx={ri}
           onDragStart={()=>ruleDragStart(ri)}
           onDragEnter={()=>ruleDragEnter(ri)}
           onDragEnd={()=>ruleDragEnd("rules")}
+          onTouchStart={ruleTouchStart(ri)}
+          onTouchMove={ruleTouchMove(ri)}
+          onTouchEnd={()=>ruleTouchEnd("rules")}
           onDragOver={e=>e.preventDefault()}
           style={{ ...s.card, padding:"12px 14px", cursor:"grab", opacity:dragOverRule===ri?0.5:1, borderColor:dragOverRule===ri?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
