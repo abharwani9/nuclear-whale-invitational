@@ -2221,6 +2221,16 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── SCHEDULE ── */}
         {tab==="schedule" && (
           <div>
+            {/* Accommodations - top of schedule */}
+            {(meta?.accommodation?.address||meta?.accommodation?.link||meta?.accommodation?.notes)&&(
+              <div className="card" style={{ marginBottom:16, padding:16 }}>
+                <div style={{ fontSize:15, fontWeight:800, marginBottom:10 }}>🏠 Accommodations</div>
+                {meta.accommodation.address&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.7)", marginBottom:6 }}>📍 {meta.accommodation.address}</div>}
+                {meta.accommodation.link&&<a href={meta.accommodation.link} target="_blank" rel="noopener noreferrer"
+                  style={{ display:"block", fontSize:13, color:"#4ade80", marginBottom:6, wordBreak:"break-all" }}>🔗 View on Airbnb</a>}
+                {meta.accommodation.notes&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", whiteSpace:"pre-line", marginTop:6, lineHeight:1.6 }}>{meta.accommodation.notes}</div>}
+              </div>
+            )}
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>Tournament Schedule</div>
             {meta?.location&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>📍 {meta.location}</div>}
             {(() => {
@@ -2246,16 +2256,6 @@ export default function PublicApp({ onGoAdmin }) {
                 );
               });
             })()}
-          {/* Accommodations */}
-          {(meta?.accommodation?.address||meta?.accommodation?.link||meta?.accommodation?.notes)&&(
-            <div className="card" style={{ marginTop:16, padding:16 }}>
-              <div style={{ fontSize:15, fontWeight:800, marginBottom:10 }}>🏠 Accommodations</div>
-              {meta.accommodation.address&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.7)", marginBottom:6 }}>📍 {meta.accommodation.address}</div>}
-              {meta.accommodation.link&&<a href={meta.accommodation.link} target="_blank" rel="noopener noreferrer"
-                style={{ display:"block", fontSize:13, color:"#4ade80", marginBottom:6, wordBreak:"break-all" }}>🔗 View on Airbnb</a>}
-              {meta.accommodation.notes&&<div style={{ fontSize:12, color:"rgba(255,255,255,0.45)", whiteSpace:"pre-line", marginTop:6, lineHeight:1.6 }}>{meta.accommodation.notes}</div>}
-            </div>
-          )}
           </div>
         )}
 
