@@ -1071,6 +1071,34 @@ function ScheduleSection({ schedule, meta, showToast }) {
     <div>
       <div style={s.sectionTitle}>📅 Schedule</div>
 
+      {/* Accommodations */}
+      <div style={{ marginBottom:24 }}>
+        <div style={{ fontSize:16, fontWeight:800, marginBottom:12 }}>🏠 Accommodations</div>
+        <div style={s.card}>
+          <div style={s.grid2}>
+            <div>
+              <div style={s.label}>Airbnb Address</div>
+              <input style={s.input} value={accomm.address} onChange={e=>setAccomm(a=>({...a,address:e.target.value}))} placeholder="123 Beach Rd, Myrtle Beach SC"/>
+            </div>
+            <div>
+              <div style={s.label}>Airbnb Link</div>
+              <input style={s.input} value={accomm.link} onChange={e=>setAccomm(a=>({...a,link:e.target.value}))} placeholder="https://airbnb.com/rooms/..."/>
+            </div>
+          </div>
+          <div style={{ marginTop:10 }}>
+            <div style={s.label}>Notes (check-in time, house code, parking, etc.)</div>
+            <textarea style={{ ...s.input, minHeight:70, resize:"vertical", fontFamily:"inherit", fontSize:13, lineHeight:1.5 }}
+              value={accomm.notes}
+              onChange={e=>setAccomm(a=>({...a,notes:e.target.value}))}
+              placeholder="Check-in: 4pm&#10;House code: 1234&#10;Parking in driveway"/>
+          </div>
+          <button style={{ ...s.btnFire, marginTop:12 }} onClick={async()=>{
+            await firestore.update("meta","tournament",{accommodation:accomm});
+            showToast("Accommodations saved!");
+          }}>Save Accommodations</button>
+        </div>
+      </div>
+
       {/* Day management */}
       <div style={{ ...s.card, marginBottom:14 }}>
         <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Days</div>
@@ -1139,33 +1167,6 @@ function ScheduleSection({ schedule, meta, showToast }) {
         );
       })}
 
-      {/* Accommodations */}
-      <div style={{ marginTop:24 }}>
-        <div style={{ fontSize:16, fontWeight:800, marginBottom:12 }}>🏠 Accommodations</div>
-        <div style={s.card}>
-          <div style={s.grid2}>
-            <div>
-              <div style={s.label}>Airbnb Address</div>
-              <input style={s.input} value={accomm.address} onChange={e=>setAccomm(a=>({...a,address:e.target.value}))} placeholder="123 Beach Rd, Myrtle Beach SC"/>
-            </div>
-            <div>
-              <div style={s.label}>Airbnb Link</div>
-              <input style={s.input} value={accomm.link} onChange={e=>setAccomm(a=>({...a,link:e.target.value}))} placeholder="https://airbnb.com/rooms/..."/>
-            </div>
-          </div>
-          <div style={{ marginTop:10 }}>
-            <div style={s.label}>Notes (check-in time, house code, parking, etc.)</div>
-            <textarea style={{ ...s.input, minHeight:70, resize:"vertical", fontFamily:"inherit", fontSize:13, lineHeight:1.5 }}
-              value={accomm.notes}
-              onChange={e=>setAccomm(a=>({...a,notes:e.target.value}))}
-              placeholder="Check-in: 4pm&#10;House code: 1234&#10;Parking in driveway"/>
-          </div>
-          <button style={{ ...s.btnFire, marginTop:12 }} onClick={async()=>{
-            await firestore.update("meta","tournament",{accommodation:accomm});
-            showToast("Accommodations saved!");
-          }}>Save Accommodations</button>
-        </div>
-      </div>
     </div>
   );
 }
