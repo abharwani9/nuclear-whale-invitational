@@ -13,9 +13,9 @@ const s = {
   btnGhost: { padding:"8px 14px", background:"none", border:"1px solid rgba(255,255,255,0.18)", borderRadius:8, color:"rgba(255,255,255,0.55)", fontFamily:"inherit", fontSize:12, fontWeight:600, cursor:"pointer" },
 };
 
-const ACCEPTED = { photo:"image/*", audio:"audio/*,.mp3,.wav,.m4a,.aac", doc:".pdf,.doc,.docx,.txt" };
-const TYPE_ICONS = { photo:"📸", audio:"🎵", doc:"📄", link:"🔗" };
-const TYPE_LABELS = { photo:"Photo", audio:"Audio / Theme Song", doc:"Document / PDF", link:"External Link" };
+const ACCEPTED = { photo:"image/*", video:"video/*,.mp4,.mov,.m4v,.webm", doc:".pdf,.doc,.docx,.txt" };
+const TYPE_ICONS = { photo:"📸", video:"🎬", doc:"📄", link:"🔗" };
+const TYPE_LABELS = { photo:"Photo", video:"Video", doc:"Document / PDF", link:"External Link" };
 
 export default function AdminMedia({ showToast }) {
   const [mediaTab, setMediaTab] = useState("photo");
@@ -35,7 +35,7 @@ export default function AdminMedia({ showToast }) {
   const handleFile = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    const maxMB = mediaTab==="audio" ? 50 : 20;
+    const maxMB = mediaTab==="video" ? 200 : 20;
     // Multi-photo mode
     if (mediaTab==="photo" && files.length > 1) {
       const tooBig = files.filter(f=>f.size>maxMB*1024*1024);
@@ -110,7 +110,7 @@ export default function AdminMedia({ showToast }) {
       </div>
 
       <div style={{ display:"flex", gap:6, marginBottom:20, flexWrap:"wrap" }}>
-        {["photo","audio","doc","link"].map(t=>(
+        {["photo","video","doc","link"].map(t=>(
           <button key={t} onClick={()=>{setMediaTab(t);setFile(null);setPreview(null);setForm(f=>({...f,name:"",description:"",url:"",icon:"🔗"}));}}
             style={{ padding:"7px 14px", background:mediaTab===t?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.03)", border:`1px solid ${mediaTab===t?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.07)"}`, borderRadius:8, color:mediaTab===t?"#fff":"rgba(255,255,255,0.4)", fontFamily:"inherit", fontSize:13, fontWeight:600, cursor:"pointer" }}>
             {TYPE_ICONS[t]} {TYPE_LABELS[t]}s
@@ -137,7 +137,7 @@ export default function AdminMedia({ showToast }) {
           /* File upload form */
           <div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-              <div><div style={s.label}>Name (optional)</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder={mediaTab==="audio"?"e.g. Nukes Theme":mediaTab==="doc"?"e.g. 2024 Scorecard":"e.g. Day 1 Photos"}/></div>
+              <div><div style={s.label}>Name (optional)</div><input style={s.input} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder={mediaTab==="video"?"e.g. Hole-in-One Highlight":mediaTab==="doc"?"e.g. 2024 Scorecard":"e.g. Day 1 Photos"}/></div>
               <div><div style={s.label}>Year (optional)</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
             </div>
             <div style={{ marginBottom:14 }}><div style={s.label}>Description (optional)</div><input style={s.input} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Optional note"/></div>
@@ -192,7 +192,7 @@ export default function AdminMedia({ showToast }) {
         </div>
       )}
 
-      {(mediaTab==="audio"||mediaTab==="doc"||mediaTab==="link")&&filtered.map(item=>(
+      {(mediaTab==="video"||mediaTab==="doc"||mediaTab==="link")&&filtered.map(item=>(
         <div key={item.id} style={{...s.card,padding:"13px 16px",display:"flex",alignItems:"center",gap:12}}>
           <span style={{ fontSize:26 }}>{mediaTab==="link"?(item.icon||"🔗"):TYPE_ICONS[mediaTab]}</span>
           <div style={{ flex:1 }}>
