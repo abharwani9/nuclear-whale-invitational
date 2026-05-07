@@ -705,7 +705,11 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isC?4:12, cursor:"pointer" }}
             onClick={e=>{ if(e.target.closest('button')) return; toggleRound(round.id); }}>
             <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, width:14 }}>{collapsedRounds[round.id]!==false?"▶":"▼"}</span>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16, cursor:"grab" }}>⠿</span>
+            <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+              <button style={{ background:"none", border:"none", color:ri===0?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.35)", cursor:ri===0?"default":"pointer", fontSize:13, padding:"0 3px", lineHeight:1.2, fontFamily:"inherit" }} onClick={async e=>{e.stopPropagation(); if(ri<=0) return; const arr=[...dragRounds]; const [m]=arr.splice(ri,1); arr.splice(ri-1,0,m); await saveOrder(arr,"rounds"); }}>▲</button>
+              <button style={{ background:"none", border:"none", color:ri>=dragRounds.filter(r=>r.type!=="segment").length-1?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.35)", cursor:ri>=dragRounds.length-1?"default":"pointer", fontSize:13, padding:"0 3px", lineHeight:1.2, fontFamily:"inherit" }} onClick={async e=>{e.stopPropagation(); if(ri>=dragRounds.length-1) return; const arr=[...dragRounds]; const [m]=arr.splice(ri,1); arr.splice(ri+1,0,m); await saveOrder(arr,"rounds"); }}>▼</button>
+            </div>
             <div style={{ flex:1 }}>
               <div style={{ fontSize:16, fontWeight:800 }}>{round.name} <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)" }}>{round.day}</span></div>
               {round.competitionName&&<div style={{ fontSize:12, color:"#ffd700" }}>🏅 {round.competitionName}</div>}
