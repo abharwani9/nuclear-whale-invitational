@@ -595,18 +595,18 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
         </div>
 
         {unassigned.length>0&&(
-          <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:4}}>
+          <div style={{marginBottom:12,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:6}}>
             {sortPlayers(unassigned,assignSort).map(name=>{
               const s=getPlayerStats(name);
               return (
-                <div key={name} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8}}>
-                  <PhotoAvatar roster={roster} name={name} size={26}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600}}>{name}</div>
-                    <div style={{fontSize:10,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)}&nbsp;&nbsp;<span style={{color:"rgba(255,255,255,0.25)"}}>|</span>&nbsp;&nbsp;{s.w}W{s.t>0?` · ${s.t}T`:""} · {s.l}L</div>
+                <div key={name} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 7px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:8}}>
+                  <PhotoAvatar roster={roster} name={name} size={24}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:11,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
+                    <div style={{fontSize:9,color:"rgba(255,255,255,0.4)"}}>HCP {getHandicap(name)} · {s.w}-{s.t}-{s.l}</div>
                   </div>
-                  <button onClick={()=>assign(name,"nukes")} style={{padding:"3px 8px",background:"rgba(255,69,0,0.15)",border:"1px solid rgba(255,69,0,0.3)",borderRadius:5,color:"#ff4500",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>☢️</button>
-                  <button onClick={()=>assign(name,"whales")} style={{padding:"3px 8px",background:"rgba(0,170,255,0.15)",border:"1px solid rgba(0,170,255,0.3)",borderRadius:5,color:"#00aaff",fontFamily:"inherit",fontSize:11,fontWeight:700,cursor:"pointer"}}>🐋</button>
+                  <button onClick={()=>assign(name,"nukes")} style={{padding:"2px 6px",background:"rgba(255,69,0,0.15)",border:"1px solid rgba(255,69,0,0.3)",borderRadius:5,color:"#ff4500",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>☢️</button>
+                  <button onClick={()=>assign(name,"whales")} style={{padding:"2px 6px",background:"rgba(0,170,255,0.15)",border:"1px solid rgba(0,170,255,0.3)",borderRadius:5,color:"#00aaff",fontFamily:"inherit",fontSize:10,fontWeight:700,cursor:"pointer"}}>🐋</button>
                 </div>
               );
             })}
@@ -1475,6 +1475,73 @@ export default function PublicApp({ onGoAdmin }) {
   const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
   const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
 
+  // ── Projected final score (existing pts + expected pts from pending matchups) ──
+  const projection = (() => {
+    const getHcp = (name) => {
+      const p = roster.find(r => r.name === name);
+      const h = parseFloat(p?.handicap);
+      if (!h || isNaN(h) || h <= 1) return 27;
+      if (h > 50) return 36;
+      return h;
+    };
+    const teamHcp = (players, allowPct) => {
+      if (!players?.length) return 18;
+      const pct = (allowPct || 100) / 100;
+      const hc = players.map(n => getHcp(n) * pct).sort((a,b)=>a-b);
+      if (hc.length === 1) return Math.round(hc[0] * 0.5);
+      return Math.round(hc[0] * 0.35 + hc[1] * 0.15);
+    };
+    // Opponent-quality weighted win rate across history (+ live rounds if not imported)
+    const winRate = (players) => {
+      if (!players?.length) return null;
+      let ww = 0, tw = 0;
+      const proc = (m) => {
+        if (!m.winner || m.type === "heading") return;
+        const inN = players.some(p => (m.nukes||[]).includes(p));
+        const inW = players.some(p => (m.whales||[]).includes(p));
+        if (!inN && !inW) return;
+        const opp = (inN ? m.whales : m.nukes) || [];
+        const oppHcp = opp.length ? opp.map(getHcp).reduce((s,h)=>s+h,0)/opp.length : 18;
+        const wt = Math.max(0.5, 1 + (18 - oppHcp) / 18);
+        const pt = inN ? "nukes" : "whales";
+        ww += (m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0) * wt;
+        tw += wt;
+      };
+      history.forEach(yr => (yr.matches||[]).forEach(proc));
+      if (!currentYearImported) rounds.forEach(r => (r.matchups||[]).forEach(proc));
+      return tw >= 2 ? ww / tw : null;
+    };
+    const nukeProbFor = (nk, wh, allowPct) => {
+      const hcpProb = 0.5 + (teamHcp(wh, allowPct) - teamHcp(nk, allowPct)) * 0.03;
+      const nA = winRate(nk), wA = winRate(wh);
+      const hasAT = nA !== null || wA !== null;
+      const atProb = hasAT ? ((nA ?? 0.5) + (wA ?? 0.5) > 0 ? (nA ?? 0.5) / ((nA ?? 0.5) + (wA ?? 0.5)) : 0.5) : null;
+      let p = atProb !== null ? hcpProb * 0.75 + atProb * 0.25 : hcpProb;
+      return Math.max(0.1, Math.min(0.9, p));
+    };
+
+    // Start from points already earned
+    let nExp = teamPoints.nukes, wExp = teamPoints.whales;
+    // Add expected points from every PENDING matchup across all rounds
+    rounds.forEach(r => (r.matchups||[]).forEach(m => {
+      if (m.winner) return; // already counted in teamPoints
+      const nk = (m.nukes||[]).filter(Boolean);
+      const wh = (m.whales||[]).filter(Boolean);
+      if (!nk.length || !wh.length) return;
+      const comp = (competitions||[]).find(c => c.name === m.competitionName);
+      const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[comp?.id]) || 2;
+      const allowPct = comp && meta?.hcpAllowances?.[comp.id] !== undefined ? meta.hcpAllowances[comp.id] : 100;
+      const np = nukeProbFor(nk, wh, allowPct);
+      nExp += pts * np;
+      wExp += pts * (1 - np);
+    }));
+    return {
+      nukes: Math.round(nExp * 10) / 10,
+      whales: Math.round(wExp * 10) / 10,
+      hasPending: rounds.some(r => (r.matchups||[]).some(m => !m.winner && (m.nukes||[]).filter(Boolean).length && (m.whales||[]).filter(Boolean).length)),
+    };
+  })();
+
   // Confetti when a team clinches (fires once per session per team)
   const [confettiTeam, setConfettiTeam] = useState(null);
   useEffect(() => {
@@ -1668,6 +1735,25 @@ export default function PublicApp({ onGoAdmin }) {
                       ))}
                     </div>
                     <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
+                  </div>
+                )}
+                {projection.hasPending && totalPtsAvail>0 && (
+                  <div className="card" style={{ padding:"12px 16px", marginTop:12 }}>
+                    <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", color:"rgba(255,255,255,0.4)", textAlign:"center", marginBottom:10 }}>📊 Projected Final</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:14 }}>
+                      <div style={{ textAlign:"center", flex:1 }}>
+                        <div style={{ fontSize:26, fontWeight:900, color:projection.nukes>=projection.whales?"#ff4500":"rgba(255,69,0,0.55)" }}>{projection.nukes%1===0?projection.nukes:projection.nukes.toFixed(1)}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:1 }}>☢️ Nukes</div>
+                      </div>
+                      <div style={{ fontSize:12, color:"rgba(255,255,255,0.2)", fontWeight:700 }}>–</div>
+                      <div style={{ textAlign:"center", flex:1 }}>
+                        <div style={{ fontSize:26, fontWeight:900, color:projection.whales>=projection.nukes?"#00aaff":"rgba(0,170,255,0.55)" }}>{projection.whales%1===0?projection.whales:projection.whales.toFixed(1)}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.4)", marginTop:1 }}>🐋 Whales</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop:8, fontSize:10, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>
+                      Current pts + expected pts from remaining matchups (based on handicaps &amp; history)
+                    </div>
                   </div>
                 )}
             </div>
