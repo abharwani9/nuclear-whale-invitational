@@ -1362,12 +1362,12 @@ function CloseOutTournament({ history, rounds, competitions, meta, showToast }) 
       });
 
       // 4) Optionally clear rounds
-      if (rounds.length > 0 && window.confirm(`${curYear} archived: ${winner==="TBD"?"Tie":winner} wins ${Math.round(nukesPts*10)/10}–${Math.round(whalesPts*10)/10}.\n\nDelete all ${rounds.length} round(s) and their matchups to prep for next year?`)) {
+      if (rounds.length > 0 && window.confirm(`${curYear} archived: ${winner==="TBD"?"Tie":winner} wins ${Math.round(nukesPts*10)/10}–${Math.round(whalesPts*10)/10}.\n\nDelete all ${rounds.length} round(s) and their matchups now?\n\nOK = delete rounds   ·   Cancel = keep rounds`)) {
         for (const r of rounds) await firestore.delete("rounds", r.id);
       }
 
       // 5) Optionally advance the tournament year
-      if (window.confirm(`Advance tournament year from ${curYear} to ${curYear+1}?\n\n(You can update the date and other details later in Settings.)`)) {
+      if (window.confirm(`Advance tournament year from ${curYear} to ${curYear+1}?\n\nOK = advance to ${curYear+1}   ·   Cancel = stay on ${curYear}`)) {
         await firestore.update("meta","tournament",{ year: curYear+1 });
       }
 
@@ -1627,9 +1627,9 @@ function ImportFromRounds({ year, rounds, competitions, meta, showToast }) {
     <div style={{ padding:"12px 16px", background:"rgba(74,222,128,0.06)", borderBottom:"1px solid rgba(74,222,128,0.15)" }}>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         <div style={{ flex:1 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>⬇ Import from Current Tournament</div>
+          <div style={{ fontSize:13, fontWeight:700, color:"#4ade80" }}>⬇ Import Matches Only</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
-            Pulls matchup results from Rounds into this year. Already-imported matches are skipped automatically.
+            Pull results mid-tournament without archiving. To finalize the year, use 🏁 Close Out at the top instead (it imports, scores, and archives in one step).
           </div>
         </div>
         <button style={{ padding:"8px 16px", background:"rgba(74,222,128,0.15)", border:"1px solid rgba(74,222,128,0.3)", borderRadius:8, color:"#4ade80", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}
@@ -1787,6 +1787,14 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
           ⚔️ Match Results <span style={{ color:"rgba(255,255,255,0.25)", fontWeight:400 }}>({(year.matches||[]).length})</span>
         </div>
         {!adding&&editingMi===null&&<div style={{ display:"flex", gap:6 }}>
+          {(year.matches||[]).length>0&&(
+            <button style={{ ...s.btnDanger, fontSize:11, padding:"5px 10px" }} onClick={async()=>{
+              if(!window.confirm(`Clear all ${(year.matches||[]).length} matches from ${year.year}? This can't be undone.`)) return;
+              setLocalMatches([]);
+              await saveAll([]);
+              showToast("All results cleared");
+            }}>🗑️ Clear All</button>
+          )}
           <button style={{ ...s.btnGhost, fontSize:11, padding:"5px 10px" }} onClick={()=>setAddingHeading(a=>!a)}>+ Subheading</button>
           <button style={{ ...s.btnFire, fontSize:11, padding:"5px 12px" }} onClick={()=>setAdding(true)}>+ Add Match</button>
         </div>}
