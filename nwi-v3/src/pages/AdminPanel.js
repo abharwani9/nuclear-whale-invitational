@@ -39,12 +39,20 @@ function useDragList(initialItems) {
     await saveOrder(items, collection);
   };
 
-  // Touch support for mobile drag-to-reorder
+  // Touch support for mobile drag-to-reorder.
+  // Only begin a drag when the touch starts on an element explicitly marked as a
+  // drag handle (data-drag-handle). Touches on selects/buttons/inputs are ignored
+  // so their native behavior (opening a dropdown, tapping a button) works normally.
+  const dragActive = useRef(false);
   const onTouchStart = (i) => (e) => {
+    const handle = e.target.closest?.('[data-drag-handle]');
+    if (!handle) { dragActive.current = false; return; }
+    dragActive.current = true;
     dragIdx.current = i;
     setDragOver(i);
   };
   const onTouchMove = (i) => (e) => {
+    if (!dragActive.current) return; // not dragging — let the tap through
     e.preventDefault();
     const touch = e.touches[0];
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -63,6 +71,8 @@ function useDragList(initialItems) {
     }
   };
   const onTouchEnd = async (collection) => {
+    if (!dragActive.current) return;
+    dragActive.current = false;
     dragIdx.current = null;
     setDragOver(null);
     await saveOrder(items, collection);
@@ -148,7 +158,7 @@ export default function AdminPanel({ authed, onAuth, onBack }) {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        input:focus,select:focus,textarea:focus{border-color:rgba(255,255,255,0.3)!important;outline:none;}
+        button,select,a,input,[role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
         textarea{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e8edf3;font-family:'Barlow',sans-serif;font-size:14px;padding:9px 12px;width:100%;resize:vertical;}
         .sec-btn{flex-shrink:0;padding:7px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:8px;color:rgba(255,255,255,0.45);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
         .sec-btn.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;}
@@ -687,7 +697,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
             onTouchEnd={()=>roundTouchEnd("rounds")}
             onDragOver={e=>e.preventDefault()}
             style={{ display:"flex", alignItems:"center", gap:8, marginTop:16, marginBottom:8, cursor:"grab", opacity:dragOverRound===ri?0.5:1 }}>
-            <span style={{ color:"rgba(255,255,255,0.25)", fontSize:16 }}>⠿</span>
+            <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, cursor:"grab", padding:"4px 8px", touchAction:"none" }}>⠿</span>
             <div style={{ fontSize:13, fontWeight:800, color:"rgba(255,255,255,0.55)", letterSpacing:"0.08em", textTransform:"uppercase", flex:1 }}>{round.label}</div>
             <button style={{ ...s.btnDanger, padding:"2px 8px", fontSize:11 }} onClick={async()=>{ if(window.confirm("Delete subsection?")) await firestore.delete("rounds",round.id); }}>✕</button>
           </div>
@@ -705,7 +715,7 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:isC?4:12, cursor:"pointer" }}
             onClick={e=>{ if(e.target.closest('button')) return; toggleRound(round.id); }}>
             <span style={{ color:"rgba(255,255,255,0.4)", fontSize:11, width:14 }}>{collapsedRounds[round.id]!==false?"▶":"▼"}</span>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16, cursor:"grab" }}>⠿</span>
+            <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, cursor:"grab", padding:"4px 8px", touchAction:"none" }}>⠿</span>
             <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
               <button style={{ background:"none", border:"none", color:ri===0?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.35)", cursor:ri===0?"default":"pointer", fontSize:13, padding:"0 3px", lineHeight:1.2, fontFamily:"inherit" }} onClick={async e=>{e.stopPropagation(); if(ri<=0) return; const arr=[...dragRounds]; const [m]=arr.splice(ri,1); arr.splice(ri-1,0,m); await saveOrder(arr,"rounds"); }}>▲</button>
               <button style={{ background:"none", border:"none", color:ri>=dragRounds.filter(r=>r.type!=="segment").length-1?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.35)", cursor:ri>=dragRounds.length-1?"default":"pointer", fontSize:13, padding:"0 3px", lineHeight:1.2, fontFamily:"inherit" }} onClick={async e=>{e.stopPropagation(); if(ri>=dragRounds.length-1) return; const arr=[...dragRounds]; const [m]=arr.splice(ri,1); arr.splice(ri+1,0,m); await saveOrder(arr,"rounds"); }}>▼</button>
@@ -961,7 +971,7 @@ function SchedDayList({ items, showToast, setEditing, setForm }) {
           onTouchEnd={()=>onTouchEnd("schedule")}
           onDragOver={e=>e.preventDefault()}
           style={{ ...{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"10px 12px", marginBottom:10 }, display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", opacity:dragOver===ii?0.5:1, borderColor:dragOver===ii?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
-          <span style={{ color:"rgba(255,255,255,0.2)", fontSize:14 }}>⠿</span>
+          <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, cursor:"grab", padding:"4px 8px", touchAction:"none" }}>⠿</span>
           <span style={{ fontSize:16 }}>{item.icon}</span>
           <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
           <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
@@ -1818,7 +1828,7 @@ function MatchesEditor({ year, nukeNames, whaleNames, competitions, showToast })
             ? <MatchForm vals={editForm} setVals={setEditForm} onSave={saveEdit} onCancel={()=>{setEditingMi(null);setEditForm(null);}} saveLabel="Save Changes"/>
             : m.type!=="heading"&&(
               <div style={{ background:matchDragOver===mi?"rgba(255,255,255,0.08)":"rgba(255,255,255,0.03)", border:`1px solid ${matchDragOver===mi?"rgba(255,255,255,0.3)":m.winner==="nukes"?"rgba(255,69,0,0.2)":m.winner==="whales"?"rgba(0,170,255,0.2)":m.winner==="tie"?"rgba(255,200,0,0.15)":"rgba(255,255,255,0.06)"}`, borderRadius:10, padding:"11px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"flex-start", cursor:"grab" }}>
-                <span style={{ color:"rgba(255,255,255,0.15)", fontSize:16, paddingTop:4, cursor:"grab", flexShrink:0 }}>⠿</span>
+                <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, paddingTop:4, cursor:"grab", flexShrink:0, padding:"4px 8px", touchAction:"none" }}>⠿</span>
                 <div style={{ flex:1 }}>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:8 }}>
                     <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.12)":"rgba(255,69,0,0.04)", borderRadius:8, padding:"8px 10px", textAlign:"center" }}>
@@ -1951,7 +1961,7 @@ function RulesSection({ rules, showToast }) {
           onDragOver={e=>e.preventDefault()}
           style={{ ...s.card, padding:"12px 14px", cursor:"grab", opacity:dragOverRule===ri?0.5:1, borderColor:dragOverRule===ri?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-            <span style={{ color:"rgba(255,255,255,0.2)", fontSize:16 }}>⠿</span>
+            <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, cursor:"grab", padding:"4px 8px", touchAction:"none" }}>⠿</span>
             <div style={{ flex:1, fontWeight:700 }}>{r.title}</div>
             <button style={s.btnGhost} onClick={()=>{setEditing(r.id);setForm({title:r.title,body:r.body,order:r.order});}}>Edit</button>
             <button style={s.btnDanger} onClick={async()=>{await firestore.delete("rules",r.id);}}>✕</button>
