@@ -1505,6 +1505,7 @@ export default function PublicApp({ onGoAdmin }) {
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Barlow:wght@300;400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
+    button,select,a,[role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
     .tab-bar{display:flex;overflow-x:auto;gap:6px;padding:10px 12px;justify-content:flex-start;scrollbar-width:none;-webkit-overflow-scrolling:touch;background:linear-gradient(180deg,#0d1520,#07090e);border-bottom:1px solid rgba(255,255,255,0.06);}
     .tab-bar::-webkit-scrollbar{display:none;}
     @media(min-width:600px){.tab-bar{justify-content:center;flex-wrap:wrap;}}
