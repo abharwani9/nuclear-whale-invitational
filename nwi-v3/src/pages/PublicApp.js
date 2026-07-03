@@ -1173,6 +1173,15 @@ export default function PublicApp({ onGoAdmin }) {
 
   const tournamentDate = new Date((meta?.date || "2026-08-13") + "T" + (meta?.startTime || "10:00") + ":00");
 
+  // Smart landing tab: before the tournament starts, first-time visits land on Countdown;
+  // once tournament day arrives, land on Leaderboard. A tab the user already picked (sessionStorage) always wins.
+  useEffect(() => {
+    try { if (sessionStorage.getItem("nwi_pub_tab")) return; } catch(e) {}
+    if (!meta?.date) return;
+    const start = new Date(meta.date + "T00:00:00");
+    if (new Date() < start) setTab("countdown");
+  }, [meta?.date]);
+
   // ── Analytics tracking ─────────────────────────────────────────────────────
   useEffect(() => {
     const sessionKey = "nwi_session_id";
@@ -1454,6 +1463,15 @@ export default function PublicApp({ onGoAdmin }) {
   const remainingPts = totalPtsAvail - playedPts;
   const nukeWinPts  = Math.max(0, totalPtsAvail / 2 + 0.5 - teamPoints.nukes);
   const whaleWinPts = Math.max(0, totalPtsAvail / 2 + 0.5 - teamPoints.whales);
+  // Team match record (W-T-L) from current rounds
+  const teamRecord = { nukes:{w:0,t:0,l:0}, whales:{w:0,t:0,l:0} };
+  rounds.forEach(r => (r.matchups||[]).forEach(m => {
+    if (!m.winner) return;
+    if (m.winner === "nukes")  { teamRecord.nukes.w++; teamRecord.whales.l++; }
+    else if (m.winner === "whales") { teamRecord.whales.w++; teamRecord.nukes.l++; }
+    else if (m.winner === "tie") { teamRecord.nukes.t++; teamRecord.whales.t++; }
+  }));
+
   const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
   const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
 
@@ -1624,6 +1642,14 @@ export default function PublicApp({ onGoAdmin }) {
                                 </div>
                               </div>
                             )}
+                          </div>
+                        )}
+                        {(teamRecord[t.team].w+teamRecord[t.team].t+teamRecord[t.team].l)>0&&(
+                          <div style={{ marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.06)", display:"flex", justifyContent:"center", gap:16, fontSize:12 }}>
+                            <span><span style={{ fontWeight:800, color:"#4ade80" }}>{teamRecord[t.team].w}</span> <span style={{ color:"rgba(255,255,255,0.3)" }}>W</span></span>
+                            <span><span style={{ fontWeight:800, color:"#ffd700" }}>{teamRecord[t.team].t}</span> <span style={{ color:"rgba(255,255,255,0.3)" }}>T</span></span>
+                            <span><span style={{ fontWeight:800, color:"#ff5555" }}>{teamRecord[t.team].l}</span> <span style={{ color:"rgba(255,255,255,0.3)" }}>L</span></span>
+                            <span style={{ color:"rgba(255,255,255,0.25)" }}>· matches</span>
                           </div>
                         )}
                       </div>
