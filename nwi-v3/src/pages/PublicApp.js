@@ -9,6 +9,40 @@ const TEAMS = {
   whales: { name: "THE WHALES", emoji: "🐋", color: "#00aaff", bg: "rgba(0,170,255,0.1)" },
 };
 
+function Confetti({ color }) {
+  // 60 CSS-animated pieces, self-removing — no libraries
+  const pieces = Array.from({ length: 60 }, (_, i) => i);
+  const colors = color === "#ff4500"
+    ? ["#ff4500", "#ff8c00", "#ffd700", "#ffffff"]
+    : ["#00aaff", "#4ade80", "#ffd700", "#ffffff"];
+  return (
+    <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:9999, overflow:"hidden" }}>
+      {pieces.map(i => {
+        const left = Math.random()*100;
+        const delay = Math.random()*2;
+        const duration = 2.5 + Math.random()*2;
+        const size = 6 + Math.random()*8;
+        const c = colors[i % colors.length];
+        const rot = Math.random()*360;
+        return (
+          <div key={i} style={{
+            position:"absolute", top:"-20px", left:`${left}%`,
+            width:size, height:size*0.6, background:c, borderRadius:2,
+            transform:`rotate(${rot}deg)`,
+            animation:`confettiFall ${duration}s linear ${delay}s forwards`,
+          }}/>
+        );
+      })}
+      <style>{`
+        @keyframes confettiFall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(110vh) rotate(720deg); opacity: 0.7; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error:null }; }
   static getDerivedStateFromError(e) { return { error:e }; }
@@ -1422,6 +1456,18 @@ export default function PublicApp({ onGoAdmin }) {
   const whaleWinPts = Math.max(0, totalPtsAvail / 2 + 0.5 - teamPoints.whales);
   const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
   const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
+
+  // Confetti when a team clinches (fires once per session per team)
+  const [confettiTeam, setConfettiTeam] = useState(null);
+  useEffect(() => {
+    const key = nukesClinched ? "nukes" : whalesClinched ? "whales" : null;
+    if (!key) return;
+    if (sessionStorage.getItem(`clinch-confetti-${key}-${currentTournamentYear}`)) return;
+    sessionStorage.setItem(`clinch-confetti-${key}-${currentTournamentYear}`, "1");
+    setConfettiTeam(key);
+    const t = setTimeout(() => setConfettiTeam(null), 6000);
+    return () => clearTimeout(t);
+  }, [nukesClinched, whalesClinched]);
   const nukesElim  = teamPoints.nukes  + remainingPts <= teamPoints.whales;
   const whalesElim = teamPoints.whales + remainingPts <= teamPoints.nukes;
   const nukeWins  = history.filter(h => h.winner === "THE NUKES").length;
@@ -1471,6 +1517,7 @@ export default function PublicApp({ onGoAdmin }) {
     <ErrorBoundary>
     <div style={{ minHeight:"100vh", background:"#07090e", color:"#e8edf3", fontFamily:"'Barlow Condensed',sans-serif" }}>
       <style>{css}</style>
+      {confettiTeam && <Confetti color={TEAMS[confettiTeam].color}/>}
 
       {/* Header */}
       <div style={{ background: dynamicColors ? `linear-gradient(180deg, #0d1520, ${dynamicColors.bg})` : "linear-gradient(180deg,#0d1520,#07090e)", borderBottom:`1px solid ${dynamicColors ? dynamicColors.border : "rgba(255,255,255,0.06)"}`, padding:"14px 16px 14px", transition:"all 1s ease" }}>
@@ -2061,7 +2108,7 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>;
               })()}
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:10, alignItems:"center" }}>
-                        <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.15)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.4)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
+                        <div style={{ background:m.winner==="nukes"?"rgba(255,69,0,0.18)":"rgba(255,69,0,0.05)", border:`1px solid ${m.winner==="nukes"?"rgba(255,69,0,0.6)":"rgba(255,69,0,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center", boxShadow:m.winner==="nukes"?"0 0 14px rgba(255,69,0,0.35)":"none", opacity:m.winner==="whales"?0.45:1, transition:"all 0.3s" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>☢️</div>
                           {(m.nukes||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
@@ -2074,13 +2121,13 @@ export default function PublicApp({ onGoAdmin }) {
                               </div>
                             );
                           })}
-                          {m.winner==="nukes"&&<div style={{ fontSize:10, color:"#ff4500", marginTop:4 }}>✓ WIN</div>}
+                          {m.winner==="nukes"&&<div style={{ fontSize:11, fontWeight:900, color:"#fff", background:"#ff4500", borderRadius:12, padding:"2px 10px", marginTop:6, display:"inline-block", letterSpacing:"0.08em" }}>🏆 WIN</div>}
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
                         <div style={{ textAlign:"center" }}>
                           <div style={{ fontSize:12, fontWeight:900, color:"rgba(255,255,255,0.2)" }}>VS</div>
                         </div>
-                        <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.15)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.4)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center" }}>
+                        <div style={{ background:m.winner==="whales"?"rgba(0,170,255,0.18)":"rgba(0,170,255,0.05)", border:`1px solid ${m.winner==="whales"?"rgba(0,170,255,0.6)":"rgba(0,170,255,0.15)"}`, borderRadius:10, padding:"10px", textAlign:"center", boxShadow:m.winner==="whales"?"0 0 14px rgba(0,170,255,0.35)":"none", opacity:m.winner==="nukes"?0.45:1, transition:"all 0.3s" }}>
                           <div style={{ fontSize:16, marginBottom:3 }}>🐋</div>
                           {(m.whales||[]).filter(n=>n&&n.trim()).map((n,ni)=>{
                             const p = roster.find(r=>r.name===n);
@@ -2093,7 +2140,7 @@ export default function PublicApp({ onGoAdmin }) {
                               </div>
                             );
                           })}
-                          {m.winner==="whales"&&<div style={{ fontSize:10, color:"#00aaff", marginTop:4 }}>✓ WIN</div>}
+                          {m.winner==="whales"&&<div style={{ fontSize:11, fontWeight:900, color:"#fff", background:"#00aaff", borderRadius:12, padding:"2px 10px", marginTop:6, display:"inline-block", letterSpacing:"0.08em" }}>🏆 WIN</div>}
                           {m.winner==="tie"&&<div style={{ fontSize:10, color:"#ffd700", marginTop:4 }}>TIE</div>}
                         </div>
                       </div>
@@ -2161,9 +2208,41 @@ export default function PublicApp({ onGoAdmin }) {
                           });
                           return { name, w, l, t, total:w+l+t };
                         }).filter(p=>p.total>0);
+                        // Head-to-head: exact same pairing (either orientation), from this matchup's Nukes perspective
+                        const curN = (m.nukes||[]).filter(Boolean).sort();
+                        const curW = (m.whales||[]).filter(Boolean).sort();
+                        const sameSet = (a,b) => a.length===b.length && a.length>0 && a.every((x,i)=>x===b[i]);
+                        let h2hN=0, h2hW=0, h2hT=0;
+                        const tallyH2H = (hm) => {
+                          if (!hm.winner || hm.type==="heading" || hm===m) return;
+                          const hN = (hm.nukes||[]).filter(Boolean).sort();
+                          const hW = (hm.whales||[]).filter(Boolean).sort();
+                          if (sameSet(hN,curN) && sameSet(hW,curW)) {
+                            if (hm.winner==="nukes") h2hN++; else if (hm.winner==="whales") h2hW++; else h2hT++;
+                          } else if (sameSet(hN,curW) && sameSet(hW,curN)) {
+                            if (hm.winner==="whales") h2hN++; else if (hm.winner==="nukes") h2hW++; else h2hT++;
+                          }
+                        };
+                        history.forEach(yr => {
+                          if (currentYearImported && Number(yr.year)===Number(currentTournamentYear)) return;
+                          (yr.matches||[]).forEach(tallyH2H);
+                        });
+                        rounds.forEach(r => (r.matchups||[]).forEach(tallyH2H));
+                        const h2hTotal = h2hN + h2hW + h2hT;
                         if (!playerStats.length) return <div style={{ marginTop:8, fontSize:12, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>No historical data yet</div>;
                         return (
                           <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:8 }}>
+                            {h2hTotal>0 && (
+                              <div style={{ textAlign:"center", marginBottom:10, paddingBottom:8, borderBottom:"1px solid rgba(255,255,255,0.07)" }}>
+                                <div style={{ fontSize:9, color:"rgba(255,200,0,0.6)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:3 }}>Head-to-Head · {h2hTotal} match{h2hTotal!==1?"es":""}</div>
+                                <div style={{ fontSize:13, fontWeight:800 }}>
+                                  <span style={{ color:"#ff4500" }}>☢️ {h2hN}</span>
+                                  <span style={{ color:"rgba(255,255,255,0.25)", margin:"0 8px" }}>–</span>
+                                  <span style={{ color:"#00aaff" }}>{h2hW} 🐋</span>
+                                  {h2hT>0&&<span style={{ fontSize:11, color:"#ffd700", marginLeft:8 }}>({h2hT} tie{h2hT!==1?"s":""})</span>}
+                                </div>
+                              </div>
+                            )}
                             <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>
                               <span>Player</span>
                               <span>W · T · L</span>
@@ -2694,7 +2773,46 @@ export default function PublicApp({ onGoAdmin }) {
 
         {/* ── SUPERLATIVES ── */}
         {tab==="superlatives" && (
-          <SuperlativesTab meta={meta} roster={roster} votes={votes} drafts={drafts}/>
+          <div>
+            <SuperlativesTab meta={meta} roster={roster} votes={votes} drafts={drafts}/>
+            {/* Hall of Fame — past superlative winners by category */}
+            {(()=>{
+              const byCategory = {};
+              history.forEach(h => {
+                (h.superlatives||[]).forEach(sup => {
+                  if (!sup.title || !sup.player) return;
+                  if (!byCategory[sup.title]) byCategory[sup.title] = [];
+                  byCategory[sup.title].push({ year: h.year, player: sup.player });
+                });
+              });
+              const cats = Object.keys(byCategory).sort();
+              if (!cats.length) return null;
+              cats.forEach(c => byCategory[c].sort((a,b)=>Number(b.year)-Number(a.year)));
+              return (
+                <div style={{ marginTop:28 }}>
+                  <div style={{ fontSize:18, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:4 }}>🏛️ Hall of Fame</div>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>Past superlative winners through the years</div>
+                  {cats.map(cat => (
+                    <div key={cat} className="card" style={{ padding:"12px 14px", marginBottom:8 }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:"#ffd700", marginBottom:8 }}>🏅 {cat}</div>
+                      {byCategory[cat].map((e,ei)=>{
+                        const p = roster.find(r=>r.name===e.player);
+                        return (
+                          <div key={ei} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:ei<byCategory[cat].length-1?6:0 }}>
+                            <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)", width:34, flexShrink:0 }}>{e.year}</span>
+                            {p?.photoURL
+                              ? <img src={p.photoURL} alt={e.player} style={{ width:22, height:22, borderRadius:"50%", objectFit:"cover", flexShrink:0 }}/>
+                              : <div style={{ width:22, height:22, borderRadius:"50%", background:"rgba(255,255,255,0.08)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, flexShrink:0 }}>{e.player?.[0]}</div>}
+                            <span style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.75)" }}>{e.player}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         )}
 
                 {tab==="rules" && (
