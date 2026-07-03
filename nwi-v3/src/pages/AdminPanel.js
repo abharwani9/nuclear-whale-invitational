@@ -2457,7 +2457,11 @@ function SettingsSection({ meta, history, competitions, showToast }) {
         const p = form[`compPts_${c.id}`];
         if (p !== "" && p !== undefined) compPts[c.id] = Number(p);
       });
-      await firestore.set("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,compPts,defaultMatchPts:Number(form.defaultMatchPts)||2,compSettingsOrder:meta?.compSettingsOrder||[]});
+      // Use update (merge) — NOT set — so fields owned by other admin sections
+      // (holePoolDescription, scheduleDays, accommodation, etc.) are preserved.
+      // firestore.set overwrites the whole meta/tournament doc and was silently
+      // wiping those fields every time Settings was saved.
+      await firestore.update("meta","tournament",{...form,year:Number(form.year),superlativeCategories:cats,hcpAllowances,teamFormats,compPts,defaultMatchPts:Number(form.defaultMatchPts)||2,compSettingsOrder:meta?.compSettingsOrder||[]});
       showToast("Saved!");
     }
     catch(e) { showToast(e.message,true); }
