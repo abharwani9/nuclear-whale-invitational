@@ -9,6 +9,99 @@ const TEAMS = {
   whales: { name: "THE WHALES", emoji: "🐋", color: "#00aaff", bg: "rgba(0,170,255,0.1)" },
 };
 
+// ── Canonical head-to-head odds model ─────────────────────────────────────────
+// Single source of truth for win probability, mirroring the exact blend used by
+// the Matchups (calcOdds) and Mock Draft (calcProb) tabs so the Leaderboard
+// projection stays numerically consistent with them.
+function nwiGetHcp(name, roster) {
+  const p = (roster || []).find(r => r.name === name);
+  const h = parseFloat(p?.handicap);
+  if (!h || isNaN(h) || h <= 1) return 27; // scratch/plus default
+  if (h > 50) return 36;                    // very high handicap default
+  return h;
+}
+// Team handicap = 35% of lower + 15% of higher, adjusted by allowance %
+function nwiTeamHcp(players, allowancePct, roster) {
+  if (!players?.length) return 18;
+  const pct = (allowancePct || 100) / 100;
+  const hc = players.map(n => nwiGetHcp(n, roster) * pct).sort((a, b) => a - b);
+  if (hc.length === 1) return Math.round(hc[0] * 0.5);
+  return Math.round(hc[0] * 0.35 + hc[1] * 0.15);
+}
+// Opponent-quality-weighted win rate for a set of players. compName=null → all-time.
+function nwiWinRate(players, compName, ctx) {
+  if (!players?.length) return null;
+  const { history, rounds, roster, currentYearImported } = ctx;
+  let ww = 0, tw = 0;
+  const proc = (m) => {
+    if (!m.winner || m.type === "heading") return;
+    if (compName) {
+      const mc = (m.roundName || m.competitionName || "").toLowerCase();
+      if (!mc.includes(compName.toLowerCase().split(" ")[0])) return;
+    }
+    const inN = players.some(p => (m.nukes || []).includes(p));
+    const inW = players.some(p => (m.whales || []).includes(p));
+    if (!inN && !inW) return;
+    const opp = (inN ? m.whales : m.nukes) || [];
+    const oppHcp = opp.length ? opp.map(n => nwiGetHcp(n, roster)).reduce((s, h) => s + h, 0) / opp.length : 18;
+    const wt = Math.max(0.5, 1 + (18 - oppHcp) / 18);
+    const pt = inN ? "nukes" : "whales";
+    ww += (m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0) * wt;
+    tw += wt;
+  };
+  (history || []).forEach(yr => (yr.matches || []).forEach(proc));
+  if (!currentYearImported) (rounds || []).forEach(r => (r.matchups || []).forEach(proc));
+  return tw >= 2 ? ww / tw : null;
+}
+// NUKE win probability in [0.1, 0.9]. Identical blend to Matchups calcOdds:
+// both comp+all-time → 50/25/25, all-time only → 75/25, else handicap only.
+function nwiNukeProb(nukes, whales, allowancePct, compName, ctx) {
+  const hcpProb = 0.5 + (nwiTeamHcp(whales, allowancePct, ctx.roster) - nwiTeamHcp(nukes, allowancePct, ctx.roster)) * 0.03;
+  const nAll = nwiWinRate(nukes, null, ctx), wAll = nwiWinRate(whales, null, ctx);
+  const hasAll = nAll !== null || wAll !== null;
+  const nA = nAll ?? 0.5, wA = wAll ?? 0.5;
+  const allProb = hasAll ? (nA + wA > 0 ? nA / (nA + wA) : 0.5) : null;
+  const nC = compName ? nwiWinRate(nukes, compName, ctx) : null;
+  const wC = compName ? nwiWinRate(whales, compName, ctx) : null;
+  const hasComp = nC !== null || wC !== null;
+  const nCv = nC ?? 0.5, wCv = wC ?? 0.5;
+  const compProb = hasComp ? (nCv + wCv > 0 ? nCv / (nCv + wCv) : 0.5) : null;
+  let p;
+  if (hasComp && allProb !== null) p = hcpProb * 0.50 + allProb * 0.25 + compProb * 0.25;
+  else if (allProb !== null)       p = hcpProb * 0.75 + allProb * 0.25;
+  else                             p = hcpProb;
+  return Math.max(0.1, Math.min(0.9, p));
+}
+// Greedy "optimal untried pairing" picker. Given a team's available player names,
+// returns a group of `k` that avoids partnerships already used (state.usedPairs),
+// spreads playing time (state.usage), and tie-breaks toward stronger players.
+function nwiPickGroup(names, k, roster, state) {
+  const pairKey = (a, b) => [a, b].sort().join("|");
+  const usage = (n) => state.usage[n] || 0;
+  if (!names.length) return [];
+  if (k <= 1) {
+    const pick = [...names].sort((a, b) => usage(a) - usage(b) || nwiGetHcp(a, roster) - nwiGetHcp(b, roster))[0];
+    state.usage[pick] = usage(pick) + 1;
+    return [pick];
+  }
+  // Build all same-team pairs
+  const pairs = [];
+  for (let i = 0; i < names.length; i++)
+    for (let j = i + 1; j < names.length; j++)
+      pairs.push([names[i], names[j]]);
+  if (!pairs.length) return names.slice(0, k);
+  const score = ([a, b]) => {
+    const used = state.usedPairs.has(pairKey(a, b)) ? 1 : 0;
+    const spread = usage(a) + usage(b);                          // prefer less-used players
+    const strength = nwiGetHcp(a, roster) + nwiGetHcp(b, roster); // lower = stronger
+    return used * 1000 + spread * 10 + strength;                 // avoid-repeat ≫ spread ≫ strength
+  };
+  const best = [...pairs].sort((p1, p2) => score(p1) - score(p2))[0];
+  state.usedPairs.add(pairKey(best[0], best[1]));
+  best.forEach(n => { state.usage[n] = usage(n) + 1; });
+  return best;
+}
+
 function Confetti({ color }) {
   // 60 CSS-animated pieces, self-removing — no libraries
   const pieces = Array.from({ length: 60 }, (_, i) => i);
@@ -328,75 +421,21 @@ function MockDraftTab({ roster, competitions, meta, getHandicap, history, rounds
   // ── Adaptive odds model ───────────────────────────────────────────────────
   // Opponent-quality weighted win rate for a set of players
   // compName: if provided, filter to that competition only
-  const getWeightedWinRate = (players, compName) => {
-    if(!players?.length) return null;
-    let weightedWins=0, totalWeight=0;
-    (history||[]).forEach(yr=>(yr.matches||[]).forEach(m=>{
-      if(m.type==="heading"||!m.winner) return;
-      if(compName){
-        const mc=(m.roundName||m.competitionName||"").toLowerCase();
-        if(!mc.includes(compName.toLowerCase().split(" ")[0])) return;
-      }
-      const inN=players.some(p=>(m.nukes||[]).includes(p));
-      const inW=players.some(p=>(m.whales||[]).includes(p));
-      if(!inN&&!inW) return;
-      // Opponent quality weight — avg opponent HCP normalized around 18
-      const oppTeam=inN?"whales":"nukes";
-      const oppPlayers=m[oppTeam]||[];
-      const oppAvgHcp=oppPlayers.length>0
-        ? oppPlayers.map(n=>getHandicap(n)).reduce((s,h)=>s+h,0)/oppPlayers.length
-        : 18;
-      const weight=Math.max(0.5, 1+(18-oppAvgHcp)/18); // lower opp hcp = higher weight
-      const pt=inN?"nukes":"whales";
-      const won=m.winner===pt?1:m.winner==="tie"?0.5:0;
-      weightedWins+=won*weight;
-      totalWeight+=weight;
-    }));
-    if(totalWeight<2) return null; // not enough data
-    return weightedWins/totalWeight; // 0-1 win rate
-  };
-
-  // Convert two team win rates to a head-to-head probability
-  const winRateToProb = (nRate, wRate) => {
-    const tot=nRate+wRate;
-    return tot>0?nRate/tot:0.5;
-  };
-
+  // ── Win probability: delegates to the shared canonical model ────────────────
+  // nwiNukeProb is the single source of truth also used by Matchups (calcOdds)
+  // and the Leaderboard projection, so all three now compute odds identically.
+  // (This also means Mock Draft now reflects the current year's live results.)
+  const _mdCurYear  = meta?.year || new Date().getFullYear();
+  const _mdCurHist  = (history || []).find(h => Number(h.year) === Number(_mdCurYear));
+  const mockCurrentYearImported = !!(_mdCurHist && (_mdCurHist.matches || []).some(m => m.winner));
+  const mockCtx = { history, rounds, roster, currentYearImported: mockCurrentYearImported };
   const calcProb = (nPair, wPair, comp) => {
-    if(!comp) return 0.5;
-    const compId=comp.id===SCRAMBLE_KEY?scrambleComps[0]?.id:comp.id;
-    const compName=comp.id===SCRAMBLE_KEY?null:comp.name; // scramble uses all-time only
-    const allow=hcpAllowances[compId]||100;
-
-    // Factor 1: Team handicap (always present)
-    const nHcp=teamHcp(nPair,allow), wHcp=teamHcp(wPair,allow);
-    const hcpProb=Math.max(0.05,Math.min(0.95, 0.5+(wHcp-nHcp)*0.03));
-
-    // Factor 2: All-time opponent-weighted win rate
-    const nAllTime=getWeightedWinRate(nPair,null);
-    const wAllTime=getWeightedWinRate(wPair,null);
-    const hasAllTime=nAllTime!==null||wAllTime!==null;
-    const allTimeProb=hasAllTime?winRateToProb(nAllTime??0.5,wAllTime??0.5):null;
-
-    // Factor 3: Competition-specific win rate
-    const nCompSpec=compName?getWeightedWinRate(nPair,compName):null;
-    const wCompSpec=compName?getWeightedWinRate(wPair,compName):null;
-    const hasCompSpec=nCompSpec!==null||wCompSpec!==null;
-    const compSpecProb=hasCompSpec?winRateToProb(nCompSpec??0.5,wCompSpec??0.5):null;
-
-    // Blend based on available data
-    let prob;
-    if(hasCompSpec&&allTimeProb!==null) {
-      // All three factors: 50% hcp + 25% all-time + 25% comp-specific
-      prob=hcpProb*0.50+allTimeProb*0.25+compSpecProb*0.25;
-    } else if(allTimeProb!==null) {
-      // Two factors: 75% hcp + 25% all-time
-      prob=hcpProb*0.75+allTimeProb*0.25;
-    } else {
-      // Handicap only
-      prob=hcpProb;
-    }
-    return Math.max(0.1,Math.min(0.9,prob));
+    if (!comp) return 0.5;
+    const isScr    = comp.id === SCRAMBLE_KEY;
+    const compId   = isScr ? scrambleComps[0]?.id : comp.id;
+    const compName = isScr ? null : comp.name; // scramble uses all-time only
+    const allow    = hcpAllowances[compId] || 100;
+    return nwiNukeProb(nPair, wPair, allow, compName, mockCtx);
   };
 
   const getPairs = players => {
@@ -1475,70 +1514,87 @@ export default function PublicApp({ onGoAdmin }) {
   const nukesClinched = teamPoints.nukes  > totalPtsAvail / 2;
   const whalesClinched = teamPoints.whales > totalPtsAvail / 2;
 
-  // ── Projected final score (existing pts + expected pts from pending matchups) ──
+  // ── Projected final score ─────────────────────────────────────────────────
+  // Earned points + expected points from (a) pending matchups that already have
+  // players assigned and (b) matchups that exist but have no players yet ("up for
+  // grabs but not set"). For (b) we simulate optimal untried pairings from each
+  // team's drafted roster, then run every matchup through the same odds model the
+  // Matchups & Mock Draft tabs use (nwiNukeProb).
   const projection = (() => {
-    const getHcp = (name) => {
-      const p = roster.find(r => r.name === name);
-      const h = parseFloat(p?.handicap);
-      if (!h || isNaN(h) || h <= 1) return 27;
-      if (h > 50) return 36;
-      return h;
-    };
-    const teamHcp = (players, allowPct) => {
-      if (!players?.length) return 18;
-      const pct = (allowPct || 100) / 100;
-      const hc = players.map(n => getHcp(n) * pct).sort((a,b)=>a-b);
-      if (hc.length === 1) return Math.round(hc[0] * 0.5);
-      return Math.round(hc[0] * 0.35 + hc[1] * 0.15);
-    };
-    // Opponent-quality weighted win rate across history (+ live rounds if not imported)
-    const winRate = (players) => {
-      if (!players?.length) return null;
-      let ww = 0, tw = 0;
-      const proc = (m) => {
-        if (!m.winner || m.type === "heading") return;
-        const inN = players.some(p => (m.nukes||[]).includes(p));
-        const inW = players.some(p => (m.whales||[]).includes(p));
-        if (!inN && !inW) return;
-        const opp = (inN ? m.whales : m.nukes) || [];
-        const oppHcp = opp.length ? opp.map(getHcp).reduce((s,h)=>s+h,0)/opp.length : 18;
-        const wt = Math.max(0.5, 1 + (18 - oppHcp) / 18);
-        const pt = inN ? "nukes" : "whales";
-        ww += (m.winner === pt ? 1 : m.winner === "tie" ? 0.5 : 0) * wt;
-        tw += wt;
-      };
-      history.forEach(yr => (yr.matches||[]).forEach(proc));
-      if (!currentYearImported) rounds.forEach(r => (r.matchups||[]).forEach(proc));
-      return tw >= 2 ? ww / tw : null;
-    };
-    const nukeProbFor = (nk, wh, allowPct) => {
-      const hcpProb = 0.5 + (teamHcp(wh, allowPct) - teamHcp(nk, allowPct)) * 0.03;
-      const nA = winRate(nk), wA = winRate(wh);
-      const hasAT = nA !== null || wA !== null;
-      const atProb = hasAT ? ((nA ?? 0.5) + (wA ?? 0.5) > 0 ? (nA ?? 0.5) / ((nA ?? 0.5) + (wA ?? 0.5)) : 0.5) : null;
-      let p = atProb !== null ? hcpProb * 0.75 + atProb * 0.25 : hcpProb;
-      return Math.max(0.1, Math.min(0.9, p));
-    };
+    const ctx = { history, rounds, roster, currentYearImported };
+    const compFor  = (m) => (competitions || []).find(c => c.name === m.competitionName);
+    const ptsFor   = (m, comp) => Number(m.pointsWorth) || Number(meta?.compPts?.[comp?.id]) || 2;
+    const allowFor = (comp) => (comp && meta?.hcpAllowances?.[comp.id] !== undefined) ? meta.hcpAllowances[comp.id] : 100;
 
-    // Start from points already earned
+    // Drafted rosters per team (exclude tbd / undrafted)
+    const nukeRoster  = activePlayers.filter(p => teamAssign[p.name] === "nukes").map(p => p.name);
+    const whaleRoster = activePlayers.filter(p => teamAssign[p.name] === "whales").map(p => p.name);
+
     let nExp = teamPoints.nukes, wExp = teamPoints.whales;
-    // Add expected points from every PENDING matchup across all rounds
-    rounds.forEach(r => (r.matchups||[]).forEach(m => {
-      if (m.winner) return; // already counted in teamPoints
-      const nk = (m.nukes||[]).filter(Boolean);
-      const wh = (m.whales||[]).filter(Boolean);
-      if (!nk.length || !wh.length) return;
-      const comp = (competitions||[]).find(c => c.name === m.competitionName);
-      const pts = Number(m.pointsWorth) || Number(meta?.compPts?.[comp?.id]) || 2;
-      const allowPct = comp && meta?.hcpAllowances?.[comp.id] !== undefined ? meta.hcpAllowances[comp.id] : 100;
-      const np = nukeProbFor(nk, wh, allowPct);
+
+    // All matchups in display order (rounds by order, skip segment subheadings)
+    const orderedRounds = [...rounds].filter(r => r.type !== "segment").sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const allMatchups = [];
+    orderedRounds.forEach(r => (r.matchups || []).forEach(m => allMatchups.push(m)));
+
+    // Seed already-used partnerships + playing-time usage from every matchup that
+    // has players assigned (played OR pending) so the simulation avoids repeats
+    // and spreads playing time realistically.
+    const state = {
+      nukes:  { usedPairs: new Set(), usage: {} },
+      whales: { usedPairs: new Set(), usage: {} },
+    };
+    const pairKey = (a, b) => [a, b].sort().join("|");
+    allMatchups.forEach(m => {
+      const nk = (m.nukes || []).filter(Boolean);
+      const wh = (m.whales || []).filter(Boolean);
+      nk.forEach(n => { state.nukes.usage[n] = (state.nukes.usage[n] || 0) + 1; });
+      wh.forEach(n => { state.whales.usage[n] = (state.whales.usage[n] || 0) + 1; });
+      if (nk.length >= 2) state.nukes.usedPairs.add(pairKey(nk[0], nk[1]));
+      if (wh.length >= 2) state.whales.usedPairs.add(pairKey(wh[0], wh[1]));
+    });
+
+    let simulatedPts = 0; // points estimated from unassigned matchups
+
+    allMatchups.forEach(m => {
+      if (m.winner) return; // decided — already counted in teamPoints
+      const comp     = compFor(m);
+      const pts      = ptsFor(m, comp);
+      const allowPct = allowFor(comp);
+      const compName = comp?.name || m.competitionName || "";
+      const nk = (m.nukes || []).filter(Boolean);
+      const wh = (m.whales || []).filter(Boolean);
+
+      let nk2 = nk, wh2 = wh;
+      if (!nk.length || !wh.length) {
+        // Unassigned (or half-assigned) matchup → simulate a plausible lineup.
+        const isScramble = !!(comp?.isScramble) || /scramble/i.test(compName);
+        const nSlots = Math.max(1, (m.nukes  || []).length || 2);
+        const wSlots = Math.max(1, (m.whales || []).length || 2);
+        if (isScramble || nSlots > 2 || wSlots > 2) {
+          // Whole-team format → use full-roster strength, no pairing needed.
+          nk2 = nk.length ? nk : nukeRoster;
+          wh2 = wh.length ? wh : whaleRoster;
+        } else {
+          nk2 = nk.length ? nk : nwiPickGroup(nukeRoster,  nSlots, roster, state.nukes);
+          wh2 = wh.length ? wh : nwiPickGroup(whaleRoster, wSlots, roster, state.whales);
+        }
+        simulatedPts += pts;
+      }
+      if (!nk2.length || !wh2.length) return; // no rostered players to estimate with
+
+      const np = nwiNukeProb(nk2, wh2, allowPct, compName, ctx);
       nExp += pts * np;
       wExp += pts * (1 - np);
-    }));
+    });
+
+    const hasPending = allMatchups.some(m => !m.winner && (m.nukes || []).filter(Boolean).length && (m.whales || []).filter(Boolean).length);
     return {
-      nukes: Math.round(nExp * 10) / 10,
+      nukes:  Math.round(nExp * 10) / 10,
       whales: Math.round(wExp * 10) / 10,
-      hasPending: rounds.some(r => (r.matchups||[]).some(m => !m.winner && (m.nukes||[]).filter(Boolean).length && (m.whales||[]).filter(Boolean).length)),
+      hasPending,
+      hasProjected: hasPending || simulatedPts > 0, // anything left to project at all
+      simulatedPts,                                 // pts estimated from unassigned matchups
     };
   })();
 
@@ -1737,7 +1793,7 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ marginTop:8, fontSize:11, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>Win threshold: more than {Math.floor(totalPtsAvail/2)} pts</div>
                   </div>
                 )}
-                {projection.hasPending && totalPtsAvail>0 && (
+                {projection.hasProjected && totalPtsAvail>0 && (
                   <div className="card" style={{ padding:"12px 16px", marginTop:12 }}>
                     <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", color:"rgba(255,255,255,0.4)", textAlign:"center", marginBottom:10 }}>📊 Projected Final</div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:14 }}>
@@ -1752,7 +1808,7 @@ export default function PublicApp({ onGoAdmin }) {
                       </div>
                     </div>
                     <div style={{ marginTop:8, fontSize:10, color:"rgba(255,255,255,0.25)", textAlign:"center" }}>
-                      Current pts + expected pts from remaining matchups (based on handicaps &amp; history)
+                      Current pts + projected pts from all remaining matchups{projection.simulatedPts>0?", including points not yet assigned":""} (optimal pairings, handicaps &amp; history)
                     </div>
                   </div>
                 )}
