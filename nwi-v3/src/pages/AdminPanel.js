@@ -1290,6 +1290,100 @@ function CompetitionsSection({ competitions, showToast }) {
 }
 
 
+function CloseOutTournament({ history, rounds, competitions, meta, showToast }) {
+  const [busy, setBusy] = useState(false);
+  const curYear = Number(meta?.year || new Date().getFullYear());
+
+  const closeOut = async () => {
+    if (!window.confirm(`Close out the ${curYear} tournament?\n\nThis will:\n• Import all completed matches from Rounds into ${curYear} history\n• Calculate & save the final score and winner\n\n(Captains and other fields already on the ${curYear} entry are kept as-is.)`)) return;
+    setBusy(true);
+    try {
+      // 1) Find or create the history doc for the current year
+      let yearDoc = history.find(h => Number(h.year) === curYear);
+      let yearId = yearDoc?.id;
+      if (!yearId) {
+        const ref = await firestore.add("history", { year: curYear, winner:"TBD", notes:"", nukes_pts:0, whales_pts:0, location:meta?.location||"", course:meta?.course||"", matches:[], superlatives:[] });
+        yearId = ref.id;
+        yearDoc = { matches: [] };
+      }
+      const currentMatches = yearDoc.matches || [];
+
+      // 2) Import completed matches (same dedupe as Import Matches)
+      const newMatches = [];
+      rounds.forEach(round => {
+        (round.matchups || []).forEach(m => {
+          if (!m.nukes?.some(Boolean) && !m.whales?.some(Boolean)) return;
+          if (!m.winner) return;
+          const alreadyImported = currentMatches.some(em =>
+            JSON.stringify((em.nukes||[]).sort()) === JSON.stringify((m.nukes||[]).filter(Boolean).sort()) &&
+            JSON.stringify((em.whales||[]).sort()) === JSON.stringify((m.whales||[]).filter(Boolean).sort())
+          );
+          if (alreadyImported) return;
+          const comp = (competitions||[]).find(c=>c.name===m.competitionName);
+          const defaultPts = Number(meta?.compPts?.[comp?.id]) || 2;
+          newMatches.push({
+            nukes: (m.nukes||[]).filter(Boolean),
+            whales: (m.whales||[]).filter(Boolean),
+            winner: m.winner || null,
+            roundName: m.subLabel==="Front 9"?"Front 9 Scramble":m.subLabel==="Back 9"?"Back 9 Scramble":m.subLabel==="18-Holes"?"18-Hole Scramble":m.subLabel||m.competitionName||round.name||"",
+            pointsWorth: Number(m.pointsWorth) || defaultPts,
+            ...(m.subLabel ? { subLabel: m.subLabel } : {}),
+            ...(m.scrambleGroup ? { scrambleGroup: m.scrambleGroup } : {}),
+          });
+        });
+      });
+
+      // 3) Compute final score + winner from ALL matches on the year
+      const allMatches = [...currentMatches, ...newMatches];
+      let nukesPts = 0, whalesPts = 0;
+      allMatches.forEach(m => {
+        if (!m.winner || m.type==="heading") return;
+        const pts = Number(m.pointsWorth) || 0;
+        if (m.winner === "nukes") nukesPts += pts;
+        else if (m.winner === "whales") whalesPts += pts;
+        else if (m.winner === "tie") { nukesPts += pts/2; whalesPts += pts/2; }
+      });
+      const winner = nukesPts > whalesPts ? "THE NUKES" : whalesPts > nukesPts ? "THE WHALES" : "TBD";
+      await firestore.update("history", yearId, {
+        matches: allMatches,
+        nukes_pts: Math.round(nukesPts*10)/10,
+        whales_pts: Math.round(whalesPts*10)/10,
+        winner,
+      });
+
+      // 4) Optionally clear rounds
+      if (rounds.length > 0 && window.confirm(`${curYear} archived: ${winner==="TBD"?"Tie":winner} wins ${Math.round(nukesPts*10)/10}–${Math.round(whalesPts*10)/10}.\n\nDelete all ${rounds.length} round(s) and their matchups to prep for next year?`)) {
+        for (const r of rounds) await firestore.delete("rounds", r.id);
+      }
+
+      // 5) Optionally advance the tournament year
+      if (window.confirm(`Advance tournament year from ${curYear} to ${curYear+1}?\n\n(You can update the date and other details later in Settings.)`)) {
+        await firestore.update("meta","tournament",{ year: curYear+1 });
+      }
+
+      showToast(`🏁 ${curYear} closed out!`);
+    } catch(e) { showToast("Error: " + e.message, true); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ ...s.card, marginBottom:16, borderColor:"rgba(255,200,0,0.25)", background:"rgba(255,200,0,0.04)" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+        <div style={{ flex:1, minWidth:200 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:"#ffd700" }}>🏁 Close Out {curYear} Tournament</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:3, lineHeight:1.5 }}>
+            One-tap archive: imports completed matches, saves final score & winner, then (optionally) clears rounds and advances the year. Captains you've set are preserved.
+          </div>
+        </div>
+        <button style={{ padding:"10px 18px", background:"rgba(255,200,0,0.15)", border:"1px solid rgba(255,200,0,0.4)", borderRadius:10, color:"#ffd700", fontFamily:"inherit", fontSize:13, fontWeight:800, cursor:"pointer" }}
+          onClick={closeOut} disabled={busy}>
+          {busy ? "Archiving..." : "Close Out"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function HistorySection({ history, drafts, roster, competitions, rounds, meta, showToast }) {
   const blank = { year:new Date().getFullYear()-1, winner:"TBD", notes:"", nukes_pts:"", whales_pts:"", location:"", course:"" };
   const [form, setForm]       = useState(blank);
@@ -1308,6 +1402,8 @@ function HistorySection({ history, drafts, roster, competitions, rounds, meta, s
   return (
     <div>
       <div style={s.sectionTitle}>📜 Tournament History</div>
+
+      <CloseOutTournament history={history} rounds={rounds} competitions={competitions} meta={meta} showToast={showToast}/>
 
       {/* Add / Edit year form */}
       <div style={s.card}>
