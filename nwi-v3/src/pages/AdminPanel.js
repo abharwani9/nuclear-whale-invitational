@@ -956,26 +956,44 @@ function RoundsSection({ rounds, roster, drafts, competitions, meta, showToast }
 }
 
 // ── SCHEDULE ────────────────────────────────────────────────────────────────
+// Convert a stored time to 24h "HH:MM" for <input type=time> (handles legacy "8:30 AM").
+function to24h(t) {
+  if (!t) return "";
+  const m = String(t).match(/^(\d{1,2}):(\d{2})\s*([ap]\.?m\.?)?/i);
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const ap = (m[3] || "").toUpperCase();
+  if (ap.startsWith("P") && h !== 12) h += 12;
+  if (ap.startsWith("A") && h === 12) h = 0;
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+
+// Format a stored time for display. Accepts 24h "14:30" (from <input type=time>)
+// or legacy "2:30 PM" strings and always returns a friendly 12-hour label.
+function fmtTime(t) {
+  if (!t) return "";
+  if (/[ap]\.?m\.?/i.test(t)) return t.trim();
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return t;
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = h >= 12 ? "PM" : "AM";
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${min} ${period}`;
+}
+
 function SchedDayList({ items, showToast, setEditing, setForm }) {
-  const { items:dragItems, dragOver, onDragStart, onDragEnter, onDragEnd, onTouchStart, onTouchMove, onTouchEnd } = useDragList(items);
+  // Items arrive already sorted by time from the parent; no manual reordering needed.
   return (
     <>
-      {dragItems.map((item,ii)=>(
-        <div key={item.id} draggable
-          data-drag-idx={ii}
-          onDragStart={()=>onDragStart(ii)}
-          onDragEnter={()=>onDragEnter(ii)}
-          onDragEnd={()=>onDragEnd("schedule")}
-          onTouchStart={onTouchStart(ii)}
-          onTouchMove={onTouchMove(ii)}
-          onTouchEnd={()=>onTouchEnd("schedule")}
-          onDragOver={e=>e.preventDefault()}
-          style={{ ...{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"10px 12px", marginBottom:10 }, display:"flex", alignItems:"center", gap:10, marginBottom:6, cursor:"grab", opacity:dragOver===ii?0.5:1, borderColor:dragOver===ii?"rgba(255,255,255,0.4)":"rgba(255,255,255,0.08)" }}>
-          <span data-drag-handle style={{ color:"rgba(255,255,255,0.3)", fontSize:20, cursor:"grab", padding:"4px 8px", touchAction:"none" }}>⠿</span>
+      {items.map((item)=>(
+        <div key={item.id}
+          style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:"10px 12px", display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
           <span style={{ fontSize:16 }}>{item.icon}</span>
-          <span style={{ color:"#ff8c00", fontWeight:700, minWidth:64, fontSize:13 }}>{item.time}</span>
+          <span style={{ color:"#ff8c00", fontWeight:700, minWidth:70, fontSize:13 }}>{fmtTime(item.time)}</span>
           <div style={{ flex:1 }}><div>{item.event}</div>{item.course&&<div style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>📍 {item.course}</div>}</div>
-          <button style={{ padding:"8px 14px", background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:12, fontWeight:600, cursor:"pointer" }} onClick={()=>{setEditing(item.id);setForm({day:item.day,time:item.time,event:item.event,icon:item.icon||"",course:item.course||""});}}>Edit</button>
+          <button style={{ padding:"8px 14px", background:"none", border:"1px solid rgba(255,255,255,0.2)", borderRadius:8, color:"rgba(255,255,255,0.6)", fontFamily:"inherit", fontSize:12, fontWeight:600, cursor:"pointer" }} onClick={()=>{setEditing(item.id);setForm({day:item.day,time:to24h(item.time),event:item.event,icon:item.icon||"",course:item.course||""});}}>Edit</button>
           <button style={{ padding:"7px 12px", background:"rgba(220,30,30,0.15)", border:"1px solid rgba(220,30,30,0.4)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:12, cursor:"pointer" }} onClick={async()=>{await firestore.delete("schedule",item.id);}}>✕</button>
         </div>
       ))}
@@ -1155,7 +1173,7 @@ function ScheduleSection({ schedule, meta, showToast }) {
               {allCurrentDays.map(d=><option key={d}>{d}</option>)}
             </select>
           </div>
-          <div><div style={s.label}>Time</div><input style={s.input} value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} placeholder="8:30 AM"/></div>
+          <div><div style={s.label}>Time</div><input style={s.input} type="time" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))}/></div>
           <div><div style={s.label}>Icon</div><input style={s.input} value={form.icon} onChange={e=>setForm(f=>({...f,icon:e.target.value}))} placeholder="⛳"/></div>
           <div><div style={s.label}>Course Name</div><input style={s.input} value={form.course} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Pebble Beach"/></div>
         </div>
@@ -2409,6 +2427,22 @@ function SettingsSection({ meta, history, competitions, showToast }) {
   const [notifBody, setNotifBody]   = useState("");
   const [sending, setSending]       = useState(false);
   const { data: fcmTokens } = useCollection("fcm_tokens");
+  const [uploadingImg, setUploadingImg] = useState(false);
+
+  // Countdown "It's Time" image — uploads to Cloudinary and saves the URL immediately
+  // (merge-update so it never clobbers other settings).
+  const handleItsTimeUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImg(true);
+    try {
+      const url = await uploadToCloudinary(file, "photo");
+      await firestore.update("meta","tournament",{ itsTimeImage:url });
+      showToast("Countdown image saved!");
+    } catch(err) { showToast(err.message || "Upload failed", true); }
+    setUploadingImg(false);
+    if (e.target) e.target.value = "";
+  };
 
   if (meta&&!loaded) {
     const hcpFields = {};
@@ -2473,6 +2507,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
     <div>
       <div style={s.sectionTitle}>⚙️ Settings</div>
       <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>🏆 Tournament Info</div>
         <div style={s.grid2}>
           <div><div style={s.label}>Year</div><input style={s.input} type="number" value={form.year} onChange={e=>setForm(f=>({...f,year:e.target.value}))}/></div>
           <div><div style={s.label}>Tournament Date</div><input style={s.input} type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
@@ -2487,6 +2522,34 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={s.label}>Golf Course</div>
           <input style={s.input} value={form.course||""} onChange={e=>setForm(f=>({...f,course:e.target.value}))} placeholder="e.g. Whittaker Woods Golf Club"/>
         </div>
+      </div>
+
+      {/* Countdown screen image */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>⏳ Countdown Screen</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>Shown when the countdown reaches zero. If set, this image replaces the "IT'S TIME!" text.</div>
+        {meta?.itsTimeImage ? (
+          <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+            <img src={meta.itsTimeImage} alt="It's time" style={{ maxWidth:180, maxHeight:120, borderRadius:10, border:"1px solid rgba(255,255,255,0.12)", objectFit:"contain", background:"rgba(255,255,255,0.03)" }}/>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <label style={{ ...s.btnGhost, cursor:uploadingImg?"default":"pointer", textAlign:"center", opacity:uploadingImg?0.6:1 }}>
+                {uploadingImg?"Uploading...":"Replace Image"}
+                <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingImg} onChange={handleItsTimeUpload}/>
+              </label>
+              <button style={s.btnDanger} onClick={async()=>{ await firestore.update("meta","tournament",{ itsTimeImage:"" }); showToast("Image removed"); }}>Remove</button>
+            </div>
+          </div>
+        ) : (
+          <label style={{ ...s.btnFire, cursor:uploadingImg?"default":"pointer", display:"inline-block", opacity:uploadingImg?0.6:1 }}>
+            {uploadingImg?"Uploading...":"Upload Image"}
+            <input type="file" accept="image/*" style={{ display:"none" }} disabled={uploadingImg} onChange={handleItsTimeUpload}/>
+          </label>
+        )}
+      </div>
+
+      {/* Display & Weather */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>🎨 Display &amp; Weather</div>
         <div style={{ marginTop:10, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
           <div>
             <div style={{ fontSize:13, fontWeight:600 }}>Dynamic Team Colors</div>
@@ -2502,6 +2565,10 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <input style={s.input} value={form.weatherLocation||""} onChange={e=>setForm(f=>({...f,weatherLocation:e.target.value}))} placeholder="e.g. Plymouth (nearest city for weather forecast)"/>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Enter the nearest large city — this is what the weather forecast uses</div>
         </div>
+      </div>
+
+      {/* Competition Settings */}
+      <div style={s.card}>
         <div style={{ marginTop:10 }}>
           <div style={{fontSize:15,fontWeight:800,color:'#e8edf3',letterSpacing:'0.04em',marginBottom:4}}>Competition Settings</div>
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginBottom:10, lineHeight:1.5 }}>
@@ -2540,7 +2607,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
                   const [moved] = newOrder.splice(fromIdx, 1);
                   newOrder.splice(toIdx, 0, moved);
                   const orderIds = newOrder.map(x=>x.id);
-                  await firestore.set("meta","tournament",{...meta, compSettingsOrder: orderIds});
+                  await firestore.update("meta","tournament",{ compSettingsOrder: orderIds });
                 };
                 return (
                   <div key={c.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
@@ -2574,6 +2641,11 @@ function SettingsSection({ meta, history, competitions, showToast }) {
             );
           })()}
         </div>
+      </div>
+
+      {/* Notifications & Access */}
+      <div style={s.card}>
+        <div style={{ fontSize:14, fontWeight:700, marginBottom:14 }}>🔔 Notifications &amp; Access</div>
         <div style={{ marginTop:10, padding:"12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:8 }}>
           <div style={s.label}>Admin Codes</div>
           <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}><strong style={{ color:"#ff4500" }}>nuke2026</strong> · <strong style={{ color:"#00aaff" }}>whale2026</strong> · <strong style={{ color:"#ffd700" }}>admin2026</strong></div>
@@ -2586,7 +2658,8 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={s.label}>Worker Secret</div>
           <input style={s.input} type="password" value={form.workerSecret||""} onChange={e=>setForm(f=>({...f,workerSecret:e.target.value}))} placeholder="The secret you set in Cloudflare"/>
         </div>
-        <button style={{ ...s.btnFire, marginTop:14 }} onClick={save}>Save Settings</button>
+        <button style={{ ...s.btnFire, marginTop:14, width:"100%" }} onClick={save}>Save Settings</button>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8, textAlign:"center" }}>Saves Tournament Info, Display &amp; Weather, and Competition Settings. (The countdown image saves on upload.)</div>
       </div>
 
       {/* Superlatives voting */}
@@ -2601,7 +2674,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
             onClick={async()=>{
               const newVal = !form.votingOpen;
               setForm(f=>({...f,votingOpen:newVal}));
-              await firestore.set("meta","tournament",{...meta,votingOpen:newVal});
+              await firestore.update("meta","tournament",{ votingOpen:newVal });
               showToast(newVal?"Voting opened!":"Voting closed!");
             }}>
             {form.votingOpen?"✓ Open":"Closed"}
@@ -2614,7 +2687,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4, marginBottom:10 }}>Each line becomes a voting category.</div>
           <button style={s.btnFire} onClick={async()=>{
             const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
-            await firestore.set("meta","tournament",{...meta,superlativeCategories:cats});
+            await firestore.update("meta","tournament",{ superlativeCategories:cats });
             showToast("Superlatives saved!");
           }}>Save Superlatives</button>
         </div>
