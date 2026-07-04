@@ -102,6 +102,20 @@ function nwiPickGroup(names, k, roster, state) {
   return best;
 }
 
+// Format a stored time for display. Accepts 24h "14:30" (from <input type=time>)
+// or legacy "2:30 PM" strings and always returns a friendly 12-hour label.
+function fmtTime(t) {
+  if (!t) return "";
+  if (/[ap]\.?m\.?/i.test(t)) return t.trim(); // already 12h with AM/PM
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return t;
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = h >= 12 ? "PM" : "AM";
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${min} ${period}`;
+}
+
 function Confetti({ color }) {
   // 60 CSS-animated pieces, self-removing — no libraries
   const pieces = Array.from({ length: 60 }, (_, i) => i);
@@ -243,7 +257,7 @@ function SuperlativesTab({ meta, roster, votes, drafts }) {
       <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>Vote for one player in each category. One submission per person.</div>
       {categories.map(cat => (
         <div key={cat} style={{ marginBottom:24 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>{cat}</div>
+          <div style={{ position:"sticky", top:0, zIndex:5, background:"#07090e", fontSize:13, fontWeight:700, color:"#ffd700", letterSpacing:"0.08em", textTransform:"uppercase", padding:"10px 0 8px", marginBottom:10, borderBottom:"1px solid rgba(255,255,255,0.06)" }}>{cat}</div>
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             {sortedRoster.map(p => {
               const selected = selections[cat] === p.name;
@@ -2451,7 +2465,9 @@ export default function PublicApp({ onGoAdmin }) {
               </div>
             )}
             {countdown.over
-              ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
+              ? (meta?.itsTimeImage
+                  ? <img src={meta.itsTimeImage} alt="It's time!" style={{ display:"block", margin:"0 auto", maxWidth:"min(100%,460px)", height:"auto", borderRadius:16 }}/>
+                  : <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>)
               : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
                   {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
                     <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
@@ -2492,7 +2508,7 @@ export default function PublicApp({ onGoAdmin }) {
                     <div style={{ fontSize:12, fontWeight:700, letterSpacing:"0.14em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:8 }}>{day}</div>
                     {items.map((s,i)=>(
                       <div key={i} className="card" style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
-                        <div style={{ minWidth:68, fontSize:13, fontWeight:700, color:"#ff8c00" }}>{s.time}</div>
+                        <div style={{ minWidth:68, fontSize:13, fontWeight:700, color:"#ff8c00" }}>{fmtTime(s.time)}</div>
                         <div style={{ width:1, height:24, background:"rgba(255,255,255,0.07)" }}/>
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:14, fontWeight:600 }}>{s.icon&&<span style={{ marginRight:5 }}>{s.icon}</span>}{s.event}</div>
