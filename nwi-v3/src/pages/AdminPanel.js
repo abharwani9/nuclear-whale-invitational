@@ -2527,7 +2527,7 @@ function SettingsSection({ meta, history, competitions, showToast }) {
       {/* Countdown screen image */}
       <div style={s.card}>
         <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>⏳ Countdown Screen</div>
-        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>Shown when the countdown reaches zero. If set, this image replaces the "IT'S TIME!" text.</div>
+        <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginBottom:14 }}>Shown centered below the countdown at all times — both before and after it reaches zero.</div>
         {meta?.itsTimeImage ? (
           <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
             <img src={meta.itsTimeImage} alt="It's time" style={{ maxWidth:180, maxHeight:120, borderRadius:10, border:"1px solid rgba(255,255,255,0.12)", objectFit:"contain", background:"rgba(255,255,255,0.03)" }}/>
