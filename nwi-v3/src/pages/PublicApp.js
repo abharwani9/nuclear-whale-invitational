@@ -2456,7 +2456,7 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── COUNTDOWN ── */}
         {tab==="countdown" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
-            <div style={{ fontSize:13, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
+            <div style={{ fontSize:18, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
             {(meta?.course || meta?.location) && (
               <div style={{ marginBottom:28, fontSize:13, color:"rgba(255,255,255,0.45)" }}>
@@ -2476,7 +2476,7 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>
             }
             {meta?.itsTimeImage && (
-              <img src={meta.itsTimeImage} alt="Tournament" style={{ display:"block", margin:"24px auto 0", maxWidth:"min(100%,460px)", height:"auto", borderRadius:16 }}/>
+              <img src={meta.itsTimeImage} alt="Tournament" style={{ display:"block", margin:"24px auto 32px", maxWidth:"min(100%,340px)", height:"auto", borderRadius:16 }}/>
             )}
             <WeatherWidget location={meta?.weatherLocation || meta?.location} tournamentDate={meta?.date}/>
 
