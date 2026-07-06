@@ -2456,7 +2456,7 @@ export default function PublicApp({ onGoAdmin }) {
         {/* ── COUNTDOWN ── */}
         {tab==="countdown" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
-            <div style={{ fontSize:18, letterSpacing:"0.15em", color:"rgba(255,255,255,0.35)", textTransform:"uppercase", marginBottom:6 }}>Tournament Begins In</div>
+            <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.1em", color:"#e8edf3", textTransform:"uppercase", marginBottom:6 }}>{countdown.over ? "The Boys Are On The Tee" : "Making Waves, Going Nuclear In"}</div>
             <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
             {(meta?.course || meta?.location) && (
               <div style={{ marginBottom:28, fontSize:13, color:"rgba(255,255,255,0.45)" }}>
@@ -2464,17 +2464,16 @@ export default function PublicApp({ onGoAdmin }) {
                 {meta?.location && <div style={{ marginTop:2 }}>📍 {meta.location}</div>}
               </div>
             )}
-            {countdown.over
-              ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
-              : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
-                  {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
-                    <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
-                      <div style={{ fontSize:"clamp(28px,8vw,46px)", fontWeight:900, color:k==="seconds"?"#ff4500":"#e8edf3", lineHeight:1 }}>{String(countdown[k]??0).padStart(2,"0")}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginTop:4 }}>{label}</div>
-                    </div>
-                  ))}
-                </div>
-            }
+            {!countdown.over && (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
+                {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
+                  <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
+                    <div style={{ fontSize:"clamp(28px,8vw,46px)", fontWeight:900, color:k==="seconds"?"#ff4500":"#e8edf3", lineHeight:1 }}>{String(countdown[k]??0).padStart(2,"0")}</div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", letterSpacing:"0.12em", marginTop:4 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             {meta?.itsTimeImage && (
               <img src={meta.itsTimeImage} alt="Tournament" style={{ display:"block", margin:"24px auto 32px", maxWidth:"min(100%,340px)", height:"auto", borderRadius:16 }}/>
             )}
