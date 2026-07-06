@@ -2451,13 +2451,13 @@ function SettingsSection({ meta, history, competitions, showToast }) {
       hcpFields[`teamFormat_${c.id}`] = meta?.teamFormats?.[c.id] ?? false;
       hcpFields[`compPts_${c.id}`] = meta?.compPts?.[c.id] ?? "";
     });
-    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]).join("\n"), defaultHcpAllowance:meta.defaultHcpAllowance||"", defaultMatchPts:meta.defaultMatchPts||"2", dynamicColors:meta.dynamicColors||false, ...hcpFields });
+    setForm({ name:meta.name||"", year:meta.year||"", date:meta.date||"", startTime:meta.startTime||"10:00", location:meta.location||"", course:meta.course||"", tagline:meta.tagline||"", workerUrl:meta.workerUrl||"", workerSecret:meta.workerSecret||"", weatherLocation:meta.weatherLocation||"", votingOpen:meta.votingOpen||false, superlativeCategories:(meta.superlativeCategories||[]), defaultHcpAllowance:meta.defaultHcpAllowance||"", defaultMatchPts:meta.defaultMatchPts||"2", dynamicColors:meta.dynamicColors||false, ...hcpFields });
     setLoaded(true);
   }
 
   const save = async () => {
     try {
-      const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+      const cats = (Array.isArray(form.superlativeCategories) ? form.superlativeCategories : String(form.superlativeCategories||"").split("\n")).map(s=>s.trim()).filter(Boolean);
       // Build hcpAllowances map from per-competition fields
       const hcpAllowances = {};
       (competitions||[]).forEach(c => {
@@ -2681,13 +2681,27 @@ function SettingsSection({ meta, history, competitions, showToast }) {
           </button>
         </div>
         <div>
-          <div style={s.label}>Superlative Categories (one per line)</div>
-          <textarea rows={6} value={form.superlativeCategories||""} onChange={e=>setForm(f=>({...f,superlativeCategories:e.target.value}))}
-            placeholder={"Biggest Choke\nMost Clutch\nBest Shot of the Tournament\nMost Improved\nBiggest Trash Talker\nMVP"}/>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4, marginBottom:10 }}>Each line becomes a voting category.</div>
-          <button style={s.btnFire} onClick={async()=>{
-            const cats = (form.superlativeCategories||"").split("\n").map(s=>s.trim()).filter(Boolean);
+          <div style={s.label}>Superlative Categories</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:10 }}>
+            {(form.superlativeCategories||[]).length === 0 && (
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", padding:"4px 0" }}>No categories yet — add one below.</div>
+            )}
+            {(form.superlativeCategories||[]).map((cat,i)=>(
+              <div key={i} style={{ display:"flex", gap:8, alignItems:"center" }}>
+                <span style={{ fontSize:12, color:"rgba(255,255,255,0.3)", minWidth:18, textAlign:"right" }}>{i+1}.</span>
+                <input style={{ ...s.input, flex:1 }} value={cat} placeholder="e.g. Most Clutch"
+                  onChange={e=>setForm(f=>{ const arr=[...(f.superlativeCategories||[])]; arr[i]=e.target.value; return {...f,superlativeCategories:arr}; })}/>
+                <button title="Remove" style={{ padding:"9px 13px", background:"rgba(220,30,30,0.15)", border:"1px solid rgba(220,30,30,0.4)", borderRadius:8, color:"#ff5555", fontFamily:"inherit", fontSize:13, cursor:"pointer", flexShrink:0 }}
+                  onClick={()=>setForm(f=>{ const arr=[...(f.superlativeCategories||[])]; arr.splice(i,1); return {...f,superlativeCategories:arr}; })}>✕</button>
+              </div>
+            ))}
+          </div>
+          <button style={{ ...s.btnGhost, marginBottom:12 }}
+            onClick={()=>setForm(f=>({...f,superlativeCategories:[...(f.superlativeCategories||[]),""]}))}>+ Add Category</button>
+          <button style={{ ...s.btnFire, width:"100%" }} onClick={async()=>{
+            const cats = (form.superlativeCategories||[]).map(s=>s.trim()).filter(Boolean);
             await firestore.update("meta","tournament",{ superlativeCategories:cats });
+            setForm(f=>({...f,superlativeCategories:cats}));
             showToast("Superlatives saved!");
           }}>Save Superlatives</button>
         </div>
