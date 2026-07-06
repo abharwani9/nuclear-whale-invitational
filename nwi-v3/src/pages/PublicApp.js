@@ -2465,9 +2465,7 @@ export default function PublicApp({ onGoAdmin }) {
               </div>
             )}
             {countdown.over
-              ? (meta?.itsTimeImage
-                  ? <img src={meta.itsTimeImage} alt="It's time!" style={{ display:"block", margin:"0 auto", maxWidth:"min(100%,460px)", height:"auto", borderRadius:16 }}/>
-                  : <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>)
+              ? <div style={{ fontSize:42, fontWeight:900, background:"linear-gradient(90deg,#ff4500,#00aaff)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>IT'S TIME! ⛳</div>
               : <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:48 }}>
                   {[["days","DAYS"],["hours","HRS"],["minutes","MIN"],["seconds","SEC"]].map(([k,label])=>(
                     <div key={k} className="card" style={{ padding:"18px 6px", borderColor:k==="seconds"?"rgba(255,69,0,0.3)":undefined }}>
@@ -2477,6 +2475,9 @@ export default function PublicApp({ onGoAdmin }) {
                   ))}
                 </div>
             }
+            {meta?.itsTimeImage && (
+              <img src={meta.itsTimeImage} alt="Tournament" style={{ display:"block", margin:"24px auto 0", maxWidth:"min(100%,460px)", height:"auto", borderRadius:16 }}/>
+            )}
             <WeatherWidget location={meta?.weatherLocation || meta?.location} tournamentDate={meta?.date}/>
 
           </div>
