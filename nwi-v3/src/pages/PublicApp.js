@@ -2457,7 +2457,9 @@ export default function PublicApp({ onGoAdmin }) {
         {tab==="countdown" && (
           <div style={{ textAlign:"center", padding:"20px 0" }}>
             <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.1em", color:"#e8edf3", textTransform:"uppercase", marginBottom:6 }}>{countdown.over ? "The Boys Are On The Tee" : "Making Waves, Going Nuclear In"}</div>
-            <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
+            {!countdown.over && (
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.25)", marginBottom:12 }}>{meta?.date||"August 13, 2026"} · {meta?.startTime||"10:00"}</div>
+            )}
             {(meta?.course || meta?.location) && (
               <div style={{ marginBottom:28, fontSize:13, color:"rgba(255,255,255,0.45)" }}>
                 {meta?.course && <div style={{ fontWeight:700, color:"rgba(255,255,255,0.65)" }}>⛳ {meta.course}</div>}
