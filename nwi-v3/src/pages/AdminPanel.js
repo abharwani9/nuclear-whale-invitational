@@ -1042,6 +1042,17 @@ function ScheduleSection({ schedule, meta, showToast }) {
   // Keep days in sync with schedule data
   const allCurrentDays = [...new Set([...days, ...schedule.map(i=>i.day)])];
 
+  // Move a day earlier/later in the order (persists to meta.scheduleDays, which
+  // drives the order everywhere including the public schedule).
+  const moveDay = async (day, dir) => {
+    const arr = [...allCurrentDays];
+    const idx = arr.indexOf(day);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= arr.length) return;
+    [arr[idx], arr[target]] = [arr[target], arr[idx]];
+    await saveDays(arr);
+  };
+
   const save = async () => {
     if (!form.event||!form.time) return showToast("Time and event required",true);
     try {
@@ -1133,7 +1144,8 @@ function ScheduleSection({ schedule, meta, showToast }) {
 
       {/* Day management */}
       <div style={{ ...s.card, marginBottom:14 }}>
-        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:10 }}>Days</div>
+        <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)", marginBottom:4 }}>Days</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:10 }}>Use ◀ ▶ to set the order days appear in the app.</div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
           {allCurrentDays.map(day=>(
             <div key={day} style={{ display:"flex", alignItems:"center", gap:4 }}>
@@ -1142,7 +1154,9 @@ function ScheduleSection({ schedule, meta, showToast }) {
                     onKeyDown={e=>{ if(e.key==="Enter") renameDay(day,editingDayValue); if(e.key==="Escape") setEditingDayName(null); }}
                     onBlur={()=>renameDay(day,editingDayValue)}/>
                 : <div style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:20 }}>
+                    <button onClick={()=>moveDay(day,-1)} title="Move earlier" style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:12, padding:"0 2px 0 0" }}>◀</button>
                     <span style={{ fontSize:12, color:"rgba(255,255,255,0.7)" }}>{day}</span>
+                    <button onClick={()=>moveDay(day,1)} title="Move later" style={{ background:"none", border:"none", color:"rgba(255,255,255,0.4)", cursor:"pointer", fontSize:12, padding:"0 0 0 2px" }}>▶</button>
                     <button onClick={()=>{setEditingDayName(day);setEditingDayValue(day);}} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.35)", cursor:"pointer", fontSize:11, padding:"0 0 0 2px" }}>✏️</button>
                     <button onClick={async()=>{
                       const hasItems=schedule.some(i=>i.day===day);
