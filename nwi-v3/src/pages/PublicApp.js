@@ -2501,7 +2501,9 @@ export default function PublicApp({ onGoAdmin }) {
             {meta?.location&&<div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>📍 {meta.location}</div>}
             {(() => {
               const parseTime = t => { if(!t) return 0; const m=t.match(/(\d+):(\d+)\s*(AM|PM)?/i); if(!m) return 0; let h=parseInt(m[1]),min=parseInt(m[2]); const p=(m[3]||"").toUpperCase(); if(p==="PM"&&h!==12)h+=12; if(p==="AM"&&h===12)h=0; return h*60+min; };
-              const days = [...new Set(schedule.map(s=>s.day))];
+              const seen = [...new Set(schedule.map(s=>s.day))];
+              const ordered = (meta?.scheduleDays||[]).filter(d=>seen.includes(d));
+              const days = [...ordered, ...seen.filter(d=>!ordered.includes(d))];
               return days.map(day=>{
                 const items = [...schedule.filter(s=>s.day===day)].sort((a,b)=>parseTime(a.time)-parseTime(b.time));
                 if(!items.length) return null;
