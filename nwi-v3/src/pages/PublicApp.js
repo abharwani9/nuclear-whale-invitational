@@ -2822,53 +2822,37 @@ export default function PublicApp({ onGoAdmin }) {
         )}
         {tab==="media" && <MediaGallery/>}
 {tab==="hole" && (() => {
-          const currentYear = meta?.year || new Date().getFullYear();
           const ledger = holePool?.find(h=>h.id==="ledger");
           const yearEntries = ledger?.yearEntries || [];
           const winners = ledger?.winners || [];
-          const totalPaidOut = winners.reduce((sum,w)=>sum+(w.amount||0),0);
 
-          // Only show owed amounts for years AFTER the last payout
-          const lastPaidYear = winners.length > 0
-            ? Math.max(...winners.map(w=>w.year))
-            : 0;
-
-          const playerOwed = {};
-          const sortedEntries = [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year));
-          sortedEntries.forEach(e => {
-            if (Number(e.year) > lastPaidYear) {
-              (e.optedIn||[]).forEach(name => {
-                playerOwed[name] = (playerOwed[name]||0) + Number(e.buyIn||0);
-              });
-              // Add catch-up for players who paid it this year — only uncovered missed years
-              (e.catchUpPaid||[]).filter(name=>(e.optedIn||[]).includes(name)).forEach(name => {
-                const prevYrs = sortedEntries.filter(y=>Number(y.year)<Number(e.year));
-                const alreadyCovered = new Set();
-                prevYrs.forEach(y=>{
-                  if((y.catchUpPaid||[]).includes(name))
-                    prevYrs.filter(z=>Number(z.year)<Number(y.year)&&!(z.optedIn||[]).includes(name)).forEach(z=>alreadyCovered.add(String(z.year)));
-                });
-                const missedAmt = prevYrs.filter(y=>!(y.optedIn||[]).includes(name)&&!alreadyCovered.has(String(y.year))&&Number(y.year)>lastPaidYear).reduce((s,y)=>s+Number(y.buyIn||0),0);
-                if(missedAmt>0) playerOwed[name] = (playerOwed[name]||0) + missedAmt;
-              });
-            }
-          });
-          const playersInPool = Object.keys(playerOwed).sort((a,b)=>playerOwed[b]-playerOwed[a]);
-          const allPlayers = [...roster].sort((a,b)=>a.name.localeCompare(b.name));
-          // Total including catch-up
-          const catchUpContrib = yearEntries.reduce((sum,e)=>{
-            const optedInNames = e.optedIn||[];
-            const validPaid = (e.catchUpPaid||[]).filter(n=>optedInNames.includes(n));
-            const catchUp = yearEntries.filter(y=>Number(y.year)<Number(e.year)).reduce((s,y)=>s+Number(y.buyIn||0),0);
-            return sum + validPaid.length * catchUp;
-          }, 0);
-          const totalContributed = yearEntries.reduce((sum,e)=>sum+(e.contributions||0),0) + catchUpContrib;
+          // Vesting-by-tenure: each year is a layer (players that year × buy-in). A win
+          // consumes the winner's opted-in years; those roll out of the pool for good.
+          const layerOf = (e) => (e.optedIn||[]).length * Number(e.buyIn||0);
+          const consumedYears = new Set(winners.flatMap(w=>(w.yearsWon||[]).map(Number)));
+          const isConsumed = (yr) => consumedYears.has(Number(yr));
+          const totalContributed = yearEntries.reduce((s,e)=>s+layerOf(e),0);
+          const totalPaidOut = winners.reduce((s,w)=>s+Number(w.amount||0),0);
           const runningTotal = totalContributed - totalPaidOut;
+
+          const couldWin = (name) => yearEntries.filter(e=>(e.optedIn||[]).includes(name)&&!isConsumed(e.year)).reduce((s,e)=>s+layerOf(e),0);
+          const boughtIn = (name) => yearEntries.filter(e=>(e.optedIn||[]).includes(name)).reduce((s,e)=>s+Number(e.buyIn||0),0);
+
+          const players = [...new Set(yearEntries.flatMap(e=>e.optedIn||[]))]
+            .map(name=>({
+              name,
+              boughtIn: boughtIn(name),
+              couldWin: couldWin(name),
+              years: [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year))
+                .filter(e=>(e.optedIn||[]).includes(name))
+                .map(e=>({ year:e.year, buyIn:Number(e.buyIn||0), won:isConsumed(e.year) })),
+            }))
+            .sort((a,b)=> b.couldWin-a.couldWin || b.boughtIn-a.boughtIn || a.name.localeCompare(b.name));
 
           return (
             <div>
               <div style={{ fontSize:20, fontWeight:800, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:8 }}>⛳ Hole-in-One Pool</div>
-              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>{meta?.holePoolDescription||"Rolls over every year — whoever hits a hole-in-one takes the full cumulative pot."}</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.4)", marginBottom:20 }}>{meta?.holePoolDescription||"Rolls over every year — hit a hole-in-one and you win the pot from every year you've opted into."}</div>
 
               {/* Big green total */}
               <div className="card" style={{ padding:"28px 20px", marginBottom:20, textAlign:"center", background:"rgba(74,222,128,0.06)", borderColor:"rgba(74,222,128,0.25)" }}>
@@ -2879,7 +2863,7 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>
               </div>
 
-              {/* Past payouts */}
+              {/* Past winners */}
               {winners.length>0&&(
                 <div style={{ marginBottom:20 }}>
                   <div style={{ fontSize:12, fontWeight:700, color:"rgba(255,255,255,0.4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>🏆 Past Winners</div>
@@ -2896,52 +2880,34 @@ export default function PublicApp({ onGoAdmin }) {
                 </div>
               )}
 
-              {/* Individual ledger - who owes what */}
-              {playersInPool.length>0&&(
+              {/* Individual ledger — what each player put in and could win */}
+              {players.length>0&&(
                 <div style={{ marginBottom:20 }}>
                   <div style={{ fontSize:12, fontWeight:700, color:"rgba(74,222,128,0.7)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:6 }}>💵 Individual Ledger</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>Total each player has contributed across all years</div>
-                  {playersInPool.map(name=>{
-                    const p = roster.find(r=>r.name===name);
-                    const owed = playerOwed[name]||0;
-                    // Build per-year breakdown including catch-up payments
-                    const sortedYears = [...yearEntries].sort((a,b)=>Number(a.year)-Number(b.year));
-                    const yearLines = [];
-                    sortedYears.forEach(e=>{
-                      const inThisYear = (e.optedIn||[]).includes(name);
-                      const paidCatchUp = (e.catchUpPaid||[]).includes(name);
-                      if(inThisYear){
-                        // Calculate catch-up for this re-join (years missed not already covered)
-                        const prevYrs = sortedYears.filter(y=>Number(y.year)<Number(e.year));
-                        const alreadyCovered = new Set();
-                        prevYrs.forEach(y=>{
-                          if((y.catchUpPaid||[]).includes(name))
-                            prevYrs.filter(z=>Number(z.year)<Number(y.year)&&!(z.optedIn||[]).includes(name)).forEach(z=>alreadyCovered.add(String(z.year)));
-                        });
-                        const missedAmt = paidCatchUp
-                          ? prevYrs.filter(y=>!(y.optedIn||[]).includes(name)&&!alreadyCovered.has(String(y.year))).reduce((s,y)=>s+Number(y.buyIn||0),0)
-                          : 0;
-                        yearLines.push({ year:e.year, buyIn:Number(e.buyIn||0), catchUp:missedAmt });
-                      }
-                    });
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:12 }}>What each player has put in, and what they'd win by acing — the full pot from every year they've opted into.</div>
+                  {players.map(p=>{
+                    const person = roster.find(r=>r.name===p.name);
                     return (
-                      <div key={name} className="card" style={{ padding:"12px 14px", marginBottom:8, borderColor:"rgba(74,222,128,0.12)", background:"rgba(74,222,128,0.03)" }}>
+                      <div key={p.name} className="card" style={{ padding:"12px 14px", marginBottom:8, borderColor:"rgba(74,222,128,0.12)", background:"rgba(74,222,128,0.03)" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          {p?.photoURL?<img src={p.photoURL} alt={name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15 }}>{name?.[0]}</div>}
+                          {person?.photoURL?<img src={person.photoURL} alt={p.name} style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>:<div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.06)", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15 }}>{p.name?.[0]}</div>}
                           <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
+                            <div style={{ fontWeight:700, fontSize:14 }}>{p.name}</div>
                             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>
-                              {yearLines.map(yl=>(
-                                <span key={yl.year} style={{ marginRight:8 }}>
+                              {p.years.map(yl=>(
+                                <span key={yl.year} style={{ marginRight:8, textDecoration:yl.won?"line-through":"none", opacity:yl.won?0.5:1 }}>
                                   {yl.year}: ${yl.buyIn}
-                                  {yl.catchUp>0&&<span style={{ color:"#ffd700" }}> +${yl.catchUp} catch-up</span>}
                                 </span>
                               ))}
                             </div>
                           </div>
+                          <div style={{ textAlign:"right", marginRight:6 }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>${p.boughtIn}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>bought in</div>
+                          </div>
                           <div style={{ textAlign:"right" }}>
-                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(owed)}</div>
-                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>total owed</div>
+                            <div style={{ fontSize:18, fontWeight:900, color:"#4ade80" }}>${Math.round(p.couldWin)}</div>
+                            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>could win</div>
                           </div>
                         </div>
                       </div>
@@ -2949,7 +2915,7 @@ export default function PublicApp({ onGoAdmin }) {
                   })}
                   {/* Total row */}
                   <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 14px", borderTop:"1px solid rgba(255,255,255,0.07)", marginTop:4 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>{playersInPool.length} players total</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:"rgba(255,255,255,0.5)" }}>{players.length} players · pool outstanding</div>
                     <div style={{ fontSize:15, fontWeight:900, color:"#4ade80" }}>${Math.round(runningTotal)}</div>
                   </div>
                 </div>
